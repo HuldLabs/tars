@@ -25,10 +25,20 @@ declara) vive em `.ai/governance/incidente-vira-prevencao.md`. Aqui está o pass
 6. **Suba um nível: qual é a ORIGEM** — o que fez esse buraco estrutural nascer. Se a
    explicação de "por que ocorreu" e a de "causa raiz" soam iguais, cave mais um nível; se
    "causa raiz" e "origem" soam iguais, cave de novo.
-7. **Valide que a correção ataca a origem** — rode de novo a reprodução exata do passo 3
+7. **Ande para trás até a primeira invariante violada** — a falha é o ponto onde a violação
+   apareceu, não onde nasceu: volte pelo fluxo (estado → passo anterior → entrada) até o
+   primeiro ponto em que o invariante já não valia. O fix mora **ali**, não no último lugar
+   que quebrou.
+   - **Regressão (funcionava, parou de funcionar) → `git bisect`.** Não leia o histórico
+     inteiro a olho: `git bisect run <comando de repro>` aponta o commit culpado em
+     `log2(n)` passos, e o diff **desse** commit é a evidência, não a hipótese.
+8. **Registre as hipóteses descartadas** — cada experimento muda **uma** variável; anote
+   cada hipótese com o resultado que a derrubou (campo `hipoteses:` da lição). Hipótese sem
+   experimento não foi testada — é palpite, e palpite não entra.
+9. **Valide que a correção ataca a origem** — rode de novo a reprodução exata do passo 3
    contra a correção.
-8. **Menor guard honesto para o modo de falha corrigido** — um teste quando for essa a
-   camada certa; senão, o check mecânico mais próximo (a lição vira verificação).
+10. **Menor guard honesto para o modo de falha corrigido** — um teste quando for essa a
+    camada certa; senão, o check mecânico mais próximo (a lição vira verificação).
 
 ## Regras
 

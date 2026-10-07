@@ -50,6 +50,7 @@ describe("gate commit-msg", () => {
       "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
         "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
         "  origem: o contrato nasceu sem o campo de reset — ninguem escreveu quem zera\n" +
+        "  hipoteses: o log lia a secao errada (descartada: apontava a certa)\n" +
         "  correcao: tools/framework/tars-verify.mjs\n",
     );
     expect(r.status).toBe(0);
@@ -69,10 +70,34 @@ describe("gate commit-msg", () => {
     const r = valida(
       "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
         "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
+        "  hipoteses: o log lia a secao errada (descartada: apontava a certa)\n" +
         "  correcao: tools/framework/tars-verify.mjs\n  propagacao: guard abc123\n",
     );
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/origem/i);
+  });
+
+  it("hipoteses: REPROVA o bloco de licao sem ela (o descarte tem de ficar registrado)", () => {
+    const r = valida(
+      "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
+        "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
+        "  origem: o contrato nasceu sem o campo de reset — ninguem escreveu quem zera\n" +
+        "  correcao: tools/framework/tars-verify.mjs\n  propagacao: guard abc123\n",
+    );
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/hipoteses/i);
+  });
+
+  it("hipoteses: aceita o bloco completo (7 campos, hipoteses entre origem e correcao)", () => {
+    const r = valida(
+      "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
+        "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
+        "  origem: o contrato nasceu sem o campo de reset — ninguem escreveu quem zera\n" +
+        "  hipoteses: o log lia a secao errada (descartada: apontava a certa)\n" +
+        "  correcao: tools/framework/tars-verify.mjs\n  propagacao: guard abc123\n",
+    );
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toMatch(/origem|hipoteses|propagacao/i);
   });
 
   it("origem: aceita o bloco completo (6 campos, origem antes de propagacao)", () => {
@@ -80,6 +105,7 @@ describe("gate commit-msg", () => {
       "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
         "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
         "  origem: o contrato nasceu sem o campo de reset — ninguem escreveu quem zera\n" +
+        "  hipoteses: o log lia a secao errada (descartada: apontava a certa)\n" +
         "  correcao: tools/framework/tars-verify.mjs\n  propagacao: guard abc123\n",
     );
     expect(r.status).toBe(0);
@@ -90,6 +116,7 @@ describe("gate commit-msg", () => {
     const r = valida("✨ feat(hub): encurta o motor\n\nLesson: o parser acumulava na secao errada\n");
     expect(r.status).toBe(0);
     expect(r.stderr).toMatch(/origem/i);
+    expect(r.stderr).toMatch(/hipoteses/i);
   });
 
   it("propagacao ausente no bloco AVISA (nao quebra o historico)", () => {
@@ -97,6 +124,7 @@ describe("gate commit-msg", () => {
       "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
         "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
         "  origem: o contrato nasceu sem o campo de reset — ninguem escreveu quem zera\n" +
+        "  hipoteses: o log lia a secao errada (descartada: apontava a certa)\n" +
         "  correcao: tools/framework/tars-verify.mjs\n",
     );
     expect(r.status).toBe(0);
@@ -108,6 +136,7 @@ describe("gate commit-msg", () => {
       "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
         "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
         "  origem: o contrato nasceu sem o campo de reset — ninguem escreveu quem zera\n" +
+        "  hipoteses: o log lia a secao errada (descartada: apontava a certa)\n" +
         "  correcao: tools/framework/tars-verify.mjs\n  propagacao: guard abc123\n",
     );
     expect(r.status).toBe(0);
@@ -125,6 +154,7 @@ describe("gate commit-msg", () => {
       "🐛 fix(hub): conserta o parser\n\nIncident:\n  erro: pipocava no host errado\n" +
         "  porque: o adapter lia o env do MCP\n  causa raiz: nao havia gate de origem de host\n" +
         "  origem: o adapter nunca teve o host como parametro explicito — veio do ambiente\n" +
+        "  hipoteses: o env vinha do shell do hook (descartada: o hook nao exporta isso)\n" +
         "  correcao: .ai/gates/commit-msg/validate-commit.mjs\n",
     );
     expect(r.status).toBe(0);

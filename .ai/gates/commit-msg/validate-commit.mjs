@@ -29,12 +29,17 @@ const NO_TRAILER_MIN = 10; // "nada novo" so vale se nomear (motivo >=10 chars)
 // Licao/incidente em QUATRO CAMPOS (fabber LESSONS-LEARNED.md, item 36 do relatorio).
 // Um checklist sozinho pega o sintoma de novo; os 4 campos forcam a CAUSA. "be more careful"
 // nunca e' causa nem correcao — e o campo `causa raiz` nao pode repetir o `porque`.
-const CAMPOS = ['erro', 'porque', 'causa raiz', 'origem', 'correcao'];
+const CAMPOS = ['erro', 'porque', 'causa raiz', 'origem', 'hipoteses', 'correcao'];
 // 5o campo (doutrina "incidente -> prevencao propagada", governance/incidente-vira-prevencao.md):
 // `propagacao` nomeia a CAMADA do Tars que impede a classe de voltar + o commit, ou `n/a` com
 // motivo. Obrigatorio em licao NOVA; em licao antiga (sem ele) so' AVISA — nao quebra historico.
 const CAMPOS_EXTRA = ['propagacao'];
-const CAMPO_RE = new RegExp('^\\s*(?:[-*]\\s*)?(' + [...CAMPOS, ...CAMPOS_EXTRA].join('|') + ')\\s*:\\s*(.*)$', 'i');
+// `hipoteses` e' o campo do MEIO (fatia 2/5): entre `origem` e a correcao, registra o que foi
+// TESTADO E DESCARTADO — uma variavel por experimento. Sem ele a licao guarda so' a hipotese
+// vencedora e a proxima sessao repete os becos sem saida ja' percorridos.
+// Obrigatorio em licao NOVA (bloco); em licao antiga / de 1 linha so' AVISA — nao quebra historico.
+const CAMPOS_MEIO = ['hipoteses'];
+const CAMPO_RE = new RegExp('^\\s*(?:[-*]\\s*)?(' + [...CAMPOS, ...CAMPOS_EXTRA, ...CAMPOS_MEIO].join('|') + ')\\s*:\\s*(.*)$', 'i');
 const VAGO_RE = /^(seja mais cuidadoso|ter mais cuidado|be more careful|prestar aten[cç][aã]o|mais aten[cç][aã]o)\b/i;
 
 /** Coleta os trailers `Lesson:`/`No-Lesson:`/`Incident:`/`No-Incident:` do corpo. */
@@ -86,6 +91,23 @@ function requireTrailer(type, tr, blocos, kind) {
     console.error('  (guard > doctor > env/config do sync > gate de CI > skill — o mais automatico ganha):');
     console.error('    propagacao: guard <commit> | doctor <commit> | ... | n/a <motivo>\n');
   };
+  // `hipoteses` fica entre `origem` e a correcao: o que foi testado e descartado, uma variavel
+  // por experimento. Bloco novo sem ela = licao que so' guarda a hipotese vencedora — REPROVA.
+  // Forma curta (1 linha) e' legado: so' AVISA.
+  const faltaHipoteses = (b) => !b.hipoteses;
+  const avisoHipoteses = () => {
+    console.error(`\ncommit-msg: AVISA — falta 'hipoteses' (o que foi testado e descartado).`);
+    console.error('  registre as hipoteses descartadas, UMA VARIAVEL por experimento:');
+    console.error('    hipoteses: <h1 descartada porque...; h2 descartada porque...>\n');
+  };
+  const exigeHipoteses = (cap2) => {
+    console.error(`\ncommit-msg: '${cap2}' veio sem 'hipoteses' — o que foi testado e descartado.`);
+    console.error('  sem elas a proxima sessao repete os becos sem saida ja percorridos.');
+    console.error('  registre uma variavel por experimento, dizendo por que cada uma caiu:');
+    console.error('    hipoteses: o parser lia a secao errada (descartada: o log mostrava a secao certa);');
+    console.error('               faltava reset por item (confirma a causa)\n');
+    process.exit(1);
+  };
   // A PRIMEIRA pergunta e' a ORIGEM (doutrina "origem antes do sintoma"): a causa raiz e o
   // buraco estrutural; `origem` e o que fez o buraco nascer. Bloco SEM ela = licao nova
   // incompleta: REPROVA. Licao em 1 linha e' legado — so' AVISA.
@@ -124,6 +146,7 @@ function requireTrailer(type, tr, blocos, kind) {
       console.error('      porque: <o mecanismo imediato>');
       console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
       console.error('      origem: <o que fez esse buraco nascer — nao repita a causa raiz>');
+      console.error('      hipoteses: <testadas e descartadas, uma variavel por experimento>');
       console.error('      correcao: <o arquivo/gate que muda — nunca "ter mais cuidado">');
       console.error('      propagacao: <camada + commit, ou `n/a` com motivo>');
       console.error(`  ou escape com No-Incident: <motivo com >=${NO_TRAILER_MIN} chars>\n`);
@@ -131,6 +154,7 @@ function requireTrailer(type, tr, blocos, kind) {
     }
     if (mesmas) exigeCausa();
     if (faltaOrigem(b)) exigeOrigem();
+    if (faltaHipoteses(b)) exigeHipoteses(cap);
     avisoPropaga(b);
     return;
   }
@@ -139,14 +163,15 @@ function requireTrailer(type, tr, blocos, kind) {
   if (mesmas) exigeCausa();
   // Trailer de 1 linha: forma LEGADO — so' AVISA (nao pode quebrar o historico), tanto pelo
   // `origem` quanto pelo `propagacao`. O BLOCO e' a forma nova, e ai' a origem e' exigida.
-  if (tr[kind] || temNo) return avisoOrigem();
+  if (tr[kind] || temNo) { avisoOrigem(); avisoHipoteses(); return; }
   // Bloco completo sem `propagacao` = licao nova incompleta: AVISA, nao reprova (historico).
   // Sem `origem` = licao que corrige o sintoma: REPROVA (doutrina "origem antes do sintoma").
   if (temBloco) {
     if (faltaOrigem(b)) exigeOrigem();
+    if (faltaHipoteses(b)) exigeHipoteses(cap);
     return avisoPropaga(b);
   }
-  if (Object.keys(b).length) avisoOrigem();
+  if (Object.keys(b).length) { avisoOrigem(); avisoHipoteses(); }
   avisoPropaga(b);
   console.error(`\ncommit-msg: commit '${type}' sem registro de licao.`);
   console.error('  registre o aprendizado em 1 linha ou no bloco de 4 campos:');
@@ -156,6 +181,7 @@ function requireTrailer(type, tr, blocos, kind) {
   console.error('      porque: <o mecanismo imediato>');
   console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
   console.error('      origem: <o que fez esse buraco nascer; NAO repita a causa raiz>');
+  console.error('      hipoteses: <testadas e descartadas, uma variavel por experimento>');
   console.error('      correcao: <o arquivo/gate que muda>');
   console.error('      propagacao: <camada + commit, ou `n/a` com motivo>');
   console.error('  (escapar e' + ' trailer, nunca --no-verify)\n');

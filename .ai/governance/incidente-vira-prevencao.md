@@ -34,6 +34,14 @@ mais automática que o impeça em TODOS os consumidores**.
 - **Estreite a fronteira uma variável por vez** — não conserte e investigue ao mesmo tempo.
 - **Ache a causa raiz ANTES de alargar a correção** — o primeiro lugar plausível não é o
   culpado, e mexer nele apaga a evidência.
+- **Ande para trás até a primeira invariante violada** — o sintoma é onde a violação
+  apareceu; a causa é onde ela **nasceu**. Volte pelo fluxo até o primeiro ponto em que o
+  invariante já não valia, e conserte ali. Se o que quebrou **funcionava antes**, é
+  regressão: `git bisect run <repro>` acha o commit culpado em `log2(n)` passos — o diff
+  desse commit é a evidência.
+- **Anote as hipóteses descartadas** — cada experimento muda **uma** variável; hipótese sem
+  experimento é palpite. O campo `hipoteses:` guarda o que foi testado e derrubado (e por
+  quê) para a próxima sessão não repetir o beco sem saída.
 - **Reconstrua do zero** — correção aplicada ao sistema rodando, sem a origem nomeada, é
   contorno, não correção.
 - **Preserve a evidência enquanto o bug é observável**; se a falha é intermitente, aumente
@@ -54,21 +62,25 @@ guard/doctor/sync sempre que der.
 
 ## Os campos da lição
 
-A lição em 4 campos (`erro` / `porque` / `causa raiz` / `correcao`) ganha dois, na
+A lição em 4 campos (`erro` / `porque` / `causa raiz` / `correcao`) ganha três, na
 ordem em que se pensa:
 
     origem: <o que fez o buraco estrutural nascer — não repita a causa raiz>
+    hipoteses: <testadas e descartadas, uma variável por experimento, com o porquê>
     propagacao: <camada> + <commit>, ou `n/a` com motivo
 
 `origem` é a **primeira** pergunta e por isso vem antes de `propagacao`: primeiro
 entende-se de onde a falha veio, depois decide-se quem impede a classe de voltar.
-`propagacao` nomeia **quem impede a classe de voltar** — a camada escolhida na pergunta
-3 e o commit que a instalou. `n/a` só com motivo (ex.: "classe só existe neste projeto").
+`hipoteses` fica **entre** as duas, porque é o que a investigação produziu de concreto:
+a hipótese que caiu vale tanto quanto a que ficou — a próxima sessão não repete o beco
+sem saída. `propagacao` nomeia **quem impede a classe de voltar** — a camada escolhida na
+pergunta 3 e o commit que a instalou. `n/a` só com motivo (ex.: "classe só existe neste
+projeto").
 
-O validador (`.ai/gates/commit-msg/validate-commit.mjs`) **exige** `origem` no bloco de
-lição nova e **avisa** quando falta em lição antiga (trailer de 1 linha); com
-`propagacao` e a validação de camada, faz o mesmo. Sem isso as perguntas viram boa
-intenção.
+O validador (`.ai/gates/commit-msg/validate-commit.mjs`) **exige** `origem` e
+`hipoteses` no bloco de lição nova e **avisa** quando faltam em lição antiga (trailer de
+1 linha); com `propagacao` e a validação de camada, faz o mesmo. Sem isso as perguntas
+viram boa intenção.
 
 **Origem do port (R1).** As perguntas vêm de benchmark, não de invenção: o critério
 "cave mais um nível" e "causa desconhecida: diga, não chute" vêm de
