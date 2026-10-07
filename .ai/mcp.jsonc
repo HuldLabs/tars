@@ -9,9 +9,7 @@
       "args": [
         "exec", "-i", "-u", "node",
         "-e", "DB_HOST=host.docker.internal",
-        "-e", "PROJECTS_MCP_ACTOR=opus",
         "-w", "/workspace",
-        "segtools-dev",
         "node", "tools/framework/secrets.mjs", "exec", "--",
         "bun", "--conditions=react-server", "tools/framework/host/projects-mcp.ts"
       ],

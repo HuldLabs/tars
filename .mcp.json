@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "projects": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "-u",
+        "node",
+        "-e",
+        "DB_HOST=host.docker.internal",
+        "-w",
+        "/workspace",
+        "node",
+        "tools/framework/secrets.mjs",
+        "exec",
+        "--",
+        "bun",
+        "--conditions=react-server",
+        "tools/framework/host/projects-mcp.ts"
+      ],
+      "env": {
+        "MSYS_NO_PATHCONV": "1"
+      }
+    }
+  }
+}
