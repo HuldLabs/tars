@@ -11,6 +11,7 @@
 //   node validate-commit.mjs --validate-branch <branch>
 //   node validate-commit.mjs --validate-tag <tag>
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { TYPES, EMOJI, SUBJECT_RE, MAX_SUBJECT } from './emoji.mjs';
 
 const [mode, arg] = [process.argv[2], process.argv[3]];
@@ -25,6 +26,11 @@ const BRANCH_TYPES = new Set(Object.keys(TYPES).filter((t) => t !== 'merge'));
 const INCIDENT_TYPES = new Set(['fix', 'bug', 'hotfix']);
 const LESSON_TYPES = new Set(['feat', 'refactor', 'perf']);
 const NO_TRAILER_MIN = 10; // "nada novo" so vale se nomear (motivo >=10 chars)
+// TARS-RED-1: `fix:` SEM tocar um arquivo de teste e' a correcao que nao prova nada —
+// o teste que REPROVA antes da correcao e' o que distingue conserto de palpite (R4).
+// Escape honesto: `No-Test: <motivo >=10 chars>` no corpo (ex.: typo, doc, config).
+const TEST_RE = /(^|\/)(test|tests|spec|specs|__tests__|__fixtures__)\//i;
+const TEST_FILE_RE = /\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)(test_[^/]+|[^/]+_test)\.py$|(^|\/)tests?\.py$|(^|\/)conftest\.py$/i;
 
 // Licao/incidente em QUATRO CAMPOS (fabber LESSONS-LEARNED.md, item 36 do relatorio).
 // Um checklist sozinho pega o sintoma de novo; os 4 campos forcam a CAUSA. "be more careful"
@@ -46,7 +52,7 @@ const VAGO_RE = /^(seja mais cuidadoso|ter mais cuidado|be more careful|prestar 
 function trailers(msg) {
   const out = {};
   for (const line of msg.split(/\r?\n/)) {
-    const m = line.match(/^\s*(Lesson|No-Lesson|Incident|No-Incident)\s*:\s*(.*)$/i);
+    const m = line.match(/^\s*(Lesson|No-Lesson|Incident|No-Incident|No-Test)\s*:\s*(.*)$/i);
     if (m) out[m[1].toLowerCase()] = m[2].trim();
   }
   return out;
@@ -188,6 +194,29 @@ function requireTrailer(type, tr, blocos, kind) {
   process.exit(1);
 }
 
+/**
+ * TARS-RED-1: `fix:`/`🐛` tem de tocar um ARQUIVO DE TESTE (ou escapar com `No-Test:`).
+ * Le os caminhos staged via `git diff --cached --name-only -z` na raiz do projeto.
+ * Sem git/repo (fixture isolada): nao julga — gate que inventa caminho reprova tudo, e
+ * falso-positivo e' pior que ausencia (o gate roda no hook real, onde o git existe).
+ */
+function exigeTesteVermelho(msg, tr) {
+  const temNoTest = tr['no-test'] && tr['no-test'].length >= NO_TRAILER_MIN;
+  if (temNoTest) return;
+  const cwd = process.env.TARS_PROJECT ?? process.cwd();
+  const r = spawnSync('git', ['diff', '--cached', '--name-only', '-z'], { cwd, encoding: 'utf8' });
+  if (r.status !== 0 || typeof r.stdout !== 'string') return;
+  const arquivos = r.stdout.split('\0').filter(Boolean);
+  if (!arquivos.length) return; // merge/rebase sem staged: nao ha' o que julgar
+  if (arquivos.some((f) => TEST_RE.test(f) || TEST_FILE_RE.test(f))) return;
+  console.error('\ncommit-msg: fix/bug/hotfix sem TESTE no commit (TARS-RED-1).');
+  console.error('  a correcao veio, mas nada prova que ela reprovava ANTES (R4).');
+  console.error('  toque o arquivo de teste que cobre o caso (ou o que REPRODUZ a falha) —');
+  console.error('  no minimo um `*.test.*`/`*.spec.*`/`test_*`/`tests/`;');
+  console.error(`  sem teste cabivel (typo, doc, config)? escape pelo corpo: No-Test: <motivo >=${NO_TRAILER_MIN} chars>\n`);
+  process.exit(1);
+}
+
 // --validate-branch / --validate-tag sao independentes de arquivo.
 if (mode === '--validate-branch') {
   const b = (arg || '').trim();
@@ -252,7 +281,7 @@ if (mode === '--validate') {
       process.exit(1);
     }
   }
-  if (INCIDENT_TYPES.has(ctype)) requireTrailer(ctype, trailers(body), blocos, 'incident');
+  if (INCIDENT_TYPES.has(ctype)) { requireTrailer(ctype, trailers(body), blocos, 'incident'); exigeTesteVermelho(msg, trailers(body)); }
   if (LESSON_TYPES.has(ctype)) requireTrailer(ctype, trailers(body), blocos, 'lesson');
   process.exit(0);
 }

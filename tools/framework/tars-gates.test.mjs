@@ -167,6 +167,74 @@ describe("gate commit-msg", () => {
   });
 });
 
+// TARS-RED-1: `fix:` sem tocar teste e' correcao sem prova. O gate le os caminhos staged
+// no repo de TARS_PROJECT; a fixture monta um repo git minimo com o arquivo ja' em stage.
+describe("gate commit-msg — teste vermelho no fix (TARS-RED-1)", () => {
+  const gate = GATE("commit-msg", "gate.mjs");
+  const FIX = "🐛 fix(hub): conserta o parser\n\nIncident:\n  erro: pipocava no host errado\n" +
+    "  porque: o adapter lia o env do MCP\n  causa raiz: nao havia gate de origem de host\n" +
+    "  origem: o adapter nunca teve o host como parametro explicito — veio do ambiente\n" +
+    "  hipoteses: o env vinha do shell do hook (descartada: o hook nao exporta isso)\n" +
+    "  correcao: tools/framework/tars-verify.mjs\n";
+
+  /** Repo git minimo com `arquivos` em stage; devolve o dir. */
+  const repoCom = (arquivos) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-red-"));
+    const g = (a) => spawnSync("git", a, { cwd: dir, encoding: "utf8" });
+    g(["init", "-q"]); g(["config", "user.email", "t@t.local"]); g(["config", "user.name", "t"]);
+    for (const f of arquivos) {
+      fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+      fs.writeFileSync(path.join(dir, f), "x\n");
+    }
+    g(["add", "--", ...arquivos]);
+    return dir;
+  };
+  const valida = (msg, dir) => {
+    const f = path.join(dir, "COMMIT_EDITMSG");
+    fs.writeFileSync(f, msg);
+    return rodar([gate, f], { env: { TARS_PROJECT: dir } });
+  };
+
+  it("fix que NAO toca teste reprova (a correcao sem prova)", () => {
+    const r = valida(FIX, repoCom(["tools/framework/tars-verify.mjs"]));
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/TARS-RED-1|TESTE/);
+  });
+
+  it("fix que toca um *.test.mjs passa", () => {
+    const r = valida(FIX, repoCom(["tools/framework/tars-verify.mjs", "tools/framework/tars-verify.test.mjs"]));
+    expect(r.status).toBe(0);
+  });
+
+  it("fix que toca um test_*.py passa", () => {
+    const r = valida(FIX, repoCom(["tools/framework/rename.py", "tools/framework/rename_test.py"]));
+    expect(r.status).toBe(0);
+  });
+
+  it("fix so' de doc escapa com No-Test: <motivo>", () => {
+    const r = valida(`${FIX}\nNo-Test: correcao de comentario em doc, sem codigo executavel afetado\n`, repoCom(["docs/X.md"]));
+    expect(r.status).toBe(0);
+  });
+
+  it("No-Test curto NAO escapa (motivo >= 10 chars)", () => {
+    const r = valida(`${FIX}\nNo-Test: typo\n`, repoCom(["docs/X.md"]));
+    expect(r.status).not.toBe(0);
+  });
+
+  it("feat nao paga o teste vermelho (so' o fix)", () => {
+    const r = valida("✨ feat(hub): mexe no motor\n\nLesson: o parser acumulava na secao errada\n", repoCom(["tools/framework/x.mjs"]));
+    expect(r.status).toBe(0);
+  });
+
+  it("sem repo git nao julga (fixture isolada, nao falso-positivo)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-red-nogit-"));
+    const f = path.join(dir, "COMMIT_EDITMSG");
+    fs.writeFileSync(f, FIX);
+    const r = rodar([gate, f], { env: { TARS_PROJECT: dir } });
+    expect(r.status).toBe(0);
+  });
+});
+
 describe("gate gitleaks", () => {
   const gate = GATE("gitleaks", "gate.mjs");
 

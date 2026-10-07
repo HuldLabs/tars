@@ -42,6 +42,14 @@ prova = "printf '%s\\n\\n%s\\n' '✨ feat(hub): mexe no motor' 'sem trailer' > /
 onde = "commit-msg"
 
 [[doctrine]]
+id = "git/teste-vermelho-no-fix"
+titulo = "`fix:`/`🐛` sem arquivo de TESTE REPROVA (TARS-RED-1), salvo `No-Test: <motivo>`"
+fonte = ".ai/gates/commit-msg/validate-commit.mjs:197-220"
+gate = "../../.ai/gates/commit-msg"
+prova = "printf '%s\\n\\nIncident:\\n  erro: e\\n  porque: p\\n  causa raiz: c\\n  origem: o\\n  correcao: f\\n' '🐛 fix(hub): conserta' > /tmp/tars-doc-red.txt && node .ai/gates/commit-msg/gate.mjs /tmp/tars-doc-red.txt"
+onde = "commit-msg"
+
+[[doctrine]]
 id = "git/origem-antes-do-sintoma"
 titulo = "Bloco de licao sem `origem` REPROVA (a causa raiz vem antes do sintoma)"
 fonte = ".ai/governance/incidente-vira-prevencao.md:9-25"
