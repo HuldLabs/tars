@@ -30,7 +30,7 @@
 
 import { createHash } from 'node:crypto'
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -225,9 +225,19 @@ export function findTars(start = HERE) {
   throw new Error('nao achei a raiz do Tars (use --tars <dir> ou TARS_HOME)')
 }
 
-function tarsVersion(tars) {
+/**
+ * Versao do Tars: `.ai/VERSION` e' a FONTE (o `ai-layer-check` a valida como SemVer) e o
+ * `package.json` e' o espelho. `tars --version`, o `tars.lock` do consumidor e as notas de
+ * upgrade leem daqui — um lugar so' (R3). Cai no `package.json` quando so' ele existe.
+ */
+export function readVersion(tars = findTars()) {
   const v = join(tars, '.ai', 'VERSION')
-  return existsSync(v) ? readFile(v, 'utf8').then((s) => s.trim()) : null
+  if (existsSync(v)) return readFileSync(v, 'utf8').trim() || null
+  try {
+    return JSON.parse(readFileSync(join(tars, 'package.json'), 'utf8')).version ?? null
+  } catch {
+    return null
+  }
 }
 
 function tarsCommit(tars) {
@@ -413,7 +423,7 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 
   const next = {
     lockfileVersion: 1,
-    tars: { version: manifest.version ?? (await tarsVersion(tars)), commit: tarsCommit(tars) },
+    tars: { version: manifest.version ?? readVersion(tars), commit: tarsCommit(tars) },
     files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),
   }
   const body = JSON.stringify(next, null, 2) + '\n'
@@ -430,7 +440,11 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
       ? `sync: ${wrote.length} item(ns), ${Object.keys(files).length} no lock (${relative(project, lockPath)}).`
       : `sync: nada mudou, ${Object.keys(files).length} item(ns) ja' em dia.`,
   )
-  return { missing, stale, absent, copied, wrote, wired, hooks: hooksWrote, lock: next }
+  // A versao do catalogo subiu desde a ultima vez: o consumidor precisa das notas, nao de
+  // decifrar o diff (foi o que custou turnos ao seo-brain). Uma linha, o detalhe fica la'.
+  const antes = lock?.tars?.version ?? null
+  if (antes && antes !== next.tars.version) log(`Tars ${antes} -> ${next.tars.version}: rode \`tars upgrade-notes\` para as notas de upgrade.`)
+  return { missing, stale, absent, copied, wrote, wired, hooks: hooksWrote, lock: next, fromVersion: antes }
 }
 
 // ---------------------------------------------------------------------------
@@ -665,7 +679,7 @@ export async function init({ tars = findTars(), project = process.cwd(), log = c
   // Falha RUIDOSA antes de escrever: projeto que ja' tem manifesto nao e' inicializado
   // por cima (o `init` nunca adivinha o que era do projeto).
   if (existsSync(manifestPath)) throw new Error(`ja' existe ${relative(project, manifestPath)} — projeto ja' inicializado (edite a mao)`)
-  const version = (await tarsVersion(tars)) ?? 'v0.0'
+  const version = readVersion(tars) ?? 'v0.0'
   await mkdir(join(project, '.ai', 'memory'), { recursive: true })
   await writeFile(manifestPath, MANIFEST_TEMPLATE.replace('${version}', version))
   const r = await sync({ tars, project, log })

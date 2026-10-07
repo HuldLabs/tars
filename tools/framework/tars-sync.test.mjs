@@ -120,6 +120,26 @@ describe("tars-sync — so' o declarado e' copiado", () => {
     ]);
     for (const f of Object.values(l.files)) expect(f.sha256).toMatch(/^(sha256-)?[0-9a-f]{64}$/);
   });
+
+  it("sem `version` no manifesto, o lock grava a versao do CATALOGO (package.json)", async () => {
+    // `version = "..."` no manifesto e' override opcional; sem ele o lock tem de trazer a
+    // versao real do catalogo — e' o que o `upgrade-notes` compara depois.
+    const { tars, project, lock } = scaffold({ manifest: MANIFEST.replace('version = "v0.3"\n', "") });
+    fs.writeFileSync(path.join(tars, ".ai", "VERSION"), "0.0.1-dev.9\n");
+    await sync({ tars, project, log: () => {} });
+    expect(readLock(lock).tars.version).toBe("0.0.1-dev.9");
+  });
+
+  it("versao subiu desde o lock: o sync aponta `tars upgrade-notes`", async () => {
+    const { tars, project } = scaffold({ manifest: MANIFEST.replace('version = "v0.3"\n', "") });
+    fs.writeFileSync(path.join(tars, ".ai", "VERSION"), "0.0.1-dev.2\n");
+    await sync({ tars, project, log: () => {} });
+    fs.writeFileSync(path.join(tars, ".ai", "VERSION"), "0.0.1-dev.3\n");
+    const linhas = [];
+    const r = await sync({ tars, project, log: (l) => linhas.push(l) });
+    expect(linhas.join("\n")).toContain("rode `tars upgrade-notes`");
+    expect(r.fromVersion).toBe("0.0.1-dev.2");
+  });
 });
 
 describe("tars-sync — idempotencia", () => {

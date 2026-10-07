@@ -80,7 +80,10 @@ export function validateStructure(root = REPO) {
 
   const version = read(root, `${AI}/VERSION`);
   if (version === null) errs.push(`falta ${AI}/VERSION`);
-  else if (!/^\d+\.\d+\.\d+\s*$/.test(version)) errs.push(`${AI}/VERSION nao e SemVer (esperado X.Y.Z)`);
+  // SemVer completo (X.Y.Z ou X.Y.Z-prerelease): a extracao nasce em `0.0.1-dev.N`
+  // (doutrina versionamento-de-extracao), entao o pre-release tambem e' valido.
+  else if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?\s*$/.test(version))
+    errs.push(`${AI}/VERSION nao e SemVer (esperado X.Y.Z ou X.Y.Z-dev.N)`);
 
   if (!fs.existsSync(path.join(root, `${AI}/memory`))) errs.push(`falta ${AI}/memory/`);
 

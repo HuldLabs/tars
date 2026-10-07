@@ -33,6 +33,7 @@ import * as verifyMod from './tars-verify.mjs'
 import * as memoryMod from './tars-memory.mjs'
 import * as refsMod from './tars-check-refs.mjs'
 import * as handoffMod from './tars-handoff.mjs'
+import * as upgradeMod from './tars-upgrade.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -74,6 +75,8 @@ const USAGE = [
   '  check                      atalho de `sync --check` (o gate)',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
+  '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
+  '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
   '  verify <arquivo>           roda os `verify` de um bloco de claims e cobra o `expect` (exit',
   '                             != 0 em PHANTOM/sem negativo/excesso de [ASSUMED]); `-` le stdin',
@@ -228,6 +231,25 @@ function argValue(list, name) {
   return i === -1 ? null : list[i + 1]
 }
 
+/** `tars upgrade-notes [--from <>]` — as notas de upgrade do catalogo (modulo dono). */
+async function upgradeCommand(rest, project) {
+  const r = upgradeMod.upgradeNotes({
+    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars()),
+    project: resolve(argValue(rest, '--project') ?? project ?? process.cwd()),
+    from: argValue(rest, '--from'),
+  })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else upgradeMod.format(r)
+  if (r.faltando) process.exit(1)
+}
+
+/** `tars --version` — a versao do catalogo (fonte: `package.json`). */
+function versionCommand() {
+  const tars = resolve(process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars())
+  const v = syncMod.readVersion(tars)
+  console.log(v ?? 'desconhecida')
+}
+
 /** Monta as funcoes de despacho por comando; `check` e' `sync` com `--check` forcado. */
 const COMMANDS = {
   init: (rest, project) => sync('init', rest, project),
@@ -240,11 +262,16 @@ const COMMANDS = {
   memory: memoryCommand,
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
+  'upgrade-notes': upgradeCommand,
   git: gitCommand,
 }
 
 async function main() {
-  if (cmd === '--help' || cmd === '-h' || cmd === 'help' || cmd === '--version') {
+  if (cmd === '--version' || cmd === '-v' || cmd === 'version') {
+    versionCommand()
+    return
+  }
+  if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
     console.log(USAGE)
     return
   }
