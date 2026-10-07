@@ -12,6 +12,7 @@
     "test": "vitest run tools/framework/tars-*.test.mjs tools/framework/tars.test.mjs"
   },
   "devDependencies": {
+    "rulesync": "^27.0.0",
     "vitest": "^4.0.18"
   }
 }
