@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -159,5 +160,32 @@ describe("tars-hooks — local", () => {
     const r = runHooks({ hook: "local", manifest, project, log: () => {}, err: (m) => erros.push(m), spawn: () => ({ status: 0 }) });
     expect(r.ok).toBe(false);
     expect(erros.join("\n")).toMatch(/tools\/gates\/meu\.sh/);
+  });
+});
+
+describe("tars-hooks — CLI", () => {
+  const CLI = path.join(path.dirname(new URL(import.meta.url).pathname), "tars-hooks.mjs");
+  const roda = (project, hook) =>
+    spawnSync(process.execPath, [CLI, hook], { encoding: "utf8", env: { ...process.env, TARS_PROJECT: project } });
+
+  it("roda os gates de verdade e propaga o exit code que falha", async () => {
+    // Ponte ponta-a-ponta: os gates sao PROCESSOS reais (nao o spawn injetado do teste
+    // acima) — e' o que o hook do git vai executar.
+    const { project } = await projeto({ gates: { g1: "process.exit(0)", g2: "process.exit(3)", g3: "process.exit(0)" } });
+
+    const ok = roda(project, "pre-push");
+    expect(ok.status).toBe(0);
+
+    const ruim = roda(project, "pre-commit");
+    expect(ruim.status).toBe(1);
+    expect(ruim.stderr).toMatch(/gate g2: FALHOU \(exit 3\)/);
+  });
+
+  it("gate ausente na base derruba o hook com exit 1", async () => {
+    const { project } = await projeto();
+    fs.rmSync(path.join(project, ".ai", "base", "gates", "g1"), { recursive: true });
+    const r = roda(project, "pre-commit");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/gate g1: NAO ENCONTRADO/);
   });
 });
