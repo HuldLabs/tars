@@ -207,7 +207,9 @@ function arg(name) {
   return i === -1 ? null : process.argv[i + 1]
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+// `TARS_AS_MODULE` desliga o auto-run quando o `tars.mjs` importa o modulo no modo
+// `bun build --compile` (la o import.meta.url de todo modulo embutido vira o do entrypoint).
+if (!process.env.TARS_AS_MODULE && process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const area = arg('--area')
   const item = arg('--item')
   try {

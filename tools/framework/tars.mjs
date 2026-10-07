@@ -14,12 +14,42 @@
 //   tars hooks <pre-commit|commit-msg|pre-push|local> [args do hook...]
 //   tars promote --area <memory|skill|gate> --item <nome> [--project <dir>] [--tars <dir>]
 //   tars --help
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// Os donos de cada comando entram por import ESTATICO: o `bun build --compile` so' embute
+// o que enxerga em tempo de build — `await import(join(home(), 'tars-sync.mjs'))` virava
+// `/$bunfs/root/tars-sync.mjs` e o binario morria em runtime (Incident: dist/tars perde modulo).
+// Este import vem PRIMEIRO e de proposito: ele marca `TARS_AS_MODULE`, que desliga os
+// auto-run dos modulos DONOS (no `--compile` o import.meta.url de todo modulo embutido vira
+// o do entrypoint, e o guard deles disparava o main no import — `--help` respondia `sync`).
+import './tars-as-module.mjs'
+import * as promote from './tars-promote.mjs'
+import * as hooks from './tars-hooks.mjs'
+import * as syncMod from './tars-sync.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
 const HERE = dirname(fileURLToPath(import.meta.url))
+const COMPILED = fileURLToPath(import.meta.url).startsWith('/$bunfs/')
+
+/** Sobe a partir de `start` ate' achar um repo do Tars (`.ai/VERSION`); `null` se nao houver. */
+function findRoot(start) {
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, '.ai', 'VERSION'))) return dir
+    if (dirname(dir) === dir) return null
+  }
+}
+
+// Quando COMPILADO, o modulo mora em `/$bunfs/root/...` — sem valor. A raiz do catalogo
+// passa a ser o repo onde o BINARIO vive (`process.execPath`), subindo ate' achar `.ai/VERSION`.
+// Ordem: `--tars` > `TARS_HOME` > este default > cwd (fonte). Sem ele, rodar o binario fora
+// do repo do Tars morria com "nao achei a raiz do Tars" (Incident: dist/tars perde modulo).
+function defaultTars() {
+  if (COMPILED) return findRoot(dirname(process.execPath))
+  return null
+}
+
 const args = process.argv.slice(2)
 const cmd = args[0] ?? '--help'
 
@@ -47,9 +77,9 @@ const USAGE = [
 
 /** Delegacao: importa o modulo DONO do comando e chama a funcao exportada (nada reimplementado). */
 async function sync(action, rest, project) {
-  const mod = await import(join(home(), 'tars-sync.mjs'))
+  const mod = syncMod
   const opts = {
-    tars: resolve(argValue(rest, '--tars') ?? mod.findTars()),
+    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars()),
     project: resolve(argValue(rest, '--project') ?? project),
   }
   if (action === 'init') return void (await mod.init(opts))
@@ -64,14 +94,17 @@ async function sync(action, rest, project) {
   }
 }
 
-async function hooks(rest, project) {
-  const [hook, ...hookArgs] = rest
+async function runHooksCommand(rest, project) {
+  const [hook, ...rawArgs] = rest
   if (!hook) throw new Error('falta o hook: use `tars hooks <pre-commit|commit-msg|pre-push|local> [args]`')
-  const mod = await import(join(home(), 'tars-hooks.mjs'))
-  const { existsSync } = await import('node:fs')
-  const { parseToml } = await import(join(home(), 'tars-sync.mjs'))
-  const { readFileSync } = await import('node:fs')
-  let start = process.env.TARS_PROJECT ?? project
+  const mod = hooks
+  const { parseToml } = syncMod
+  // `--project` tambem vale aqui: sem ele o repo consumidor so' era encontravel por TARS_PROJECT.
+  // E sai da lista de args: eles vao inteiros para o gate (o `--project` nao e' do gate).
+  const at = rawArgs.indexOf('--project')
+  const hookArgs = at === -1 ? rawArgs : rawArgs.filter((_, i) => i !== at && i !== at + 1)
+  let start = (at === -1 ? null : rawArgs[at + 1]) ?? project ?? process.env.TARS_PROJECT
+  if (!start) throw new Error('nao achei o projeto (use --project <dir> ou TARS_PROJECT=<dir>)')
   if (existsSync(join(start, 'tars.toml'))) start = dirname(start)
   const found = mod.findProject(start)
   const manifest = parseToml(readFileSync(found.file, 'utf8'))
@@ -79,14 +112,14 @@ async function hooks(rest, project) {
   process.exit(r.ok ? 0 : 1)
 }
 
-async function promote(rest, project) {
-  const mod = await import(join(home(), 'tars-promote.mjs'))
+async function promoteCommand(rest, project) {
+  const mod = promote
   const area = argValue(rest, '--area')
   const item = argValue(rest, '--item')
   if (!mod.AREA?.[area]) throw new Error(`use --area <memory|skill|gate> e --item <nome>`)
   if (!item) throw new Error('falta --item <nome>')
   await mod.AREA[area]({
-    tars: resolve(argValue(rest, '--tars') ?? mod.findTars()),
+    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars()),
     project: resolve(argValue(rest, '--project') ?? project),
     item,
   })
@@ -104,8 +137,8 @@ const COMMANDS = {
   init: (rest, project) => sync('init', rest, project),
   sync: (rest, project) => sync('sync', rest, project),
   check: (rest, project) => sync('sync', [...rest, '--check'], project),
-  hooks,
-  promote,
+  hooks: runHooksCommand,
+  promote: promoteCommand,
 }
 
 async function main() {
@@ -115,7 +148,10 @@ async function main() {
   }
   const handler = COMMANDS[cmd]
   if (!handler) throw new Error(`comando desconhecido: '${cmd}' (use ${Object.keys(COMMANDS).join(' | ')})`)
-  await handler(args.slice(1), process.env.TARS_PROJECT ?? process.cwd())
+  // Sem `--project` e sem TARS_PROJECT: quando rodado como CLI o padrao e' o cwd; importado
+  // como biblioteca nao ha projeto implicito (o cwd ali e' o do runner de teste).
+  const asCli = COMPILED || (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url)))
+  await handler(args.slice(1), process.env.TARS_PROJECT ?? (asCli ? process.cwd() : undefined))
 }
 
 // Executa so' quando chamado como processo (import num teste nao dispara o despacho).

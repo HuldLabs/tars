@@ -238,9 +238,11 @@ const LAYOUT = {
   // `.jsonl` ja' vem com a extensao no nome (o manifesto nao a inventa).
   memory: (item) => ({ path: join('memory', 'agent', item), ext: item.endsWith('.jsonl') ? '' : '.md' }),
   gates: (item) => ({ path: join('gates', item), ext: '' }),
-  // Guard e' ARQUIVO (`.ai/guards/<nome>.sh`): o manifesto declara o nome sem extensao, como
-  // nas regras. O modo executavel vem junto (o `cp` preserva) — guard que nao executa nao guarda.
-  guards: (item) => ({ path: join('guards', item), ext: '.sh' }),
+  // Guard e' ARQUIVO (`.ai/guards/<nome>.<ext>`): o manifesto declara o nome COM a extensao
+  // quando ela nao e' `.sh` (o `ensure_memory_link.py` e' guard de verdade, nao sobra); sem
+  // extensao assume `.sh`. O modo executavel vem junto (o `cp` preserva) — guard que nao
+  // executa nao guarda.
+  guards: (item) => ({ path: join('guards', item), ext: /\.[a-z0-9]+$/.test(item) ? '' : '.sh' }),
   // Governanca e' ARQUIVO markdown solto (`.ai/governance/<nome>.md`), igual a regra.
   governance: (item) => ({ path: join('governance', item), ext: '.md' }),
 }
@@ -422,7 +424,11 @@ function arg(name) {
   return i === -1 ? null : process.argv[i + 1]
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+// `bun build --compile`: EM TODO modulo embutido o `import.meta.url` vira o do entrypoint
+// (`/$bunfs/root/tars`), entao este guarda passaria a ser verdadeiro tambem quando o
+// `tars.mjs` apenas importa o modulo — o `dist/tars --help` respondia com o main daqui.
+// `tars` marcado no argv desativa o auto-run (tars.mjs) sem tirar o uso direto do arquivo.
+if (!process.env.TARS_AS_MODULE && process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const [cmd = 'sync'] = process.argv.slice(2).filter((a) => !a.startsWith('--'))
   const check = process.argv.includes('--check')
   try {

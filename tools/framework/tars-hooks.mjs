@@ -113,7 +113,9 @@ export function runHooks({ hook, manifest, project, args = [], log = console.log
 }
 
 // --- CLI -------------------------------------------------------------------
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+// `TARS_AS_MODULE` desliga o auto-run quando o `tars.mjs` importa o modulo no modo
+// `bun build --compile` (la o import.meta.url de todo modulo embutido vira o do entrypoint).
+if (!process.env.TARS_AS_MODULE && process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const [hook, ...args] = process.argv.slice(2)
   if (!hook) {
     console.error(`uso: tars-hooks.mjs <${HOOKS.join('|')}> [args do hook]`)
