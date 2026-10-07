@@ -285,6 +285,48 @@ describe("tars-sync — camada base marcada", () => {
   });
 });
 
+describe("tars-sync — wiring do harness (fatia 3a)", () => {
+  it("gera .claude/settings.json com PreToolUse chamando os guards DECLARADOS", async () => {
+    const { tars, project } = scaffold();
+    await sync({ tars, project, log: () => {} });
+
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(s.hooks.PreToolUse).toEqual([
+      {
+        matcher: "Bash|PowerShell",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/alpha-guard.sh"' }],
+      },
+    ]);
+    expect(s.hooks.SessionStart[0].hooks.map((h) => h.command)).toEqual([
+      'bash "$CLAUDE_PROJECT_DIR/.ai/guards/sessionstart-context-digest.sh"',
+      'bash "$CLAUDE_PROJECT_DIR/.ai/guards/ensure-memory-link.sh"',
+    ]);
+    // Guard do catalogo que NAO foi declarado nao entra no wiring: chamar guard inexistente
+    // quebraria a sessao do consumidor.
+    expect(JSON.stringify(s)).not.toContain("outro-guard.sh");
+  });
+
+  it("so' os guards declarados entram; nenhum declarado = PreToolUse vazio", async () => {
+    const { tars, project } = scaffold({ manifest: MANIFEST.replace('guards  = ["alpha-guard"]', "guards  = []") });
+    await sync({ tars, project, log: () => {} });
+
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(s.hooks.PreToolUse).toEqual([]);
+  });
+
+  it("rodar de novo nao reescreve o settings.json (idempotente)", async () => {
+    const { tars, project } = scaffold();
+    await sync({ tars, project, log: () => {} });
+    const file = path.join(project, ".claude", "settings.json");
+    const before = fs.statSync(file).mtimeMs;
+
+    const r = await sync({ tars, project, log: () => {} });
+
+    expect(r.wired).toEqual([]);
+    expect(fs.statSync(file).mtimeMs).toBe(before);
+  });
+});
+
 describe("tars-sync — init", () => {
   it("projeto novo ganha manifesto minimo, memoria vazia e ja' sincroniza", async () => {
     const { tars, project, base, lock } = scaffold({ manifest: null });

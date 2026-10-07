@@ -372,12 +372,68 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   const body = JSON.stringify(next, null, 2) + '\n'
   const before = existsSync(lockPath) ? await readFile(lockPath, 'utf8') : null
   if (body !== before) await writeFile(lockPath, body)
+  // O wiring por ferramenta e' a ponta que faz o guard RODAR: sem ele a base e' so' arquivo.
+  const wired = await writeWiring(project, manifest)
+  if (wired.length) log(`gera ${wired.join(', ')} (wiring do harness)`)
   log(
     wrote.length
       ? `sync: ${wrote.length} item(ns), ${Object.keys(files).length} no lock (${relative(project, lockPath)}).`
       : `sync: nada mudou, ${Object.keys(files).length} item(ns) ja' em dia.`,
   )
-  return { missing, stale, absent, copied, wrote, lock: next }
+  return { missing, stale, absent, copied, wrote, wired, lock: next }
+}
+
+// ---------------------------------------------------------------------------
+// Wiring por ferramenta (fatia 3a) — a fonte (`.ai/base/`) nao basta: sem a config do
+// harness o guard nao RODA. O Tars gera a saida MINIMA para o Claude Code; as outras
+// ferramentas (codex/opencode) e a traducao completa de regras/skills ficam para a
+// fatia seguinte — R4: o menor caso que prova o caminho inteiro primeiro.
+//
+// Escopo do que o wiring chama: SO' os guards que o consumidor DECLAROU (`[tars].guards`).
+// Chamar guard nao copiado quebraria a sessao; e' a mesma logica do sync — o consumidor
+// paga o peso do que usa.
+// ---------------------------------------------------------------------------
+/** Um guard DECLARADO vira o comando que o harness roda (relativo ao projeto). */
+const guardCommand = (item) => `bash "$CLAUDE_PROJECT_DIR/.ai/base/${destOf({ area: 'guards', item })}"`
+
+/** PreToolUse: um comando por guard declarado; entrada vazia se nenhum. */
+export function preToolUseFor(manifest) {
+  const commands = (manifest.guards ?? []).map(guardCommand)
+  return commands.length
+    ? [{ matcher: 'Bash|PowerShell', hooks: commands.map((command) => ({ type: 'command', command })) }]
+    : []
+}
+
+export function claudeSettings(manifest) {
+  return {
+    $schema: 'https://json.schemastore.org/claude-code-settings.json',
+    hooks: {
+      PreToolUse: preToolUseFor(manifest),
+      PreCompact: [
+        { matcher: 'manual|auto', hooks: [{ type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/guards/precompact-persist-state.sh"' }] },
+      ],
+      SessionStart: [
+        {
+          matcher: 'startup|resume|clear|compact',
+          hooks: [
+            { type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/guards/sessionstart-context-digest.sh"' },
+            { type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/guards/ensure-memory-link.sh"' },
+          ],
+        },
+      ],
+    },
+  }
+}
+
+/** Escreve `<project>/.claude/settings.json` — idempotente (mesmo conteudo, nada muda). */
+export async function writeWiring(project, manifest) {
+  const dir = join(project, '.claude')
+  const file = join(dir, 'settings.json')
+  const body = JSON.stringify(claudeSettings(manifest), null, 2) + '\n'
+  if (existsSync(file) && (await readFile(file, 'utf8')) === body) return []
+  await mkdir(dir, { recursive: true })
+  await writeFile(file, body)
+  return ['.claude/settings.json']
 }
 
 // ---------------------------------------------------------------------------

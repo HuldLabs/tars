@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      { "matcher": "Bash|PowerShell", "command": "bash \"./.ai/base/guards/alpha-guard.sh\"" }
+    ]
+  }
+}
