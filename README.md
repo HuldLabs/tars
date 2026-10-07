@@ -54,6 +54,11 @@ copiado. Ele permite três coisas: idempotência (rodar de novo não reescreve n
 de drift** (base editada à mão no projeto acusa e **não** é sobrescrita calada) e falha
 **ruidosa** para item declarado que não existe no catálogo.
 
+**`rules/principles` é a regra de boot de todo consumidor:** o sync a leva para
+`.ai/base/rules/principles.md` e o adaptador a põe no **topo** do arquivo de boot gerado
+(`AGENTS.md`/`CLAUDE.md`) — os mantras (R1–R4, KISS, SSOT, hooks, idempotência…) valem em
+qualquer sessão, em qualquer projeto.
+
 **O motor vem sempre**, sem declarar: `ai-memory`, `ai-layer-check`, o próprio sync
 (`tars-sync.mjs`) e o motor de hooks (`tars-hooks.mjs`). O manifesto declara só as **peças** —
 gates, skills, regras e fatias de memória.
