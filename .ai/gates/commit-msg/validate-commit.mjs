@@ -29,7 +29,7 @@ const NO_TRAILER_MIN = 10; // "nada novo" so vale se nomear (motivo >=10 chars)
 // Licao/incidente em QUATRO CAMPOS (fabber LESSONS-LEARNED.md, item 36 do relatorio).
 // Um checklist sozinho pega o sintoma de novo; os 4 campos forcam a CAUSA. "be more careful"
 // nunca e' causa nem correcao — e o campo `causa raiz` nao pode repetir o `porque`.
-const CAMPOS = ['erro', 'porque', 'causa raiz', 'correcao'];
+const CAMPOS = ['erro', 'porque', 'causa raiz', 'origem', 'correcao'];
 // 5o campo (doutrina "incidente -> prevencao propagada", governance/incidente-vira-prevencao.md):
 // `propagacao` nomeia a CAMADA do Tars que impede a classe de voltar + o commit, ou `n/a` com
 // motivo. Obrigatorio em licao NOVA; em licao antiga (sem ele) so' AVISA — nao quebra historico.
@@ -86,6 +86,22 @@ function requireTrailer(type, tr, blocos, kind) {
     console.error('  (guard > doctor > env/config do sync > gate de CI > skill — o mais automatico ganha):');
     console.error('    propagacao: guard <commit> | doctor <commit> | ... | n/a <motivo>\n');
   };
+  // A PRIMEIRA pergunta e' a ORIGEM (doutrina "origem antes do sintoma"): a causa raiz e o
+  // buraco estrutural; `origem` e o que fez o buraco nascer. Bloco SEM ela = licao nova
+  // incompleta: REPROVA. Licao em 1 linha e' legado — so' AVISA.
+  const faltaOrigem = (b) => !b.origem;
+  const avisoOrigem = () => {
+    console.error(`\ncommit-msg: AVISA — falta 'origem' (a causa da causa raiz).`);
+    console.error('  diga o que fez o buraco ESTRUTURAL nascer — nao repita a causa raiz:');
+    console.error('    origem: <a decisao/ausencia que criou o buraco>\n');
+  };
+  const exigeOrigem = () => {
+    console.error(`\ncommit-msg: '${cap}' veio sem 'origem' — a PRIMEIRA pergunta e a origem.`);
+    console.error('  `causa raiz` e o buraco estrutural; `origem` e o que fez esse buraco nascer.');
+    console.error("  sem ela, a licao corrige o sintoma e deixa a fonte de pe'.\n");
+    console.error('    origem: <a decisao/ausencia que criou o buraco>\n');
+    process.exit(1);
+  };
   // `causa raiz` == `porque` = nao cavou o nivel. Vale para o Incident E para a licao: a
   // frase repetida e' o sintoma, nao a causa (fabber LESSONS-LEARNED.md).
   const mesmas = b['causa raiz'] && norm(b['causa raiz']) === norm(b['porque']);
@@ -107,21 +123,30 @@ function requireTrailer(type, tr, blocos, kind) {
       console.error('      erro: <o que estava errado, concreto>');
       console.error('      porque: <o mecanismo imediato>');
       console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
+      console.error('      origem: <o que fez esse buraco nascer — nao repita a causa raiz>');
       console.error('      correcao: <o arquivo/gate que muda — nunca "ter mais cuidado">');
       console.error('      propagacao: <camada + commit, ou `n/a` com motivo>');
       console.error(`  ou escape com No-Incident: <motivo com >=${NO_TRAILER_MIN} chars>\n`);
       process.exit(1);
     }
     if (mesmas) exigeCausa();
+    if (faltaOrigem(b)) exigeOrigem();
     avisoPropaga(b);
     return;
   }
 
   // Licao: trailer de 1 linha OU bloco completo (a escolha e' do autor).
   if (mesmas) exigeCausa();
-  if (tr[kind] || temNo) return;
+  // Trailer de 1 linha: forma LEGADO — so' AVISA (nao pode quebrar o historico), tanto pelo
+  // `origem` quanto pelo `propagacao`. O BLOCO e' a forma nova, e ai' a origem e' exigida.
+  if (tr[kind] || temNo) return avisoOrigem();
   // Bloco completo sem `propagacao` = licao nova incompleta: AVISA, nao reprova (historico).
-  if (temBloco) return avisoPropaga(b);
+  // Sem `origem` = licao que corrige o sintoma: REPROVA (doutrina "origem antes do sintoma").
+  if (temBloco) {
+    if (faltaOrigem(b)) exigeOrigem();
+    return avisoPropaga(b);
+  }
+  if (Object.keys(b).length) avisoOrigem();
   avisoPropaga(b);
   console.error(`\ncommit-msg: commit '${type}' sem registro de licao.`);
   console.error('  registre o aprendizado em 1 linha ou no bloco de 4 campos:');
@@ -130,6 +155,7 @@ function requireTrailer(type, tr, blocos, kind) {
   console.error('      erro: <o que estava errado>');
   console.error('      porque: <o mecanismo imediato>');
   console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
+  console.error('      origem: <o que fez esse buraco nascer; NAO repita a causa raiz>');
   console.error('      correcao: <o arquivo/gate que muda>');
   console.error('      propagacao: <camada + commit, ou `n/a` com motivo>');
   console.error('  (escapar e' + ' trailer, nunca --no-verify)\n');

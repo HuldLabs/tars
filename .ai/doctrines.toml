@@ -42,6 +42,14 @@ prova = "printf '%s\\n\\n%s\\n' '✨ feat(hub): mexe no motor' 'sem trailer' > /
 onde = "commit-msg"
 
 [[doctrine]]
+id = "git/origem-antes-do-sintoma"
+titulo = "Bloco de licao sem `origem` REPROVA (a causa raiz vem antes do sintoma)"
+fonte = ".ai/governance/incidente-vira-prevencao.md:9-25"
+gate = "../../.ai/gates/commit-msg"
+prova = "printf '\\u2728 feat(hub): mexe no motor\\n\\nLesson:\\n  erro: e\\n  porque: p\\n  causa raiz: c\\n  correcao: f\\n' > /tmp/tars-doc-origem.txt && node .ai/gates/commit-msg/gate.mjs /tmp/tars-doc-origem.txt"
+onde = "commit-msg"
+
+[[doctrine]]
 id = "git/branch-name"
 titulo = "Branch `<tipo>/<slug>`"
 fonte = ".ai/governance/git.md:5-16"
