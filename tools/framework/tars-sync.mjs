@@ -1,0 +1,335 @@
+#!/usr/bin/env node
+// `tars sync` — puxa do catalogo Tars SO' o declarado no `.ai/tars.toml` do PROJETO
+// consumidor, para `.ai/base/`, e trava versao+sha256 em `.ai/tars.lock` (docs/TARS.md
+// §Manifesto, fatia 3). Estende o formato do `ai-skills-sync.mjs` (mesmo lockfileVersion,
+// mesmos nomes de flag) em vez de criar um terceiro fetcher: aqui a origem e' o PROPRIO
+// Tars em disco (nao a API do GitHub), porque o consumidor tem a base local.
+//
+// O que ele faz:
+//   * le `[tars]` (version/skills/rules/memory) do `.ai/tars.toml` do consumidor;
+//   * NAO le `[gates]` — o motor de hooks que consome os gates e' a fatia 3 seguinte
+//     (docs/TARS.md §Fatias); declarar gate aqui nao copia nem falha;
+//   * copia cada item declarado de `<tars>/<area>/<item>` para `.ai/base/<area>/<item>`;
+//   * escreve `.ai/tars.lock` com a versao do Tars, o commit resolvido e o sha256 de cada
+//     arquivo copiado (arquivo de CONTEUDO, nao segredo);
+//   * item declarado que nao existe no Tars -> falha RUIDOSA (exit 1, nomeando o item);
+//   * base editada a mao no projeto -> drift ACUSA e nao sobrescreve calado (exit 1);
+//   * rodar de novo sem mudanca -> nada muda (idempotente).
+//
+// Uso (dentro do projeto consumidor):
+//   node <tars>/tools/framework/tars-sync.mjs [--tars <dir>] [--project <dir>] [--check]
+//   --tars     raiz do Tars (default: $TARS_HOME, senao sobe daqui procurando `.ai/VERSION`)
+//   --project  raiz do projeto consumidor (default: cwd)
+//   --check    so' valida a base contra o lock, sem escrever nada (e' o gate)
+//
+// Sem TOML externo: o `.ai/tars.toml` e' um arquivo nosso, de chaves simples, e o parser
+// aqui cobre so' o que ele usa (secoes, listas de string, escalares) — KISS, sem dependencia.
+
+import { createHash } from 'node:crypto'
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { dirname, join, relative, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+export const HERE = dirname(fileURLToPath(import.meta.url))
+export const AREAS = ['skills', 'rules', 'memory']
+
+// ---------------------------------------------------------------------------
+// Parser TOML minimo: secoes `[x]`, `chave = valor` e listas de string (uma linha
+// ou multilinha com `[` ... `]`). Comentario `#` fora de string e' descartado.
+// ---------------------------------------------------------------------------
+export function parseToml(text) {
+  const out = {}
+  let section = out
+  let buffer = ''
+
+  for (const raw of text.split('\n')) {
+    const line = stripComment(buffer ? raw : raw)
+    if (buffer) {
+      buffer += ' ' + line.trim()
+      if (!line.includes(']')) continue
+    } else {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      const sec = trimmed.match(/^\[([^\]]+)\]$/)
+      if (sec) {
+        section = out[sec[1]] ??= {}
+        continue
+      }
+      const kv = trimmed.match(/^([A-Za-z_][\w.-]*)\s*=\s*(.+)$/)
+      if (!kv) throw new Error(`linha TOML nao entendida: ${trimmed}`)
+      const [, key, rest] = kv
+      if (rest.startsWith('[') && !rest.includes(']')) {
+        buffer = rest
+        continue
+      }
+      section[key] = value(rest)
+      continue
+    }
+    if (buffer && buffer.includes(']')) {
+      const m = buffer.match(/^\[([\s\S]*)\]$/)
+      if (!m) throw new Error(`lista TOML nao fechada: ${buffer}`)
+      section.__pending ??= []
+      section.__pending.push(m[1])
+      buffer = ''
+    }
+  }
+  return out
+}
+
+const stripComment = (line) => {
+  let inStr = false
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (c === '"') inStr = !inStr
+    else if (c === '#' && !inStr) return line.slice(0, i)
+  }
+  return line
+}
+
+function value(rest) {
+  const t = rest.trim()
+  if (t.startsWith('[')) {
+    const m = t.match(/^\[([\s\S]*)\]$/)
+    if (!m) throw new Error(`lista TOML nao fechada: ${t}`)
+    return list(m[1])
+  }
+  const s = t.match(/^"(.*)"$/)
+  return s ? s[1] : t
+}
+
+const list = (inner) =>
+  inner
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const m = s.match(/^"(.*)"$/)
+      return m ? m[1] : s
+    })
+
+// ---------------------------------------------------------------------------
+// Manifesto do consumidor
+// ---------------------------------------------------------------------------
+export async function readManifest(project) {
+  const file = join(project, '.ai', 'tars.toml')
+  if (!existsSync(file)) throw new Error(`falta ${relative(project, file) || file} no projeto consumidor`)
+  const cfg = parseToml(await readFile(file, 'utf8'))
+  const tars = cfg.tars
+  if (!tars) throw new Error('.ai/tars.toml sem secao [tars]')
+  return {
+    version: tars.version ?? null,
+    skills: tars.skills ?? [],
+    rules: tars.rules ?? [],
+    memory: tars.memory ?? [],
+  }
+}
+
+export const declare = (manifest) => AREAS.flatMap((area) => manifest[area].map((item) => ({ area, item })))
+
+// ---------------------------------------------------------------------------
+// Tars de origem
+// ---------------------------------------------------------------------------
+function looksLikeTars(dir) {
+  return existsSync(join(dir, '.ai', 'VERSION'))
+}
+
+export function findTars(start = HERE) {
+  if (process.env.TARS_HOME && looksLikeTars(process.env.TARS_HOME)) return resolve(process.env.TARS_HOME)
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (looksLikeTars(dir)) return dir
+    if (dirname(dir) === dir) break
+  }
+  throw new Error('nao achei a raiz do Tars (use --tars <dir> ou TARS_HOME)')
+}
+
+function tarsVersion(tars) {
+  const v = join(tars, '.ai', 'VERSION')
+  return existsSync(v) ? readFile(v, 'utf8').then((s) => s.trim()) : null
+}
+
+function tarsCommit(tars) {
+  try {
+    return execFileSync('git', ['-C', tars, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Arquivos
+// ---------------------------------------------------------------------------
+export async function listFiles(dir, base = dir) {
+  if (!existsSync(dir)) return []
+  const out = []
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...(await listFiles(full, base)))
+    else if (entry.isFile()) out.push(relative(base, full).split('\\').join('/'))
+  }
+  return out.sort((a, b) => a.localeCompare(b))
+}
+
+export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
+
+export async function hashSource(dest) {
+  if (existsSync(dest) && statSync(dest).isFile()) return sha256(await readFile(dest))
+  const h = createHash('sha256')
+  for (const rel of await listFiles(dest)) {
+    h.update(rel)
+    h.update('\0')
+    h.update(await readFile(join(dest, rel)))
+    h.update('\0')
+  }
+  return 'sha256-' + h.digest('hex')
+}
+
+// ---------------------------------------------------------------------------
+// Sync
+// ---------------------------------------------------------------------------
+// Layout do catalogo no Tars (`.ai/`): skill e' PASTA (`skills/<nome>/`); regra e fato de
+// memoria sao ARQUIVO (`rules/<nome>.md`, `memory/agent/<nome>.md`). O manifesto declara o
+// NOME, sem extensao e sem pasta — quem sabe onde o item mora e' este mapa (SSOT).
+const LAYOUT = {
+  skills: (item) => ({ path: join('skills', item), ext: '' }),
+  rules: (item) => ({ path: join('rules', item), ext: '.md' }),
+  memory: (item) => ({ path: join('memory', 'agent', item), ext: '.md' }),
+}
+
+/** Fonte do item no Tars, relativa a `.ai/`. */
+export const sourceOf = ({ area, item }) => {
+  const { path: p, ext } = LAYOUT[area](item)
+  return p + ext
+}
+
+/** Destino do item no projeto, relativo a `.ai/base/`. */
+export const destOf = ({ area, item }) => {
+  const { path: p, ext } = LAYOUT[area](item)
+  return p + ext
+}
+
+/**
+ * Compara o declarado com o que esta' em disco. Devolve:
+ *   missing  — item declarado que o Tars nao tem (falha ruidosa)
+ *   stale    — copiado com hash diferente do lock (base editada a mao = drift)
+ *   absent   — declarado, ainda nao copiado
+ *   copied   — copiado e batendo com o lock
+ */
+export async function plan({ tars, project, manifest, lock }) {
+  const missing = []
+  const stale = []
+  const absent = []
+  const copied = []
+  for (const entry of declare(manifest)) {
+    const src = join(tars, '.ai', sourceOf(entry))
+    const dest = join(project, '.ai', 'base', destOf(entry))
+    if (!existsSync(src)) {
+      missing.push(entry)
+      continue
+    }
+    if (!existsSync(dest)) {
+      absent.push(entry)
+      continue
+    }
+    const locked = lock?.files?.[destOf(entry)]?.sha256
+    const got = await hashSource(dest)
+    if (locked && got !== locked) stale.push({ ...entry, want: locked, got })
+    else copied.push(entry)
+  }
+  return { missing, stale, absent, copied }
+}
+
+async function copyItem(tars, project, entry) {
+  const src = join(tars, '.ai', sourceOf(entry))
+  const dest = join(project, '.ai', 'base', destOf(entry))
+  await mkdir(dirname(dest), { recursive: true })
+  await rm(dest, { recursive: true, force: true })
+  await cp(src, dest, { recursive: true })
+  return hashSource(dest)
+}
+
+export async function sync({ tars = findTars(), project = process.cwd(), check = false, log = console.log } = {}) {
+  const manifest = await readManifest(project)
+  const lockPath = join(project, '.ai', 'tars.lock')
+  const lock = existsSync(lockPath) ? JSON.parse(await readFile(lockPath, 'utf8')) : null
+  const { missing, stale, absent, copied } = await plan({ tars, project, manifest, lock })
+
+  if (check) {
+    if (missing.length) for (const e of missing) log(`falta no tars: ${e.area}/${e.item}`)
+    if (stale.length) for (const e of stale) log(`drift: ${e.area}/${e.item} (${e.got} != lock ${e.want})`)
+    if (absent.length) for (const e of absent) log(`nao copiado: ${e.area}/${e.item}`)
+    return { missing, stale, absent, copied, wrote: [] }
+  }
+
+  // Falha RUIDOSA antes de escrever qualquer coisa: item declarado que o Tars nao tem.
+  if (missing.length) {
+    const names = missing.map((e) => `  - ${e.area}: ${e.item}`).join('\n')
+    throw new Error(`item declarado que nao existe no Tars:\n${names}`)
+  }
+  // Drift: a base foi editada a mao no projeto. Nao sobrescreve calado.
+  if (stale.length) {
+    const names = stale.map((e) => `  - .ai/base/${e.area}/${e.item} (${e.got} != lock ${e.want})`).join('\n')
+    throw new Error(`base editada a mao no projeto (drift, nada sobrescrito):\n${names}\n` +
+      `Reverta com git ou apague .ai/base/<area>/<item> para recopiar do Tars.`)
+  }
+
+  const files = {}
+  const wrote = []
+  for (const entry of declare(manifest)) {
+    const key = destOf(entry)
+    const locked = lock?.files?.[key]?.sha256
+    const dest = join(project, '.ai', 'base', destOf(entry))
+    const got = existsSync(dest) && locked ? await hashSource(dest) : null
+    if (got === locked) {
+      files[key] = lock.files[key] // idempotente: nao reescreve
+      continue
+    }
+    files[key] = { area: entry.area, item: entry.item, sha256: await copyItem(tars, project, entry) }
+    wrote.push(key)
+    log(`copia ${key}  ${files[key].sha256}`)
+  }
+
+  const next = {
+    lockfileVersion: 1,
+    tars: { version: manifest.version ?? (await tarsVersion(tars)), commit: tarsCommit(tars) },
+    files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),
+  }
+  const body = JSON.stringify(next, null, 2) + '\n'
+  const before = existsSync(lockPath) ? await readFile(lockPath, 'utf8') : null
+  if (body !== before) await writeFile(lockPath, body)
+  log(
+    wrote.length
+      ? `sync: ${wrote.length} item(ns), ${Object.keys(files).length} no lock (${relative(project, lockPath)}).`
+      : `sync: nada mudou, ${Object.keys(files).length} item(ns) ja' em dia.`,
+  )
+  return { missing, stale, absent, copied, wrote, lock: next }
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+function arg(name) {
+  const i = process.argv.indexOf(name)
+  return i === -1 ? null : process.argv[i + 1]
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  const check = process.argv.includes('--check')
+  try {
+    const r = await sync({
+      tars: arg('--tars') ?? findTars(),
+      project: resolve(arg('--project') ?? process.cwd()),
+      check,
+    })
+    const bad = check && (r.missing.length || r.stale.length || r.absent.length)
+    if (bad) {
+      console.error('\nbase do Tars inconsistente (rode `tars sync`).')
+      process.exit(1)
+    }
+    if (check) console.log('base do Tars ok.')
+  } catch (err) {
+    console.error(`tars sync: ${err.message}`)
+    process.exit(1)
+  }
+}
