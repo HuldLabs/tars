@@ -617,6 +617,111 @@ commit-msg = ["commit-msg"]
   });
 });
 
+// ---------------------------------------------------------------------------
+// Poda da saida gerada orfa (familia D). Caso real do seo-brain (07/10): skill
+// RENOMEADA no catalogo (`fabber-root-cause-debugging` -> `root-cause-debugging`);
+// depois do sync o consumidor ficou com AS DUAS em `.agents/skills/` — o gerador
+// (rulesync) escreve o novo e nao sabe que o antigo era dele. O sync e' quem tem a
+// memoria (o lock) da saida que ELE gerou, entao a poda mora aqui.
+// ---------------------------------------------------------------------------
+describe("tars-sync — poda da saida gerada orfa", () => {
+  // Simula o que o gerador (rulesync) escreve nesta maquina: uma pasta por skill
+  // declarada, em cada alvo de ferramenta. O nome da pasta e' a impressao digital
+  // da poda: o sync so' tira a que o manifesto NAO declara mais.
+  const gerarSaida = (project, nome) => {
+    for (const dir of [".claude/skills", ".agents/skills", ".opencode/skills"]) {
+      const d = path.join(project, dir, nome);
+      fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(path.join(d, "SKILL.md"), `# ${nome}\n`);
+    }
+  };
+
+  it("skill que SAIU do manifesto tem a saida gerada podada; a declarada fica", async () => {
+    const { tars, project, lock } = scaffold();
+    gerarSaida(project, "alpha");
+    gerarSaida(project, "root-cause-debugging"); // ficou de uma versao anterior do manifesto
+    // O lock de ANTES registra as duas: e' a memoria de que a orfa foi gerada por nos.
+    await sync({ tars, project, log: () => {} });
+    const l = JSON.parse(fs.readFileSync(lock, "utf8"));
+    l.files["skills/root-cause-debugging"] = { area: "skills", item: "root-cause-debugging", sha256: "sha256-" + "0".repeat(64) };
+    fs.writeFileSync(lock, JSON.stringify(l, null, 2) + "\n");
+    const antes = fs.statSync(path.join(project, ".agents/skills", "alpha", "SKILL.md")).mtimeMs;
+
+    const r = await sync({ tars, project, log: () => {} });
+
+    // A orfa nao existe mais em alvo nenhum; a declarada segue intacta.
+    for (const dir of [".claude/skills", ".agents/skills", ".opencode/skills"]) {
+      expect(fs.existsSync(path.join(project, dir, "root-cause-debugging"))).toBe(false);
+      expect(fs.existsSync(path.join(project, dir, "alpha", "SKILL.md"))).toBe(true);
+    }
+    expect(fs.statSync(path.join(project, ".agents/skills", "alpha", "SKILL.md")).mtimeMs).toBe(antes);
+    expect(r.pruned.join("\n")).toMatch(/\.agents\/skills\/root-cause-debugging/);
+  });
+
+  it("a lista de nomes vivos e' o MANIFESTO (nao o lock): skill nova ainda nao gerada NAO e' podada", async () => {
+    const { tars, project } = scaffold();
+    // O consumidor declara 'beta' (que o catalogo tem) e ela ja' foi gerada por ferramenta.
+    fs.mkdirSync(path.join(tars, ".ai", "skills", "beta"), { recursive: true });
+    fs.writeFileSync(path.join(tars, ".ai", "skills", "beta", "SKILL.md"), "# beta\n");
+    fs.writeFileSync(
+      path.join(project, ".ai", "tars.toml"),
+      MANIFEST.replace('skills  = ["alpha"]', 'skills  = ["alpha", "beta"]'),
+    );
+    gerarSaida(project, "alpha");
+    gerarSaida(project, "beta"); // ordem real: generate escreve, sync depois reconcilia
+
+    await sync({ tars, project, log: () => {} });
+
+    expect(fs.existsSync(path.join(project, ".agents/skills", "beta", "SKILL.md"))).toBe(true);
+  });
+
+  it("pasta SEM a marca de autoria do gerador (do projeto) NUNCA e' apagada: so' avisa", async () => {
+    const { tars, project } = scaffold();
+    const d = path.join(project, ".agents/skills", "minha-skill-da-casa");
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, "SKILL.md"), "# escrita a mao pelo dono\n");
+    const avisos = [];
+    const log = (l) => avisos.push(l);
+
+    const r = await sync({ tars, project, log });
+
+    expect(fs.existsSync(path.join(d, "SKILL.md"))).toBe(true); // intacta, byte a byte
+    expect(r.pruned).toEqual([]);
+    expect(avisos.join("\n")).toMatch(/minha-skill-da-casa/);
+    expect(avisos.join("\n")).toMatch(/nao declarad|orfa|aviso/i);
+  });
+
+  it("poda e' idempotente: rodar de novo nao reescreve nada e nao repete a poda", async () => {
+    const { tars, project, lock } = scaffold();
+    gerarSaida(project, "alpha");
+    gerarSaida(project, "root-cause-debugging");
+    await sync({ tars, project, log: () => {} });
+    const lockBefore = fs.readFileSync(lock, "utf8");
+    const antes = fs.statSync(path.join(project, ".agents/skills", "alpha", "SKILL.md")).mtimeMs;
+
+    const r = await sync({ tars, project, log: () => {} });
+
+    expect(r.pruned).toEqual([]);
+    expect(fs.readFileSync(lock, "utf8")).toBe(lockBefore);
+    expect(fs.statSync(path.join(project, ".agents/skills", "alpha", "SKILL.md")).mtimeMs).toBe(antes);
+  });
+
+  it("`--check` acusa a orfa sem apagar nada", async () => {
+    const { tars, project, lock } = scaffold();
+    gerarSaida(project, "alpha");
+    gerarSaida(project, "root-cause-debugging");
+    await sync({ tars, project, log: () => {} });
+    const l = JSON.parse(fs.readFileSync(lock, "utf8"));
+    l.files["skills/root-cause-debugging"] = { area: "skills", item: "root-cause-debugging", sha256: "sha256-" + "0".repeat(64) };
+    fs.writeFileSync(lock, JSON.stringify(l, null, 2) + "\n");
+
+    const r = await sync({ tars, project, check: true, log: () => {} });
+
+    expect(r.pruned.join("\n")).toMatch(/root-cause-debugging/);
+    expect(fs.existsSync(path.join(project, ".agents/skills", "root-cause-debugging"))).toBe(true);
+  });
+});
+
 describe("tars-sync — init", () => {
   it("projeto novo ganha manifesto minimo, memoria vazia e ja' sincroniza", async () => {
     const { tars, project, base, lock } = scaffold({ manifest: null });

@@ -30,7 +30,7 @@
 
 import { createHash } from 'node:crypto'
 import { chmod, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -403,12 +403,16 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   const lockPath = join(project, '.ai', 'tars.lock')
   const lock = existsSync(lockPath) ? JSON.parse(await readFile(lockPath, 'utf8')) : null
   const { missing, stale, absent, copied } = await plan({ tars, project, manifest, lock })
+  // Familia D: a saida gerada orfa e' calculada AQUI, com o manifesto de agora e o lock de
+  // ANTES de a base ser reescrita (o lock novo ja' perdeu a skill removida).
+  const { orphan, foreign } = prunePlan(project, manifest, lock)
 
   if (check) {
     if (missing.length) for (const e of missing) log(`falta no tars: ${e.area}/${e.item}`)
     if (stale.length) for (const e of stale) log(`drift: ${e.area}/${e.item} (${e.got} != lock ${e.want})`)
     if (absent.length) for (const e of absent) log(`nao copiado: ${e.area}/${e.item}`)
-    return { missing, stale, absent, copied, wrote: [] }
+    if (orphan.length) for (const o of orphan) log(`saida gerada orfa (rode \`tars sync\`): ${o}`)
+    return { missing, stale, absent, copied, wrote: [], pruned: orphan, foreign }
   }
 
   // Falha RUIDOSA antes de escrever qualquer coisa: item declarado que o Tars nao tem.
@@ -456,6 +460,11 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   // A outra ponta: os hooks do GIT. Sem eles um commit passa sem gate nenhum.
   const hooksWrote = await writeGitHooks(project, manifest, undefined, adopt)
   if (hooksWrote.length) log(`gera ${hooksWrote.join(', ')} (hooks do git)`)
+  // Familia D: a saida gerada da skill que saiu do manifesto some (o gerador nao a remove).
+  await pruneOrphans(project, orphan)
+  if (orphan.length) for (const o of orphan) log(`poda ${o} (skill fora do manifesto)`)
+  // Pasta de skill que o sync NUNCA declarou e' do projeto: alta e clara, mas nunca apagada.
+  if (foreign.length) for (const f of foreign) log(`aviso: ${f} nao foi gerado por este sync (skill nao declarada) — nao podado`)
   // FALHA ALTA (R4): o consumidor que USA hooks proprios e fica sem NENHUM hook vivo tem o
   // git engolindo commit calado — o sync nao pode sair 0 achando que esta' tudo bem.
   const mortos = deadHooks(project, manifest)
@@ -469,7 +478,7 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   // decifrar o diff (foi o que custou turnos ao seo-brain). Uma linha, o detalhe fica la'.
   const antes = lock?.tars?.version ?? null
   if (antes && antes !== next.tars.version) log(`Tars ${antes} -> ${next.tars.version}: rode \`tars upgrade-notes\` para as notas de upgrade.`)
-  return { missing, stale, absent, copied, wrote, wired, hooks: hooksWrote, lock: next, fromVersion: antes }
+  return { missing, stale, absent, copied, wrote, wired, hooks: hooksWrote, lock: next, fromVersion: antes, pruned: orphan, foreign }
 }
 
 // ---------------------------------------------------------------------------
@@ -652,6 +661,60 @@ export function usesGitHooks(project, hooksPath = hooksPathOf(project)) {
 /** A pasta efetiva dos hooks: o declarado, senao o default do projeto. */
 export function effectiveHooksPath(project) {
   return hooksPathOf(project) ?? DEFAULT_HOOKS_PATH
+}
+
+// ---------------------------------------------------------------------------
+// Poda da saida gerada orfa (familia D). O gerador (rulesync) escreve a saida de cada
+// skill DECLARADA em `.claude/skills/<nome>`, `.agents/skills/<nome>` e
+// `.opencode/skills/<nome>`, mas NAO sabe remover a que deixou de ser declarada — skill
+// renomeada no catalogo (`fabber-root-cause-debugging` -> `root-cause-debugging`, seo-brain
+// 07/10) deixa as DUAS no consumidor. Quem tem a memoria da saida que o gerador criou e' o
+// sync, entao a poda mora aqui.
+//
+// A prova de posse e' o NOME: o sync so' remove a pasta cujo nome ele conhece como de uma
+// skill (manifesto AGORA + lock de ANTES), nunca uma pasta alheia. Pasta com nome que o sync
+// nunca declarou e' do projeto e so' entra num AVISO — apagar o que nao e' nosso e' o
+// incident 07/10 esperando acontecer de novo.
+// ---------------------------------------------------------------------------
+export const SKILL_TARGETS = ['.claude/skills', '.agents/skills', '.opencode/skills']
+
+/** Nomes de skill que o sync conhece como de sua lavra: o manifesto AGORA + o lock de ANTES. */
+export function knownSkills(manifest, lock) {
+  const nomes = new Set(declare(manifest, { tars: null }).filter((e) => e.area === 'skills').map((e) => e.item))
+  for (const key of Object.keys(lock?.files ?? {})) {
+    const m = key.match(/^skills\/(.+)$/)
+    if (m) nomes.add(m[1])
+  }
+  return nomes
+}
+
+/**
+ * Pastas de skill em cada alvo de ferramenta. Devolve { orphan, foreign }: `orphan` e' a
+ * saida de uma skill CONHECIDA que nao esta' mais declarada (poda), `foreign` e' pasta cujo
+ * nome o sync nunca declarou (do projeto — nunca se apaga, so' avisa). Olha so' o primeiro
+ * nivel: o sync nunca entra numa pasta para decidir apagar.
+ */
+export function prunePlan(project, manifest, lock) {
+  const declaradas = new Set(declare(manifest, { tars: null }).filter((e) => e.area === 'skills').map((e) => e.item))
+  const conhecidas = knownSkills(manifest, lock)
+  const orphan = []
+  const foreign = []
+  for (const dir of SKILL_TARGETS) {
+    const abs = join(project, dir)
+    if (!existsSync(abs)) continue
+    for (const e of readdirSync(abs, { withFileTypes: true })) {
+      if (!e.isDirectory() || declaradas.has(e.name)) continue
+      const rel = `${dir}/${e.name}`
+      if (conhecidas.has(e.name)) orphan.push(rel)
+      else foreign.push(rel)
+    }
+  }
+  return { orphan, foreign }
+}
+
+/** Remove as pastas orfas; idempotente (nada orfao = nada apagado). */
+export async function pruneOrphans(project, orphans) {
+  for (const rel of orphans) await rm(join(project, rel), { recursive: true, force: true })
 }
 
 /**
