@@ -1,0 +1,79 @@
+# tags.toml — vocabulário CONTROLADO das tags de memória (SSOT)
+#
+# Por que lista fechada: a tag livre já produziu 373 vocábulos distintos para 192
+# incidentes (`db`/`banco`, `bug`/`bug-silencioso`, `coord`/`coordenacao`) e a busca
+# por assunto morre aí. Tag nova entra AQUI, com alias declarado; o gate
+# (`validateLedgerEntry`/`validateMemoryEntry`) reprova o que não está na lista e
+# sugere o id (R4: o erro nomeia o campo e o valor bom).
+# Sinônimo NÃO vira id novo — vira `aliases` do id existente.
+# Uso: `tars memory tags --check` (gate) · `--fix` (migração por alias, fatia F2/F3).
+
+schema_version = 1
+
+# ── Assunto (o corpo do ledger real, por frequência) ────────────────────────
+[[tag]] id = "ui"          aliases = ["front", "frontend", "ds", "design-system", "tema"]
+[[tag]] id = "banco"       aliases = ["db", "postgres", "database", "migration", "schema", "transacao"]
+[[tag]] id = "board"       aliases = []
+[[tag]] id = "e2e"         aliases = ["playwright", "spec"]
+[[tag]] id = "worker"      aliases = ["agente", "agent", "subagente", "despacho"]
+[[tag]] id = "ia"          aliases = ["ai", "llm", "modelo", "ia-bench"]
+[[tag]] id = "processo"    aliases = ["process", "workflow", "wip"]
+[[tag]] id = "seguranca"   aliases = ["security", "pentest"]
+[[tag]] id = "coordenacao" aliases = ["coord", "coordination", "canal"]
+[[tag]] id = "medicao"     aliases = ["metricas", "bench", "custo", "tokens"]
+[[tag]] id = "config"      aliases = ["env", "variavel"]
+[[tag]] id = "drift"       aliases = ["divergencia", "divergence"]
+[[tag]] id = "iam"         aliases = ["auth", "login", "permissao", "permissoes", "identidade"]
+[[tag]] id = "teste"       aliases = ["test", "tests", "t"]
+[[tag]] id = "jobs"        aliases = ["job", "fila", "retry", "backoff", "worker-job"]
+[[tag]] id = "bug"         aliases = ["defeito", "regressao", "fix"]
+[[tag]] id = "checklist"   aliases = ["gate", "guarda", "guard", "hook"]
+[[tag]] id = "cli"         aliases = ["bin", "comando"]
+[[tag]] id = "concorrencia" aliases = ["concurrency", "race", "paralelismo"]
+[[tag]] id = "devcontainer" aliases = ["container", "docker"]
+[[tag]] id = "pipeline"    aliases = ["ci", "cd", "build"]
+[[tag]] id = "segredos"    aliases = ["secrets", "credencial", "credenciais"]
+[[tag]] id = "api"         aliases = ["endpoint", "rota"]
+[[tag]] id = "auditoria"   aliases = ["audit", "revisao"]
+[[tag]] id = "busca"       aliases = ["search", "grep", "recall", "indice"]
+[[tag]] id = "cache"       aliases = ["caching"]
+[[tag]] id = "catalogo"    aliases = ["catalog", "vocabulario", "taxonomia"]
+[[tag]] id = "contrato"    aliases = ["contract", "acordo"]
+[[tag]] id = "debug"       aliases = ["diagnostico", "troubleshooting"]
+[[tag]] id = "dev-server"  aliases = ["devserver", "next-dev", "hub"]
+[[tag]] id = "estado"      aliases = ["state", "persistencia"]
+[[tag]] id = "git"         aliases = ["commit", "branch", "merge", "worktree"]
+[[tag]] id = "idempotencia" aliases = ["idempotente"]
+[[tag]] id = "incidente"   aliases = ["incident", "licao", "licoes"]
+[[tag]] id = "isolamento"  aliases = ["isolation", "sandbox"]
+[[tag]] id = "mcp"         aliases = []
+[[tag]] id = "performance" aliases = ["perf", "lentidao"]
+[[tag]] id = "porta"       aliases = ["port", "socket"]
+[[tag]] id = "timeout"     aliases = ["time-out", "deadline"]
+[[tag]] id = "tooling"     aliases = ["ferramenta", "tool"]
+# ── O canal lição -> prompt (tratamento especial: `[[promocao]]` no fim) ────
+[[tag]] id = "prompt"      aliases = ["template", "regra", "prompt-rule"]
+
+# ── Ambiente da lição (emenda do dono 07/10) ────────────────────────────────
+# Toda lição/regra declara ONDE vale: `any` só quando provado agnóstico.
+# A faceta `shell` (opcional) desempata a sintaxe: heredoc `<<'EOF'` é posix/bash,
+# no pwsh o equivalente é o here-string `@'...'@`. O template e o `fast.py` injetam
+# só as regras do ambiente do worker.
+[[ambiente]] id = "any"     descricao = "agnóstico — vale em qualquer ambiente"
+[[ambiente]] id = "posix"   descricao = "família POSIX (linux, wsl, macos)"
+[[ambiente]] id = "linux"   descricao = "Linux nativo"
+[[ambiente]] id = "wsl"     descricao = "WSL sobre Windows"
+[[ambiente]] id = "macos"   descricao = "macOS"
+[[ambiente]] id = "windows" descricao = "Windows (PowerShell/cmd)"
+
+[[shell]] id = "bash"
+[[shell]] id = "pwsh"
+
+# ── Classes (catálogo FECHADO por failure-modes.toml, sem lista própria) ────
+[[classe]] id = "A" id_failure_mode = "FM-A*"  # confianca
+[[classe]] id = "B" id_failure_mode = "FM-B*"  # escopo
+[[classe]] id = "C" id_failure_mode = "FM-C*"  # processo
+[[classe]] id = "D" id_failure_mode = "FM-D*"  # social
+
+# ── Tag com tratamento especial: vira linha no template do worker ───────────
+[[promocao]] tag = "prompt" destino = "worker-prompt-template.md"

@@ -19,7 +19,9 @@ const FILE = path.join(REPO, ".ai", "memory", "operational-memory.jsonl");
 // SEG-862: o ledger de INCIDENTES (erro/recorrencia) tem schema proprio e mais curto.
 export const LEDGER_FILE = path.join(REPO, ".ai", "memory", "incident-ledger.jsonl");
 export const LEDGER_KEYS = ["id", "data", "titulo", "o_que", "causa", "correcao", "recorrencia", "fonte", "tags"];
-export const OPTIONAL_LEDGER_KEYS = ["source_id", "repo", "classe", "destino"];
+// TARS-TAGS-1 (fatia F1): `classe`/`destino` ja' existiam; entram `prompt_rule` (o que
+// vira linha no template do worker), `ambiente` (onde a licao vale) e `shell` (a faceta).
+export const OPTIONAL_LEDGER_KEYS = ["source_id", "repo", "classe", "destino", "prompt_rule", "ambiente", "shell"];
 // O doc dos campos e a outra metade do contrato: a lista de la tem de ser a MESMA de
 // SCHEMA_KEYS. Antes da SEG-5 o doc listava `expires_at`/`supersedes_entry_id`/
 // `promoted_from`, que este gate recusa — uma entrada documentada reprovava.
@@ -37,7 +39,111 @@ export const SCHEMA_KEYS = [
 ];
 // SOFON-MEM-1: o boot le SO' o INDEX; a memoria carrega sob demanda (o mapa em
 // `.ai/memory/memory.index.json`). Opcionais, so' nas entradas federadas.
-export const OPTIONAL_KEYS = ["source_id", "repo", "source"];
+export const OPTIONAL_KEYS = ["source_id", "repo", "source", "tags", "ambiente", "shell"];
+
+// ---- TARS-TAGS-1 (F1): vocabulario CONTROLADO de tags ---------------------------
+// `.ai/memory/tags.toml` e' a lista FECHADA (SSOT): tag fora dela nao entra no ledger.
+// Tag livre ja' produziu 373 vocabulos para 192 incidentes; sinônimo vira `aliases` do
+// id existente. Micro-parser TOML do subconjunto que o arquivo usa (`[[tag]]`/`[[ambiente]]`
+// /`[[shell]]`/`[[classe]]` com `id` + `aliases`): o repo nao tem dependencia TOML e a
+// estrutura e' previsivel (R2 — nao puxar um parser inteiro para 4 chaves).
+export const TAGS_FILE = path.join(REPO, ".ai", "memory", "tags.toml");
+
+/** Le tags.toml -> { tags:[{id,aliases}], ambientes:[id], shells:[id], classes:[id] }. */
+export function loadTags(file = TAGS_FILE) {
+  const out = { tags: [], ambientes: [], shells: [], classes: [], alias: new Map(), file };
+  if (!fs.existsSync(file)) return out;
+  let secao = null;
+  let atual = null;
+  // Quebra uma linha em pares `chave=valor`, respeitando aspas — a MESMA linha pode
+  // trazer `[[tag]] id = "x" aliases = ["a","b"]` ou `[[ambiente]] id = "any" descricao = "…"`.
+  const pares = (linha) => {
+    const achados = [];
+    const re = /([a-z_]+)\s*=\s*("(?:[^"]*)"|\[[^\]]*\]|[^\s]+)/g;
+    let m;
+    while ((m = re.exec(linha))) achados.push([m[1], m[2]]);
+    return achados;
+  };
+  const desvalor = (bruto) => {
+    if (/^".*"$/.test(bruto)) return bruto.slice(1, -1);
+    if (bruto.startsWith("[")) {
+      return bruto.replace(/^\[|\]$/g, "").split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean);
+    }
+    return bruto;
+  };
+  for (const cru of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    const linha = (cru.split("#")[0] ?? "").trim(); // sem comentario de fim de linha
+    if (!linha) continue;
+    const mSec = linha.match(/^\[\[([a-z_]+)\]\]\s*(.*)$/);
+    if (mSec) {
+      secao = mSec[1];
+      atual = { id: null, aliases: [] };
+      if (secao === "tag") out.tags.push(atual);
+      for (const [chave, bruto] of pares(mSec[2] ?? "")) aplicar(chave, desvalor(bruto));
+      continue;
+    }
+    if (!secao) continue;
+    for (const [chave, bruto] of pares(linha)) aplicar(chave, desvalor(bruto));
+  }
+
+  function aplicar(chave, valor) {
+    if (secao === "tag") {
+      if (chave === "id") atual.id = valor;
+      else if (chave === "aliases") atual.aliases = Array.isArray(valor) ? valor : [];
+    } else if (secao === "ambiente" && chave === "id") out.ambientes.push(valor);
+    else if (secao === "shell" && chave === "id") out.shells.push(valor);
+    else if (secao === "classe" && chave === "id") out.classes.push(valor);
+  }
+  for (const t of out.tags) {
+    if (t.id) out.alias.set(t.id, t.id);
+    for (const a of t.aliases ?? []) out.alias.set(a, t.id);
+  }
+  return out;
+}
+
+/** Onde o valor cai na lista fechada: id exato, alias conhecido, ou null. */
+export function resolveTag(valor, catalogo = loadTags()) {
+  return catalogo.alias.get(String(valor)) ?? null;
+}
+
+/**
+ * Valida as tags contra o vocabulario fechado. Regras (TARS-TAGS-1):
+ *  - tag fora de tags.toml REPROVA e SUGERE o id de alias (R4: o erro nomeia o valor bom);
+ *  - virgula dentro da tag REPROVA (as 9 entradas antigas desmembram na migracao F3);
+ *  - `ambiente` (qualquer entrada) e `shell` (ledger) validados contra as listas do catalogo.
+ * Entrada SEM tag continua valida NESTA fatia — exigir >=1 tag e' a migracao (F3).
+ */
+export function validateTags(e, kind = "ledger", catalogo = loadTags()) {
+  const errs = [];
+  if (Array.isArray(e.tags)) {
+    for (const [i, t] of e.tags.entries()) {
+      if (typeof t !== "string") { errs.push(`tags[${i}] nao e' texto`); continue; }
+      if (/[,\s]/.test(t)) { errs.push(`tags[${i}]='${t}' tem virgula (uma tag por item)`); continue; }
+      if (!catalogo.alias.has(t)) {
+        const sug = catalogo.tags.map((x) => x.id).find((id) => id.startsWith(t.slice(0, 3)));
+        errs.push(`tags[${i}]='${t}' fora de tags.toml${sug ? `; use '${sug}'` : "; cadastre o id em tags.toml"}`);
+      }
+    }
+  }
+  if (e.ambiente !== undefined && !catalogo.ambientes.includes(e.ambiente)) {
+    errs.push(`ambiente='${e.ambiente}' invalido (${catalogo.ambientes.join("|")})`);
+  }
+  if (kind === "ledger" && e.shell !== undefined && !catalogo.shells.includes(e.shell)) {
+    errs.push(`shell='${e.shell}' invalido (${catalogo.shells.join("|")})`);
+  }
+  // `classe` (TARS-REC-1) e' TEXTO LIVRE hoje e a migracao para o catalogo fechado A-D e'
+  // outra fatia (F3): reprovar `c/x` aqui quebraria o ledger ja' em uso. So' se reprova o
+  // que COLIDE com o catalogo novo — a fatia A-D ja' e' usada por `classe` em CONTAGEM,
+  // entao um valor de 1 caractere fora de A-D e' migracao pendente, nao erro novo.
+  if (kind === "ledger" && e.classe !== undefined) {
+    const c = String(e.classe);
+    const ehCurto = c.length === 1;
+    if (ehCurto && catalogo.classes.length && !catalogo.classes.includes(c)) {
+      errs.push(`classe='${e.classe}' invalida (${catalogo.classes.join("|")} — catalogo failure-modes.toml)`);
+    }
+  }
+  return errs;
+}
 
 /** Retorna a lista de erros (vazia = valido). `exists(rel)` confere source_refs. */
 export function validateMemoryEntry(e, opts = {}) {
@@ -72,6 +178,8 @@ export function validateMemoryEntry(e, opts = {}) {
   for (const bad of ["transcript", "secret", "password", "token", "raw_chat", "content_dump"]) {
     if (bad in e) errs.push(`chave proibida '${bad}' (sem segredo/transcricao)`);
   }
+  if (e.tags !== undefined && !Array.isArray(e.tags)) errs.push("tags invalido (array)");
+  else if (Array.isArray(e.tags)) errs.push(...validateTags(e, "memory"));
   // SEG-862: valor literal de segredo em QUALQUER campo (a mesma familia do pre-commit).
   const hits = findSecrets(JSON.stringify(e));
   if (hits.length) errs.push(`segredo em texto puro (${hits.join(", ")})`);
@@ -113,7 +221,7 @@ export function pickSurvivor(entries) {
 }
 
 /** Erros do ledger de incidentes (schema minimo + identidade). */
-export function validateLedgerEntry(e, avisos = []) {
+export function validateLedgerEntry(e, avisos = [], catalogo = loadTags()) {
   const errs = [];
   if (!e || typeof e !== "object" || Array.isArray(e)) return ["entrada nao e um objeto JSON"];
   for (const k of LEDGER_KEYS) if (!(k in e)) errs.push(`falta a chave '${k}'`);
@@ -131,6 +239,7 @@ export function validateLedgerEntry(e, avisos = []) {
   }
   if (!Array.isArray(e.fonte) || e.fonte.length === 0) errs.push("fonte vazio (a prova tem de existir)");
   if (!Array.isArray(e.tags)) errs.push("tags invalido (array)");
+  else errs.push(...validateTags(e, "ledger", catalogo));
   const hits = findSecrets(JSON.stringify(e));
   if (hits.length) errs.push(`segredo em texto puro (${hits.join(", ")})`);
   return errs;

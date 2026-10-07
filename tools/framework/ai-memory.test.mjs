@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir } from "./ai-memory.mjs";
+import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir, loadTags, resolveTag } from "./ai-memory.mjs";
 
 // Gate da memoria operacional (regra sem teste = sugestao). Portado da ideia do
 // contract test do Fabber, adaptado ao nosso schema reduzido. NEGATIVO (as regras
@@ -461,5 +461,65 @@ describe("TARS-MEM-2 — duas camadas (base + projeto)", () => {
     expect(resolveBaseDir(root)).toBe(path.join(root, "vendor/tars-memory"));
     // `--base` (override) ganha da config.
     expect(resolveBaseDir(root, "outro/dir")).toBe(path.join(root, "outro/dir"));
+  });
+});
+
+// TARS-TAGS-1 (F1): vocabulario CONTROLADO de tags (`tags.toml`). A tag livre ja'
+// produziu 373 vocabulos para 192 incidentes; o gate passa a reprovar o que esta'
+// fora da lista e a SUGERIR o id (R4). A migracao das entradas antigas e' a F3:
+// aqui a entrada SEM tag continua valida.
+describe("tags controladas (TARS-TAGS-1)", () => {
+  const cat = loadTags();
+  const baseInc = { id: "inc-x", data: "2026-10-03", titulo: "job travou no retry", o_que: "o job parou", causa: "sem backoff", correcao: "adicionar backoff", recorrencia: 1, fonte: ["tools/framework/ai-memory.mjs"], tags: ["banco"] };
+  const inc = (extra) => ({ ...baseInc, ...extra });
+
+  it("1) alias sugere o id: `db`/`postgres` resolvem para `banco` e PASSAM", () => {
+    expect(cat.alias.get("db")).toBe("banco");
+    expect(resolveTag("postgres", cat)).toBe("banco");
+    expect(validateLedgerEntry(inc({ tags: ["db"] }), [], cat)).toEqual([]);
+    expect(validateLedgerEntry(inc({ tags: ["postgres"] }), [], cat)).toEqual([]);
+    expect(validateLedgerEntry(inc({ tags: ["banco"] }), [], cat)).toEqual([]);
+  });
+
+  it("2) tag fora da lista REPROVA nomeando a tag", () => {
+    const errs = validateLedgerEntry(inc({ tags: ["zzz-inventada"] }), [], cat);
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toMatch(/tags\[0\]='zzz-inventada' fora de tags\.toml/);
+  });
+
+  it("3) virgula dentro da tag REPROVA (as 9 entradas antigas desmembram na F3)", () => {
+    const errs = validateLedgerEntry(inc({ tags: ["context,governance,session-start"] }), [], cat);
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toMatch(/tem virgula/);
+  });
+
+  it("4) ambiente invalido REPROVA; o valido (e a faceta shell) passa", () => {
+    expect(validateLedgerEntry(inc({ tags: ["banco"], ambiente: "solaris" }), [], cat)[0]).toMatch(/ambiente='solaris' invalido/);
+    expect(validateLedgerEntry(inc({ tags: ["banco"], ambiente: "any" }), [], cat)).toEqual([]);
+    expect(validateLedgerEntry(inc({ tags: ["banco"], ambiente: "posix", shell: "fish" }), [], cat)[0]).toMatch(/shell='fish' invalido/);
+    expect(validateLedgerEntry(inc({ tags: ["prompt"], ambiente: "posix", shell: "bash", prompt_rule: "heredoc <<'EOF'" }), [], cat)).toEqual([]);
+  });
+
+  it("5) classe invalida REPROVA (catalogo fechado A-D)", () => {
+    expect(validateLedgerEntry(inc({ tags: ["banco"], classe: "Z" }), [], cat)[0]).toMatch(/classe='Z' invalida/);
+    expect(validateLedgerEntry(inc({ tags: ["banco"], classe: "D" }), [], cat)).toEqual([]);
+  });
+
+  it("6) entrada ANTIGA sem tag continua VALIDA nesta fatia (a migracao e' F3)", () => {
+    expect(validateLedgerEntry(inc({ tags: [] }), [], cat)).toEqual([]);
+    expect(validateMemoryEntry({ ...base })).toEqual([]);
+  });
+
+  it("7) `tags` opcional na memoria operacional, mas validado quando presente", () => {
+    expect(validateMemoryEntry({ ...base, tags: ["db"] })).toEqual([]);
+    expect(validateMemoryEntry({ ...base, tags: ["zzz"] })[0]).toMatch(/fora de tags\.toml/);
+  });
+
+  it("8) o catalogo versionado e' coerente: id unico, alias nao colide com id", () => {
+    const ids = cat.tags.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(cat.tags.length).toBeGreaterThanOrEqual(30);
+    expect(cat.ambientes).toEqual(["any", "posix", "linux", "wsl", "macos", "windows"]);
+    expect(cat.classes).toEqual(["A", "B", "C", "D"]);
   });
 });
