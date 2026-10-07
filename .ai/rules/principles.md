@@ -34,6 +34,14 @@ como atende cada uma**:
 - **Agnosticidade.** De runtime e de stack: o núcleo não conhece a ferramenta nem o banco
   de quem o consome.
 
+## Doutrinas de extracao
+
+- **Versionamento:** toda peça extraída (Tars, Tomo, Sofon, Pion, Kipp, Lazarus, Endurance)
+  nasce em `0.0.1-dev.N` e sobe a versão a cada entrega, com as notas de upgrade —
+  `.ai/governance/versionamento-de-extracao.md`.
+- **Estado:** serviço com estado não sobe sobre volume vazio; o preflight exige o marcador do
+  datadir, salvo init explícito — `.ai/governance/estado-exige-datadir.md`.
+
 ## Ao fechar trabalho
 
 - **Origem antes do sintoma.** Toda falha tem uma origem (a causa da causa raiz), não só um
