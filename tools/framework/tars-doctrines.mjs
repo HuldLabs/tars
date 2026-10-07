@@ -140,9 +140,11 @@ export const FALHA = ['PHANTOM', 'DRIFT']
 export function doctor({ tars, project } = {}) {
   const catalogo = resolve(tars ?? findTars())
   const root = resolve(project ?? process.cwd())
-  // A base das doutrinas de outro projeto (`segtools:`) e' o PROJETO, nao o catalogo.
+  // A base de cada doutrina e' quem a DECLAROU: a do catalogo (`escopo = "catalogo"`) resolve
+  // contra a raiz do Tars, a do projeto (`[[doctrine]]` no `.ai/tars.toml`) contra a raiz do
+  // projeto. Sem isso a prova do consumidor rodaria contra os arquivos do catalogo.
   const itens = loadDoctrines({ tars: catalogo, project: root }).map((d) =>
-    classify(d, parseRef(d.fonte).externo ? root : catalogo),
+    classify(d, d.escopo === 'catalogo' ? catalogo : root),
   )
   const porStatus = Object.fromEntries(
     ['OK', 'PHANTOM', 'SEM GATE', 'DRIFT', 'PROJETO'].map((s) => [s, itens.filter((i) => i.status === s).length]),
