@@ -31,9 +31,11 @@ como atende cada uma**:
 
 ## Ao fechar trabalho
 
-- **Incidente → prevenção propagada.** Toda falha tem uma classe; conserte a classe na
-  camada mais automática que a impeça em todos os consumidores. Régua e o 5º campo
-  (`propagacao`) em `.ai/governance/incidente-vira-prevencao.md`.
+- **Origem antes do sintoma.** Toda falha tem uma origem (a causa da causa raiz), não só um
+  sintoma; corrija lá e propague a classe na camada mais automática que a impeça em todos os
+  consumidores. Campos da lição (`origem`, `propagacao`) e a régua em
+  `.ai/governance/incidente-vira-prevencao.md`; a investigação em
+  `.ai/skills/root-cause-debugging/`.
 - **Limpeza (SOP).** Antes de fechar: apague morto, duplicata, flag sem uso e arquivo
   órfão; o que era temporário some junto. Entrega que reduz linhas ganha.
 - **Segredos.** **Nunca** imprima segredo (nem em log, teste ou evidência). O cofre
