@@ -53,8 +53,8 @@ export function parseToml(text) {
   const flush = () => {
     const m = buffer.match(/^\[([\s\S]*)\]$/)
     if (!m) throw new Error(`lista TOML nao fechada: ${buffer}`)
-    const [, vals] = section
-    section[key] = key in section ? [...section[key], ...list(m[1])] : list(m[1])
+    const vals = list(m[1])
+    section[key] = key in section ? [...section[key], ...vals] : vals
     key = null
     buffer = ''
   }

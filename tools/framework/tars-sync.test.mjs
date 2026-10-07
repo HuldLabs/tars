@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { declare, hashSource, init, readManifest, sync } from "./tars-sync.mjs";
+import { declare, hashSource, init, parseToml, readManifest, sync } from "./tars-sync.mjs";
 
 // AI-TARS fatia 3 (docs/TARS.md §Fatias): `tars sync` puxa do catalogo so' o
 // DECLARADO no `.ai/tars.toml` do projeto consumidor, trava sha256 em
@@ -240,6 +240,22 @@ describe("tars-sync — guards e governance (fatia 2b)", () => {
       manifest: MANIFEST.replace('guards  = ["alpha-guard"]', 'guards  = ["nao-existe"]'),
     });
     await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/guards: nao-existe/);
+  });
+});
+
+describe("tars-sync — parser TOML", () => {
+  it("lista MULTILINHA (um item por linha) e' lida inteira", () => {
+    // O manifesto do consumidor cresce em coluna unica por linha (fatia 2b): 19 skills
+    // declaradas assim nao podem virar uma skill so' chamada `\n  "alpha",`.
+    const cfg = parseToml(`[tars]
+skills = [
+  "alpha",
+  "beta",
+]
+rules = ["r"]
+`);
+    expect(cfg.tars.skills).toEqual(["alpha", "beta"]);
+    expect(cfg.tars.rules).toEqual(["r"]);
   });
 });
 
