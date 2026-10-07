@@ -1,0 +1,6 @@
+# Dependencias e caches locais (nunca versionados)
+node_modules/
+.cache/
+
+# O binario compilado (`bun run build`) vai para Release, nao para o Git
+dist/

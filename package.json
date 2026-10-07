@@ -1,0 +1,17 @@
+{
+  "name": "tars",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tars — o catalogo de metodo: camada .ai, gates/hooks, tooling de workers e processo de sessao",
+  "type": "module",
+  "bin": {
+    "tars": "tools/framework/tars.mjs"
+  },
+  "scripts": {
+    "build": "bun build --compile tools/framework/tars.mjs --outfile dist/tars",
+    "test": "vitest run tools/framework/tars-*.test.mjs tools/framework/tars.test.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
+  }
+}
