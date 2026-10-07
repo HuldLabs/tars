@@ -6,7 +6,7 @@
 // Tars em disco (nao a API do GitHub), porque o consumidor tem a base local.
 //
 // O que ele faz:
-//   * le `[tars]` (version/skills/rules/memory) e `[gates]` (pre-commit/pre-push/local) do
+//   * le `[tars]` (version/skills/rules/memory) e `[gates]` (pre-commit/commit-msg/pre-push/local) do
 //     `.ai/tars.toml` do consumidor;
 //   * copia cada item declarado de `<tars>/<area>/<item>` para `.ai/base/<area>/<item>`;
 //   * escreve `.ai/tars.lock` com a versao do Tars, o commit resolvido e o sha256 de cada
@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url'
 export const HERE = dirname(fileURLToPath(import.meta.url))
 export const AREAS = ['skills', 'rules', 'memory', 'gates']
 /** Nomes que o manifesto pode declarar em `[gates]` (docs/TARS.md §Modelo). */
-export const HOOKS = ['pre-commit', 'pre-push', 'local']
+export const HOOKS = ['pre-commit', 'commit-msg', 'pre-push', 'local']
 
 // ---------------------------------------------------------------------------
 // Parser TOML minimo: secoes `[x]`, `chave = valor` e listas de string (uma linha
