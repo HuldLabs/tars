@@ -136,6 +136,26 @@ export function classify(d, base = process.cwd(), { spawn = rodaProva } = {}) {
   return { ...d, status: 'OK', detalhe: `prova reprova (exit ${rc})` }
 }
 
+/**
+ * TARS-INCIDENTE-AUTO: a `correcao` de um incidente diz com que ARQUIVO/COMMIT ela foi coberta?
+ * A prova e' barata e declarada: um sha de 7-40 hex, um caminho com extensao, ou a ancora
+ * `BR-`/`ADR-`/`SEG-` (id de regra). "o agente vai lembrar" nao casa — e' justamente o que
+ * nao funciona. `correcao` vazia = sem guarda (nada citado).
+ */
+export function citaGuarda(correcao) {
+  const s = String(correcao ?? '')
+  return /\b[0-9a-f]{7,40}\b/i.test(s) || /[\w./-]+\.(mjs|js|ts|tsx|py|md|toml|json|sh|jsonl|sql)\b/i.test(s) || /\b(BR|ADR|SEG)-[\w-]+/i.test(s)
+}
+
+/**
+ * Os incidentes RECORRENTES (`recorrencia: true`) cuja correcao nao cita commit nem arquivo
+ * de guarda: repetiram e continuam sem quem os cubra. Booleano legado `true` conta como
+ * recorrente; numero >= 2 idem (TARS-REC-1 tornou `recorrencia` contagem).
+ */
+export function incidentesSemGuarda(entries) {
+  return (entries ?? []).filter((e) => e && typeof e === 'object' && !Array.isArray(e) && (e.recorrencia === true || (typeof e.recorrencia === 'number' && e.recorrencia >= 2)) && !citaGuarda(e.correcao))
+}
+
 /** A doutrina nao esta' sendo cobrada: o doctor sai != 0 (R4 — falha alta). */
 export const FALHA = ['PHANTOM', 'DRIFT']
 
@@ -233,6 +253,7 @@ export function doctor({ tars, project } = {}) {
     ? readJsonl(ledgerPath).entries.filter((e) => e && typeof e === 'object' && !Array.isArray(e))
     : []
   const recorrencia = classesRecorrentes(ledgerEntries)
+  const semGuarda = incidentesSemGuarda(ledgerEntries)
   const classesFalha = recorrencia.falhas.map((c) => ({
     id: `recorrencia/${c.classe}`,
     status: 'FALHA',
@@ -247,6 +268,7 @@ export function doctor({ tars, project } = {}) {
     porStatus,
     wiring,
     classes: recorrencia.classes,
+    incidentes: { total: ledgerEntries.length, recorrentesSemGuarda: semGuarda.map((e) => e.id) },
     faltando: [
       ...itens.filter((i) => FALHA.includes(i.status)),
       ...(wiring.ok ? [] : [{ id: 'wiring/settings', status: 'FALHA' }]),
@@ -256,7 +278,7 @@ export function doctor({ tars, project } = {}) {
 }
 
 /** Uma linha por doutrina: `STATUS  id  onde  gate`, com o detalhe abaixo quando ha' o que dizer. */
-export function format({ itens, porStatus, tars, project, wiring, classes }, log = console.log) {
+export function format({ itens, porStatus, tars, project, wiring, classes, incidentes }, log = console.log) {
   log(`tars doctor — ${itens.length} doutrina(s) · catalogo ${tars} · projeto ${project}`)
   for (const i of itens) {
     log(`${i.status.padEnd(9)} ${i.id}  [${i.onde}]  gate=${i.gate}`)
@@ -271,6 +293,10 @@ export function format({ itens, porStatus, tars, project, wiring, classes }, log
         `  ${c.ocorrencias} ocorrencia(s)${c.destino ? ` -> ${c.destino}` : faltaDestino ? " sem 'destino'" : ''}`,
     )
   }
+  // TARS-INCIDENTE-AUTO: a linha que o dono pediu — `INCIDENTES: N recorrentes sem guarda`.
+  // Zero recorrentes ainda IMPRIME: saida ausente nao distingue "nada repetiu" de "o doctor
+  // nao olhou". Sem guarda = a correcao nao cita commit nem arquivo (`citaGuarda`).
+  if (incidentes) log(`INCIDENTES: ${incidentes.recorrentesSemGuarda.length} recorrentes sem guarda${incidentes.recorrentesSemGuarda.length ? ` (${incidentes.recorrentesSemGuarda.join(', ')})` : ''}`)
   if (wiring) log(`${(wiring.ok ? 'OK' : 'FALHA').padEnd(9)} wiring/settings  [session-start]  ${wiring.detalhe}`)
   log(
     `\nOK ${porStatus.OK} · PHANTOM ${porStatus.PHANTOM} · SEM GATE ${porStatus['SEM GATE']} · DRIFT ${porStatus.DRIFT}` +
