@@ -204,9 +204,14 @@ o comando é o mesmo nos três casos; o projeto consumidor **não precisa de Nod
    ```sh
    env -i PATH=/usr/bin:/bin "$TARS_HOME/dist/tars" init
    ```
-3. Edite o manifesto declarando o que o projeto usa (skills, gates, memória) e rode
-   `tars sync`.
-4. Registre os hooks do projeto para chamar o motor, ex.:
+3. Edite o manifesto declarando o que o projeto usa (skills, gates, **guards**, memória) e
+   rode `tars sync`. Além de trazer o declarado para `.ai/base/`, o `sync` **gera o wiring
+   do harness** — `<projeto>/.claude/settings.json` com `PreToolUse`/`SessionStart`/
+   `PreCompact`. O `PreToolUse` chama **só os guards declarados** em `[tars].guards`; um
+   guard que `source`a um irmão (ex.: `block-destructive-commands` → `lib-json.sh`) traz o
+   irmão junto — sem ele o guard morreria com `jget: command not found` e **liberaria** o
+   comando. O `settings.json` é gerado: não se edita à mão.
+4. Registre os hooks de projeto (git) para chamar o motor, ex.:
 
    ```sh
    # .githooks/commit-msg
