@@ -158,11 +158,19 @@ describe("SEG-862 — sobrevivente (funcao pura) nos 3 casos", () => {
 });
 
 describe("SEG-862 — ledger de incidentes", () => {
-  const inc = { id: "inc-x", data: "2026-10-03", titulo: "job travou no retry", o_que: "o job parou", causa: "sem backoff", correcao: "adicionar backoff", recorrencia: false, fonte: ["tools/framework/ai-memory.mjs"], tags: ["jobs"] };
+  const inc = { id: "inc-x", data: "2026-10-03", titulo: "job travou no retry", o_que: "o job parou", causa: "sem backoff", correcao: "adicionar backoff", recorrencia: 1, fonte: ["tools/framework/ai-memory.mjs"], tags: ["jobs"] };
 
   it("schema minimo ok", () => expect(validateLedgerEntry(inc)).toEqual([]));
   it("recusa chave faltando", () => { const e = { ...inc }; delete e.causa; expect(validateLedgerEntry(e)).not.toEqual([]); });
-  it("recusa recorrencia nao-booleana", () => expect(validateLedgerEntry({ ...inc, recorrencia: "talvez" })).not.toEqual([]));
+  it("recusa recorrencia nao-numerica", () => expect(validateLedgerEntry({ ...inc, recorrencia: "talvez" })).not.toEqual([]));
+  it("recusa recorrencia zero (1 = primeira ocorrencia)", () => expect(validateLedgerEntry({ ...inc, recorrencia: 0 })).not.toEqual([]));
+  it("booleano legado passa, mas AVISA a migracao (true->2, false->1)", () => {
+    const avisos = [];
+    expect(validateLedgerEntry({ ...inc, recorrencia: true }, avisos)).toEqual([]);
+    expect(avisos.join(" ")).toMatch(/booleana/);
+  });
+  it("aceita `classe` e `destino` (campos da recorrencia)", () =>
+    expect(validateLedgerEntry({ ...inc, classe: "gate/commit-msg", destino: "TARS-99" })).toEqual([]));
   it("recusa segredo", () => expect(validateLedgerEntry({ ...inc, o_que: "AKIA" + "A".repeat(16) })).not.toEqual([]));
   it("ensureLedger cria o arquivo vazio", () => {
     const f = path.join(path.dirname(fixture("x", "")), "novo-ledger.jsonl");
@@ -188,6 +196,48 @@ describe("SEG-862 — doctor acusa linha invalida e duplicata", () => {
     const bom = fixture("bom.jsonl", ""); // source_ref absoluta que existe no FS real
     const f = fixture("mem.jsonl", `${memLine({ id: "mem-a", source_refs: [bom] })}\n`);
     expect(doctor([{ file: f, kind: "memory" }]).errors).toEqual([]);
+  });
+});
+
+// TARS-REC-1: a recorrencia vira CONTAGEM e o doctor acusa a classe que repetiu sem
+// destino. O limiar e' 2 (decisao do dono, 07/10): 1a ocorrencia e' episodio; 2 e' classe.
+describe("TARS-REC-1 — recorrencia conta e o doctor cobra o destino", () => {
+  const led = (over = {}) =>
+    JSON.stringify({ id: "inc-x", data: "2026-10-03", titulo: "um incidente suficientemente longo", o_que: "fato", causa: "causa", correcao: "correcao", recorrencia: 1, fonte: ["HANDOFF.md"], tags: ["t"], ...over });
+
+  it("classe com 2 ocorrencias sem destino -> FALHA nomeando a classe", () => {
+    const f = fixture("led.jsonl", `${led({ id: "inc-a", classe: "gate/sem-teste", recorrencia: 2 })}\n`);
+    const { errors } = doctor([{ file: f, kind: "ledger" }]);
+    expect(errors.some((e) => /classe 'gate\/sem-teste' repetiu 2x sem 'destino'/.test(e))).toBe(true);
+  });
+
+  it("duas entradas da MESMA classe com 1 ocorrencia cada somam 2 -> FALHA", () => {
+    const f = fixture("led.jsonl", `${led({ id: "inc-a", classe: "c/x", recorrencia: 1 })}\n${led({ id: "inc-b", classe: "c/x", recorrencia: 1 })}\n`);
+    const { errors } = doctor([{ file: f, kind: "ledger" }]);
+    expect(errors.some((e) => /classe 'c\/x' repetiu 2x/.test(e))).toBe(true);
+  });
+
+  it("classe recorrente COM destino -> sem erro (a divida esta' nomeada)", () => {
+    const f = fixture("led.jsonl", `${led({ id: "inc-a", classe: "c/x", recorrencia: 3, destino: "TARS-99" })}\n`);
+    expect(doctor([{ file: f, kind: "ledger" }]).errors).toEqual([]);
+  });
+
+  it("classe com 1 ocorrencia sem destino -> sem erro (episodio, nao classe)", () => {
+    const f = fixture("led.jsonl", `${led({ id: "inc-a", classe: "c/x", recorrencia: 1 })}\n`);
+    expect(doctor([{ file: f, kind: "ledger" }]).errors).toEqual([]);
+  });
+
+  it("booleano legado conta como 2 -> FALHA se sem destino (migracao honesta)", () => {
+    const f = fixture("led.jsonl", `${led({ id: "inc-a", classe: "c/y", recorrencia: true })}\n`);
+    const { errors, avisos } = doctor([{ file: f, kind: "ledger" }]);
+    expect(errors.some((e) => /classe 'c\/y' repetiu 2x/.test(e))).toBe(true);
+    expect(avisos.join(" ")).toMatch(/booleana/);
+  });
+
+  it("o resumo por classe sai ordenado por ocorrencias", () => {
+    const f = fixture("led.jsonl", `${led({ id: "inc-a", classe: "c/a", recorrencia: 1 })}\n${led({ id: "inc-b", classe: "c/b", recorrencia: 5, destino: "X-1" })}\n`);
+    const { classes } = doctor([{ file: f, kind: "ledger" }]);
+    expect(classes.map((c) => c.classe)).toEqual(["c/b", "c/a"]);
   });
 });
 

@@ -177,3 +177,37 @@ describe('doctor — o wiring do harness (a ponta que faz o guard rodar)', () =>
     expect(r.faltando).toHaveLength(0)
   })
 })
+
+// TARS-REC-1: o doctor cobra a CLASSE que repetiu no ledger de incidentes do projeto.
+describe('doctor — recorrencia vira FALHA (X = 2)', () => {
+  const d = () => [{ id: 'x/y', titulo: 't', fonte: 'REGRA.md', gate: 'pre-commit', prova: 'false', onde: 'ci' }]
+  const led = (linhas) => {
+    const dir = fixture(d())
+    fs.mkdirSync(path.join(dir, '.ai', 'memory'), { recursive: true })
+    fs.writeFileSync(path.join(dir, '.ai', 'memory', 'incident-ledger.jsonl'), linhas)
+    return dir
+  }
+  const inc = (over = {}) =>
+    JSON.stringify({ id: 'inc-x', data: '2026-10-03', titulo: 'um incidente suficientemente longo', o_que: 'fato', causa: 'causa', correcao: 'correcao', recorrencia: 1, fonte: ['HANDOFF.md'], tags: ['t'], ...over })
+
+  it('classe com 2 ocorrencias sem destino derruba o doctor', () => {
+    const tars = led(`${inc({ id: 'inc-a', classe: 'gate/sem-teste', recorrencia: 2 })}\n`)
+    const r = doctor({ tars, project: tars })
+    expect(r.faltando.map((i) => i.id)).toContain('recorrencia/gate/sem-teste')
+    expect(r.faltando.find((i) => i.id === 'recorrencia/gate/sem-teste').detalhe).toMatch(/2x sem 'destino'/)
+  })
+
+  it('classe recorrente COM destino nao derruba', () => {
+    const tars = led(`${inc({ id: 'inc-a', classe: 'gate/sem-teste', recorrencia: 3, destino: 'TARS-99' })}\n`)
+    const r = doctor({ tars, project: tars })
+    expect(r.faltando).toHaveLength(0)
+    expect(r.classes[0]).toMatchObject({ classe: 'gate/sem-teste', ocorrencias: 3, destino: 'TARS-99' })
+  })
+
+  it('ledger ausente nao quebra o doctor (catalogo nasce sem incidentes)', () => {
+    const tars = fixture(d())
+    const r = doctor({ tars, project: tars })
+    expect(r.faltando).toHaveLength(0)
+    expect(r.classes).toEqual([])
+  })
+})

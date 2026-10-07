@@ -23,6 +23,9 @@ import { spawnSync } from 'node:child_process'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findTars, parseToml, NONINTERACTIVE_ENV } from './tars-sync.mjs'
+// TARS-REC-1: a classe que repetiu no ledger e' cobrada pelo doctor (a camada "acusa o estado
+// errado" da doutrina incidente-vira-prevencao). A CONTAGEM mora no ai-memory — aqui so' se le'.
+import { classesRecorrentes, readJsonl } from './ai-memory.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -186,22 +189,51 @@ export function doctor({ tars, project } = {}) {
     ['OK', 'PHANTOM', 'SEM GATE', 'DRIFT', 'PROJETO'].map((s) => [s, itens.filter((i) => i.status === s).length]),
   )
   const wiring = wiringCheck(root)
+  // TARS-REC-1: o ledger de incidentes do PROJETO e' julgado aqui — a classe com >= 2
+  // ocorrencias sem `destino` e' FALHA (o "X = 2" do dono). O ledger e' lido da raiz do
+  // projeto (nao do catalogo): e' o consumidor quem acumula os incidentes.
+  const ledgerPath = join(root, '.ai', 'memory', 'incident-ledger.jsonl')
+  const ledgerEntries = existsSync(ledgerPath)
+    ? readJsonl(ledgerPath).entries.filter((e) => e && typeof e === 'object' && !Array.isArray(e))
+    : []
+  const recorrencia = classesRecorrentes(ledgerEntries)
+  const classesFalha = recorrencia.falhas.map((c) => ({
+    id: `recorrencia/${c.classe}`,
+    status: 'FALHA',
+    onde: 'ci',
+    gate: 'doctor',
+    detalhe: `classe repetiu ${c.ocorrencias}x sem 'destino' (id do item de backlog) — ${c.entradas.join(', ')}`,
+  }))
   return {
     tars: catalogo,
     project: root,
     itens,
     porStatus,
     wiring,
-    faltando: [...itens.filter((i) => FALHA.includes(i.status)), ...(wiring.ok ? [] : [{ id: 'wiring/settings', status: 'FALHA' }])],
+    classes: recorrencia.classes,
+    faltando: [
+      ...itens.filter((i) => FALHA.includes(i.status)),
+      ...(wiring.ok ? [] : [{ id: 'wiring/settings', status: 'FALHA' }]),
+      ...classesFalha,
+    ],
   }
 }
 
 /** Uma linha por doutrina: `STATUS  id  onde  gate`, com o detalhe abaixo quando ha' o que dizer. */
-export function format({ itens, porStatus, tars, project, wiring }, log = console.log) {
+export function format({ itens, porStatus, tars, project, wiring, classes }, log = console.log) {
   log(`tars doctor — ${itens.length} doutrina(s) · catalogo ${tars} · projeto ${project}`)
   for (const i of itens) {
     log(`${i.status.padEnd(9)} ${i.id}  [${i.onde}]  gate=${i.gate}`)
     if (i.status !== 'OK') log(`          ${i.detalhe}`)
+  }
+  // TARS-REC-1: a recorrencia por classe vem ANTES do resumo — e' o sinal que promove a
+  // backlog; a classe que REPETIU (>= 2) sem destino aparece com FALHA.
+  for (const c of classes ?? []) {
+    const faltaDestino = c.ocorrencias >= 2 && !c.destino
+    log(
+      `${(faltaDestino ? 'FALHA' : 'OK').padEnd(9)} recorrencia/${c.classe}  [ci]  gate=doctor` +
+        `  ${c.ocorrencias} ocorrencia(s)${c.destino ? ` -> ${c.destino}` : faltaDestino ? " sem 'destino'" : ''}`,
+    )
   }
   if (wiring) log(`${(wiring.ok ? 'OK' : 'FALHA').padEnd(9)} wiring/settings  [session-start]  ${wiring.detalhe}`)
   log(

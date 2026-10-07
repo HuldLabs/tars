@@ -36,6 +36,29 @@ qualquer entrada e em qualquer ordem — não fazem parte de `SCHEMA_KEYS` porqu
 | `repo` | o INDEX (origem na linha) e o corte do boot | de qual dos 7 repos veio |
 | `source` | curador: o arquivo/commit de origem dentro daquele repo | caminho relativo ao repo de origem |
 
+## Ledger de incidentes (`incident-ledger.jsonl`)
+
+Schema próprio, mais curto (`LEDGER_KEYS` em `tools/framework/ai-memory.mjs`): `id`, `data`, `titulo`,
+`o_que`, `causa`, `correcao`, `recorrencia`, `fonte`, `tags`.
+
+| Campo | Quem lê | Valor |
+| --- | --- | --- |
+| `recorrencia` | `tars doctor`: conta as ocorrências da classe | **número inteiro ≥ 1** (quantas vezes a falha se repetiu). Booleano antigo ainda é aceito, mas **avisa** a migração (`true` → 2, `false` → 1) |
+
+Campos **opcionais** do ledger (`OPTIONAL_LEDGER_KEYS`), entram só quando os dados existem:
+
+| Campo | Quem lê | Valor |
+| --- | --- | --- |
+| `classe` | `tars doctor`: agrupa por classe | a classe da falha (ex.: `gate/commit-msg`), não o episódio — é o eixo da recorrência |
+| `destino` | `tars doctor`: dispensa a classe que recorreu | id do item de backlog que fecha a classe |
+| `source_id`, `repo` | curador (memória federada) | procedência, como na memória |
+
+**Regra dura (recorrência → backlog, X = 2).** Toda classe com **≥ 2 ocorrências somadas** sem `destino` é
+**FALHA** no `tars doctor`: já repetiu duas vezes e não há item fechando a classe. Uma ocorrência é episódio
+(não promove). Origem do critério (R1):
+`farmega.v2/.ai/patterns/sdd/retrospective-and-continuous-improvement.md` (matriz local×estrutural — o eixo
+"Recorrência: já repetiu" é estrutural); a operacionalização em 2 é do dono (07/10).
+
 ## Campos recusados
 
 Estes **não** são campos do schema: uma entrada que use qualquer um deles reprova como `chave desconhecida`.

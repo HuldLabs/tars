@@ -19,7 +19,7 @@ const FILE = path.join(REPO, ".ai", "memory", "operational-memory.jsonl");
 // SEG-862: o ledger de INCIDENTES (erro/recorrencia) tem schema proprio e mais curto.
 export const LEDGER_FILE = path.join(REPO, ".ai", "memory", "incident-ledger.jsonl");
 export const LEDGER_KEYS = ["id", "data", "titulo", "o_que", "causa", "correcao", "recorrencia", "fonte", "tags"];
-export const OPTIONAL_LEDGER_KEYS = ["source_id", "repo"];
+export const OPTIONAL_LEDGER_KEYS = ["source_id", "repo", "classe", "destino"];
 // O doc dos campos e a outra metade do contrato: a lista de la tem de ser a MESMA de
 // SCHEMA_KEYS. Antes da SEG-5 o doc listava `expires_at`/`supersedes_entry_id`/
 // `promoted_from`, que este gate recusa — uma entrada documentada reprovava.
@@ -113,7 +113,7 @@ export function pickSurvivor(entries) {
 }
 
 /** Erros do ledger de incidentes (schema minimo + identidade). */
-export function validateLedgerEntry(e) {
+export function validateLedgerEntry(e, avisos = []) {
   const errs = [];
   if (!e || typeof e !== "object" || Array.isArray(e)) return ["entrada nao e um objeto JSON"];
   for (const k of LEDGER_KEYS) if (!(k in e)) errs.push(`falta a chave '${k}'`);
@@ -121,7 +121,14 @@ export function validateLedgerEntry(e) {
   if (typeof e.id !== "string" || !/^inc-[a-z0-9-]+$/.test(e.id)) errs.push("id invalido (esperado inc-<slug>)");
   if (typeof e.data !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(e.data)) errs.push("data invalida (ISO-8601)");
   if (typeof e.titulo !== "string" || e.titulo.trim().length < 10) errs.push("titulo curto");
-  if (typeof e.recorrencia !== "boolean") errs.push("recorrencia invalida (true|false)");
+  // TARS-REC-1: `recorrencia` virou CONTAGEM (>= 1). O booleano antigo ainda passa, mas
+  // AVISA migracao: `true` = ja' repetiu (2), `false` = primeira vez (1). Contar e' o que
+  // permite `tars doctor` acusar a classe que repetiu; booleano nao distingue 2 de 20.
+  if (typeof e.recorrencia === "boolean") {
+    avisos.push("recorrencia booleana (migrar para numero: true->2, false->1)");
+  } else if (typeof e.recorrencia !== "number" || !Number.isInteger(e.recorrencia) || e.recorrencia < 1) {
+    errs.push("recorrencia invalida (numero inteiro >= 1; booleano legado = aviso)");
+  }
   if (!Array.isArray(e.fonte) || e.fonte.length === 0) errs.push("fonte vazio (a prova tem de existir)");
   if (!Array.isArray(e.tags)) errs.push("tags invalido (array)");
   const hits = findSecrets(JSON.stringify(e));
@@ -157,10 +164,35 @@ export function ensureLedger(file = LEDGER_FILE) {
   return file;
 }
 
+/**
+ * TARS-REC-1: agrupa o ledger por `classe` e acusa a classe que JA' REPETIU.
+ *
+ * A regra do dono (07/10): `recorrencia >= 2` sem `destino` = FALHA — a classe voltou
+ * duas vezes e nao ha' item de backlog fechando-a. Uma ocorrencia so' e' episodio
+ * (nao promove); com destino, a divida esta' nomeada. Devolve as FALHAS e o resumo.
+ */
+export function classesRecorrentes(entries) {
+  const porClasse = new Map();
+  for (const e of entries) {
+    if (!e || typeof e !== "object" || Array.isArray(e) || !e.classe) continue;
+    const n = typeof e.recorrencia === "number" ? e.recorrencia : e.recorrencia === true ? 2 : 1;
+    const cur = porClasse.get(e.classe) ?? { classe: e.classe, ocorrencias: 0, destino: null, entradas: [] };
+    cur.ocorrencias += n;
+    if (!cur.destino && e.destino) cur.destino = e.destino;
+    cur.entradas.push(e.id);
+    porClasse.set(e.classe, cur);
+  }
+  const todas = [...porClasse.values()].sort((a, b) => b.ocorrencias - a.ocorrencias || a.classe.localeCompare(b.classe));
+  const falhas = todas.filter((c) => c.ocorrencias >= 2 && !c.destino);
+  return { classes: todas, falhas };
+}
+
 /** Doctor: julga os DOIS arquivos. Retorna { errors, files: {<rel>: {count}} }. */
 export function doctor(files) {
   const errors = [];
+  const avisos = [];
   const counts = {};
+  const ledgerEntries = [];
   const targets = files ?? [
     { file: FILE, kind: "memory" },
     { file: LEDGER_FILE, kind: "ledger" },
@@ -178,16 +210,24 @@ export function doctor(files) {
         errors.push(`${rel} linha ${i + 1}: JSON invalido (${err.message})`);
         return;
       }
-      const errs = kind === "ledger" ? validateLedgerEntry(e) : validateMemoryEntry(e, { exists });
+      const errs = kind === "ledger" ? validateLedgerEntry(e, avisos) : validateMemoryEntry(e, { exists });
       for (const m of errs) errors.push(`${rel} linha ${i + 1} (${e && e.id ? e.id : "sem id"}): ${m}`);
       if (e && typeof e === "object" && !Array.isArray(e)) {
         const id = entryIdentity(e);
         if (seen.has(id)) errors.push(`${rel} linha ${i + 1} (${e.id}): identidade duplicada da linha ${seen.get(id)}`);
         else seen.set(id, i + 1);
+        if (kind === "ledger") ledgerEntries.push(e);
       }
     });
   }
-  return { errors, counts };
+  // TARS-REC-1: a classe que repetiu sem destino e' FALHA (nao aviso) — e' o "X = 2" do dono.
+  const { classes, falhas } = classesRecorrentes(ledgerEntries);
+  for (const c of falhas) {
+    errors.push(
+      `classe '${c.classe}' repetiu ${c.ocorrencias}x sem 'destino' (id do item de backlog que fecha a classe)`,
+    );
+  }
+  return { errors, avisos, counts, classes };
 }
 
 // SEG-869: o boot le SO o INDEX (operacional, SEG-864); o ledger sai do boot
@@ -560,8 +600,12 @@ if (isMain && process.argv.includes("--check")) {
   }
   console.log(`ai-memory ok (${count} entradas; ${SCHEMA_KEYS.length} campos no doc e no gate)`);
 } else if (isMain && process.argv[2] === "doctor" || (isMain && process.argv.includes("--doctor"))) {
-  const { errors, counts } = doctor(flag("--file") ? [{ file: flag("--file"), kind: flag("--kind") ?? "memory" }] : undefined);
+  const { errors, avisos, counts, classes } = doctor(flag("--file") ? [{ file: flag("--file"), kind: flag("--kind") ?? "memory" }] : undefined);
   const resumo = Object.entries(counts).map(([f, n]) => `${f}:${n}`).join(", ");
+  for (const a of avisos ?? []) console.error(`ai-memory doctor: AVISO — ${a}`);
+  for (const c of classes ?? []) {
+    console.log(`classe ${c.classe ?? "(sem classe)"}: ${c.ocorrencias} ocorrencia(s)` + (c.destino ? ` -> ${c.destino}` : ""));
+  }
   if (errors.length) {
     console.error(`ai-memory doctor: ${errors.length} problema(s) (${resumo}):`);
     for (const e of errors) console.error("  " + e);
