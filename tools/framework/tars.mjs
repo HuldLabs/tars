@@ -27,6 +27,7 @@ import './tars-as-module.mjs'
 import * as promote from './tars-promote.mjs'
 import * as hooks from './tars-hooks.mjs'
 import * as syncMod from './tars-sync.mjs'
+import * as gitMod from './tars-git.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -68,6 +69,8 @@ const USAGE = [
   '  check                      atalho de `sync --check` (o gate)',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
+  '  git prune [--remote]       apaga branches ja incorporadas (--remote: tambem no origin)',
+  '                             use --dry-run para so imprimir; nunca apaga main nem a atual',
   '',
   '  --help                     esta ajuda',
   '',
@@ -126,6 +129,17 @@ async function promoteCommand(rest, project) {
   console.log('promocao escrita no working tree do Tars (nao commitada: revise antes).')
 }
 
+/** `tars git prune` — despacho fino para o modulo dono (nada de logica de git aqui). */
+async function gitCommand(rest, project) {
+  const sub = rest[0]
+  if (sub !== 'prune') throw new Error(`use \`tars git prune [--remote] [--dry-run]\` (recebi '${sub ?? ''}')`)
+  await gitMod.gitPrune({
+    project: resolve(project ?? process.cwd()),
+    remote: rest.includes('--remote'),
+    dryRun: rest.includes('--dry-run'),
+  })
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -139,6 +153,7 @@ const COMMANDS = {
   check: (rest, project) => sync('sync', [...rest, '--check'], project),
   hooks: runHooksCommand,
   promote: promoteCommand,
+  git: gitCommand,
 }
 
 async function main() {
