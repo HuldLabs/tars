@@ -130,6 +130,25 @@ describe('doctor — o wiring do harness (a ponta que faz o guard rodar)', () =>
     expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
   })
 
+  it('GIT_TERMINAL_PROMPT ausente sozinho ja e FALHA — o wiring nomeia a chave exata', () => {
+    // O caso mais traicoeiro e' o env PARCIAL: copiaram 2 das 3 chaves e o `git fetch`
+    // continua pendurando. O doctor aponta QUAL falta; senao o dono reescreve o mesmo
+    // bloco, o defeito volta e a classe fica aberta.
+    const tars = fixture(d())
+    fs.writeFileSync(
+      path.join(tars, '.claude', 'settings.json'),
+      JSON.stringify({
+        env: { GCM_INTERACTIVE: NONINTERACTIVE_ENV.GCM_INTERACTIVE, GIT_SSH_COMMAND: NONINTERACTIVE_ENV.GIT_SSH_COMMAND },
+        hooks: {},
+      }),
+    )
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.ok).toBe(false)
+    expect(r.wiring.avisos).toEqual(["GIT_TERMINAL_PROMPT (esperado '0')"])
+    expect(r.wiring.detalhe).toMatch(/GIT_TERMINAL_PROMPT/)
+    expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
+  })
+
   it('projeto SEM .claude/settings.json = FALHA nomeando o conserto', () => {
     const tars = fixture(d(), { wiring: false })
     const r = doctor({ tars, project: tars })
