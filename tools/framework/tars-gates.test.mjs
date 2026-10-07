@@ -332,7 +332,7 @@ describe("gate no-add-all", () => {
 });
 
 describe("gate release-guard", () => {
-  const gate = GATE("release-guard", "release-guard.mjs");
+  const gate = GATE("release-guard", "gate.mjs");
   const V = "0.0.1-dev.6";
 
   // Repo de fixture com commit: o gate compara `.ai/VERSION` do worktree com o HEAD.
@@ -359,7 +359,7 @@ describe("gate release-guard", () => {
   }
 
   const julgar = async (dir, mensagem = "") => {
-    const mod = await import(path.join(HERE, "..", "..", ".ai", "gates", "release-guard", "release-guard.mjs"));
+    const mod = await import(path.join(HERE, "..", "..", ".ai", "gates", "release-guard", "gate.mjs"));
     return mod.julgar(dir, { mensagem });
   };
 

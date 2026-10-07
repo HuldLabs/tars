@@ -9,7 +9,7 @@
 # portanto, so' os GATES e os GUARDS que o Tars usa — nao ha' `[tars].skills/rules/memory`
 # a copiar para lugar nenhum (o catalogo E' a fonte desses itens).
 [tars]
-version = "0.0.1-dev.6"
+version = "0.0.1-dev.7"
 
 # Guards do agente: os que o `.claude/settings.json` do proprio Tars roda (PreToolUse).
 guards = [
@@ -19,7 +19,8 @@ guards = [
 
 [gates]
 # commit-msg recebe o arquivo da mensagem (argv do hook do git); gitleaks varre o indice.
-# Mesma politica do consumidor segtools (.ai/tars.toml de la'): o menor conjunto que cobre
-# mensagem + segredo. no-add-all fica no guard de agente, nao no hook do git.
-pre-commit = ["gitleaks"]
+# release-guard cobra versao+CHANGELOG em commit que toca o motor (tools/framework/tars-*,
+# .ai/gates, .ai/guards, .ai/governance) — o Tars e' o primeiro consumidor da propria regra.
+# no-add-all fica no guard de agente, nao no hook do git.
+pre-commit = ["gitleaks", "release-guard"]
 commit-msg = ["commit-msg"]

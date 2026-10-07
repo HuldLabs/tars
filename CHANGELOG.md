@@ -4,6 +4,49 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.7
+
+### O que mudou
+- `tars sync` gera os hooks do GIT e, em modo `self`, os hooks do PROPRIO catalogo; falha
+  alto quando `core.hooksPath` aponta pasta morta (de5ca60) e `tars doctor` acusa hook
+  morto e exige os hooks do Tars vivos (cfd3315).
+- `tars sync` **nao sobrescreve** hook do consumidor sem a marca de autoria (e170796):
+  hook seu sem a marca: o sync RECUSA escrever; adote com `tars sync --adopt` ou declare
+  o hook como local.
+- `tars sync` **poda a saida gerada orfa** que saiu do manifesto (e979bd6): item removido
+  do `.ai/tars.toml` some do disco no proximo sync, sem resto.
+- `handoff check` aceita a branch `main` (be074ba).
+- O binario roda os gates num **runtime JS de verdade** (2a7d387) e o modulo importado
+  pelo binario nao roda o proprio `main` (2d9d70e): `dist/tars sync --check` nao morre mais com ENOENT em `/.ai/`.
+- Consumidor que ja' tem `.ai/VERSION` nao vira catalogo por engano (5129820).
+- `incident add` registra o incidente e acusa recorrencia (a2f7731); `tars doctor` acusa
+  incidente recorrente sem guarda (cd860d1).
+- `memory` valida vocabulario fechado de tags, ambiente e classe (7aec978).
+- **NOVO: gate `release-guard`** (ccecf5e) — commit que toca o motor do Tars
+  (`tools/framework/tars-*.mjs`, `.ai/gates/`, `.ai/guards/`, `.ai/governance/`) tem de
+  subir `.ai/VERSION` E trazer entrada no `CHANGELOG.md`, salvo `No-Release: <motivo>`.
+
+### Por que
+- O consumidor precisa das notas de upgrade: commit que muda o motor sem subir a versao
+  deixa quem consome sem saber o que mudou (o custo que o seo-brain pagou em 07/10).
+- Rubrica de hook do consumidor nao pode ser sobrescrita calada pelo sync; e output orfao
+  acumula lixo que o manifesto ja' nao declara.
+- Gate que roda no runtime errado (ou duas vezes) reprova commit legitimo.
+
+### Arquivos impactados no consumidor
+- `.ai/gates/release-guard/` (novo gate) e `.ai/doctrines.toml`
+- `.githooks/` (pre-commit do consumidor que ligar o gate)
+- `.ai/VERSION`, `CHANGELOG.md`, `tars.lock` (versao do catalogo)
+- `.ai/base/gates/`, `.ai/base/guards/`, `.ai/base/governance/` regenerados pelo sync
+
+### O que o consumidor faz
+```
+tars sync           # se RECUSAR nomeando um hook seu: ele tem gates do projeto. NAO adote;
+                    # declare o gate como local. So' `--adopt <hook>` se o hook era copia velha do Tars.
+tars upgrade-notes  # le as notas entre a versao do lock e a atual
+tars doctor         # deve passar; acusa hook morto e incidente recorrente sem guarda
+```
+
 ## 0.0.1-dev.6
 
 ### O que mudou

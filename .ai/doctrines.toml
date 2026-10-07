@@ -109,6 +109,15 @@ prova = "git grep -n 'FONTE UNICA' -- docs/"
 onde = "ci"
 escopo = "segtools"
 
+[[doctrine]]
+id = "release/motor-sobe-versao"
+titulo = "Commit que toca o motor do Tars sobe a versao e traz entrada no CHANGELOG"
+fonte = ".ai/gates/release-guard/GATE.md:1-8"
+gate = ".ai/gates/release-guard"
+prova = "node .ai/gates/release-guard/gate.mjs --forca-reprova 2>/dev/null; test $? -ne 0"
+onde = "pre-commit"
+escopo = "catalogo"
+
 # ---------------------------------------------------------------------------
 # Segtools — a prova roda no projeto dele; entram no `.ai/tars.toml` de la'
 # ---------------------------------------------------------------------------
