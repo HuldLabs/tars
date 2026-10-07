@@ -47,6 +47,7 @@ restart left a phantom watchdog (listed by `CronList`, never firing) and a worke
      inside the command (that detaches it from the app and hides it from the sidebar).
    - Worker already running (e.g. after a restart): arm a **`Monitor`** on its live status (timeline tail) that emits on
      every status/commit change and exits when the worker dies; re-arm on expiry (max 30 min).
+3a. **Ownership check after any restart (2026-10-07):** before dispatching or killing anything, run `ListAgents` and list the live `fast.py --slot` processes in the container. A forked copy of the session inherits the history and believes the workers are its own; two coordinators re-dispatched and killed each other's workers the same day. Never kill a process by a broad name/arg pattern — only the exact pid (e.g. the one listening on the port), and never a `claude` worker process (a broad `playwright|47001` match killed a live worker).
 4. **Say it in the first report**: watchdog id, heartbeat time, one line per worker with its sidebar task/monitor id.
    The operator should never have to ask whether these exist.
 
@@ -735,6 +736,7 @@ Not a wrap-up checklist — as it happens:
   before dispatching work on it.
 - On a worker reporting back → row to qa-ready + a durable-doc entry with the real
   evidence and any out-of-scope finding.
+- On closing any piece of work → **cleanup is part of the delivery (owner SOP, 2026-10-07; disk filled up 2026-10-06)**: remove what it created (read-only copies in `.cache/bench/*`, drafts in `.cache/<topic>/`, agent worktrees) and run `task ops:clean`; the report says what was cleaned. Docker volumes only with the owner.
 - On your review → qa-done, with the actual outcome — a bare status with no
   outcome detail is unacceptable.
 
