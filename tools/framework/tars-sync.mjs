@@ -154,13 +154,30 @@ export async function readManifest(project) {
   }
 }
 
+/**
+ * Dependencia IMPLICITA do catalogo: guard que `source`a um irmao (ex.: `lib-json.sh` do
+ * `jget`) nao roda no consumidor se o irmao nao vier junto — foi o que a prova do binario
+ * pegou em 07/10: o guard saia com `jget: command not found` e LIBERAVA o `git add -A`.
+ * Declarar o guard traz a dependencia; o consumidor nao precisa saber que ela existe.
+ */
+export const GUARD_DEPS = ['lib-json']
+
+/** Irmas de guard que o catalogo tem e o consumidor declarou um guard que usa. */
+const guardDeps = (manifest, tars) =>
+  (manifest.guards ?? []).some((g) => existsSync(join(tars, '.ai', 'guards', g.replace(/\.sh$/, '') + '.sh')))
+    ? GUARD_DEPS.filter((dep) => existsSync(join(tars, '.ai', 'guards', dep + '.sh')))
+    : []
+
 /** Itens do catalogo a copiar (tudo, menos o `local`, que e' do projeto). */
-export const declare = (manifest) =>
-  AREAS.flatMap((area) =>
-    area === 'gates'
-      ? HOOKS.filter((h) => h !== 'local').flatMap((h) => (manifest.gates[h] ?? []).map((item) => ({ area, item })))
-      : manifest[area].map((item) => ({ area, item })),
-  )
+export const declare = (manifest, { tars } = {}) =>
+  AREAS.flatMap((area) => {
+    if (area === 'gates')
+      return HOOKS.filter((h) => h !== 'local').flatMap((h) => (manifest.gates[h] ?? []).map((item) => ({ area, item })))
+    const items = manifest[area].map((item) => ({ area, item }))
+    // Sem `tars` resolvido (teste de declaracao puro), as dependencias nao entram: quem
+    // sincroniza SEMPRE passa o catalogo.
+    return area === 'guards' && tars ? [...items, ...guardDeps(manifest, tars).map((item) => ({ area, item }))] : items
+  })
 
 // ---------------------------------------------------------------------------
 // Tars de origem
@@ -271,7 +288,7 @@ export async function plan({ tars, project, manifest, lock }) {
   const stale = []
   const absent = []
   const copied = []
-  for (const entry of declare(manifest)) {
+  for (const entry of declare(manifest, { tars })) {
     const src = join(tars, '.ai', sourceOf(entry))
     const dest = join(project, '.ai', 'base', destOf(entry))
     if (!existsSync(src)) {
@@ -350,7 +367,7 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 
   const files = {}
   const wrote = []
-  for (const entry of declare(manifest)) {
+  for (const entry of declare(manifest, { tars })) {
     const key = destOf(entry)
     const locked = lock?.files?.[key]?.sha256
     const dest = join(project, '.ai', 'base', destOf(entry))

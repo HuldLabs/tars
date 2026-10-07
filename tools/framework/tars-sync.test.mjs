@@ -286,6 +286,22 @@ describe("tars-sync — camada base marcada", () => {
 });
 
 describe("tars-sync — wiring do harness (fatia 3a)", () => {
+  it("guard que source'a um irmao traz o irmao junto (senao o guard nao roda)", async () => {
+    // O `block-destructive-commands` faz `source lib-json.sh`: sem o irmao na base o guard
+    // sai com `jget: command not found` e LIBERA o comando. Guard declarado puxa a dep.
+    const { tars, project, base } = scaffold({
+      manifest: MANIFEST.replace("alpha-guard", "block-destructive-commands"),
+    });
+    // O catalogo de fixture ganha o guard e o irmao `lib-json.sh`.
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "block-destructive-commands.sh"), "#!/usr/bin/env bash\nsource \"$(dirname \"$0\")/lib-json.sh\"\n");
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "lib-json.sh"), "jget() { :; }\n");
+
+    await sync({ tars, project, log: () => {} });
+
+    expect(fs.existsSync(path.join(base, "guards", "block-destructive-commands.sh"))).toBe(true);
+    expect(fs.existsSync(path.join(base, "guards", "lib-json.sh"))).toBe(true);
+  });
+
   it("gera .claude/settings.json com PreToolUse chamando os guards DECLARADOS", async () => {
     const { tars, project } = scaffold();
     await sync({ tars, project, log: () => {} });
