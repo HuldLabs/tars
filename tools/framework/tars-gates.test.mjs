@@ -64,6 +64,26 @@ describe("gate commit-msg", () => {
     expect(r.stderr).toMatch(/causa raiz/);
   });
 
+  it("propagacao: aceita o 5o campo no bloco (a camada que impede a classe de voltar)", () => {
+    const r = valida(
+      "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
+        "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
+        "  correcao: tools/framework/tars-verify.mjs\n  propagacao: guard abc123\n",
+    );
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toMatch(/propagacao/i);
+  });
+
+  it("propagacao ausente no bloco AVISA (nao quebra o historico)", () => {
+    const r = valida(
+      "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
+        "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
+        "  correcao: tools/framework/tars-verify.mjs\n",
+    );
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/propagacao/i);
+  });
+
   it("Incident de fix exige os 4 campos (1 linha NAO basta)", () => {
     const r = valida("🐛 fix(hub): conserta o parser\n\nIncident: o parser acumulava na secao errada\n");
     expect(r.status).not.toBe(0);

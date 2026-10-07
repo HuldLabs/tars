@@ -30,7 +30,11 @@ const NO_TRAILER_MIN = 10; // "nada novo" so vale se nomear (motivo >=10 chars)
 // Um checklist sozinho pega o sintoma de novo; os 4 campos forcam a CAUSA. "be more careful"
 // nunca e' causa nem correcao — e o campo `causa raiz` nao pode repetir o `porque`.
 const CAMPOS = ['erro', 'porque', 'causa raiz', 'correcao'];
-const CAMPO_RE = new RegExp('^\\s*(?:[-*]\\s*)?(' + CAMPOS.join('|') + ')\\s*:\\s*(.*)$', 'i');
+// 5o campo (doutrina "incidente -> prevencao propagada", governance/incidente-vira-prevencao.md):
+// `propagacao` nomeia a CAMADA do Tars que impede a classe de voltar + o commit, ou `n/a` com
+// motivo. Obrigatorio em licao NOVA; em licao antiga (sem ele) so' AVISA — nao quebra historico.
+const CAMPOS_EXTRA = ['propagacao'];
+const CAMPO_RE = new RegExp('^\\s*(?:[-*]\\s*)?(' + [...CAMPOS, ...CAMPOS_EXTRA].join('|') + ')\\s*:\\s*(.*)$', 'i');
 const VAGO_RE = /^(seja mais cuidadoso|ter mais cuidado|be more careful|prestar aten[cç][aã]o|mais aten[cç][aã]o)\b/i;
 
 /** Coleta os trailers `Lesson:`/`No-Lesson:`/`Incident:`/`No-Incident:` do corpo. */
@@ -73,6 +77,15 @@ function requireTrailer(type, tr, blocos, kind) {
   const b = blocos[kind] || {};
   const faltando = CAMPOS.filter((c) => !b[c]);
   const temBloco = faltando.length === 0;
+  // 5o campo `propagacao`: EXIGIDO no bloco (licao nova). Licao em 1 linha so' AVISA — a
+  // forma curta e' legado e nao pode quebrar o historico (doutrina incidente-vira-prevencao).
+  const avisoPropaga = (bloco) => {
+    if (!bloco || bloco.propagacao) return;
+    console.error(`\ncommit-msg: AVISO — falta 'propagacao' (5o campo da licao).`);
+    console.error('  diga a CAMADA que impede a classe de voltar + o commit, ou `n/a` com motivo');
+    console.error('  (guard > doctor > env/config do sync > gate de CI > skill — o mais automatico ganha):');
+    console.error('    propagacao: guard <commit> | doctor <commit> | ... | n/a <motivo>\n');
+  };
   // `causa raiz` == `porque` = nao cavou o nivel. Vale para o Incident E para a licao: a
   // frase repetida e' o sintoma, nao a causa (fabber LESSONS-LEARNED.md).
   const mesmas = b['causa raiz'] && norm(b['causa raiz']) === norm(b['porque']);
@@ -95,16 +108,21 @@ function requireTrailer(type, tr, blocos, kind) {
       console.error('      porque: <o mecanismo imediato>');
       console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
       console.error('      correcao: <o arquivo/gate que muda — nunca "ter mais cuidado">');
+      console.error('      propagacao: <camada + commit, ou `n/a` com motivo>');
       console.error(`  ou escape com No-Incident: <motivo com >=${NO_TRAILER_MIN} chars>\n`);
       process.exit(1);
     }
     if (mesmas) exigeCausa();
+    avisoPropaga(b);
     return;
   }
 
   // Licao: trailer de 1 linha OU bloco completo (a escolha e' do autor).
   if (mesmas) exigeCausa();
-  if (tr[kind] || temNo || temBloco) return;
+  if (tr[kind] || temNo) return;
+  // Bloco completo sem `propagacao` = licao nova incompleta: AVISA, nao reprova (historico).
+  if (temBloco) return avisoPropaga(b);
+  avisoPropaga(b);
   console.error(`\ncommit-msg: commit '${type}' sem registro de licao.`);
   console.error('  registre o aprendizado em 1 linha ou no bloco de 4 campos:');
   console.error(`    Lesson: <texto|id>   (ou No-Lesson: <motivo com >=${NO_TRAILER_MIN} chars>)`);
@@ -113,6 +131,7 @@ function requireTrailer(type, tr, blocos, kind) {
   console.error('      porque: <o mecanismo imediato>');
   console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
   console.error('      correcao: <o arquivo/gate que muda>');
+  console.error('      propagacao: <camada + commit, ou `n/a` com motivo>');
   console.error('  (escapar e' + ' trailer, nunca --no-verify)\n');
   process.exit(1);
 }
