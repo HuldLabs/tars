@@ -1,0 +1,2 @@
+{"id":"mem-fixture-um","ts":"2026-09-01","scope":"tars","statement":"Entrada de fixture com tamanho suficiente","durability":"durable","source_refs":["AGENTS.md"],"confidence":"high","validation_status":"verified"}
+{"id":"mem-fixture-dois","ts":"2026-09-02","scope":"tars","statement":"Segunda entrada de fixture igualmente valida","durability":"durable","source_refs":["CLAUDE.md:1"],"confidence":"medium","validation_status":"observed"}

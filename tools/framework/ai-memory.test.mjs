@@ -11,6 +11,10 @@ import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, va
 // global), nao sob hub/ (app).
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const exists = (rel) => fs.existsSync(path.join(repo, rel));
+// Fixture do SCHEMA (R3: a memoria e' de cada projeto — o Tars e' catalogo e a
+// memoria dele nasce vazia). O teste POSITIVO valida este arquivo, nao o store
+// real, que hoje e' a memoria do segtools copiada (scope/source_refs alheios).
+const memoryFixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "ai-memory-fixtures", "operational-memory.jsonl");
 const base = { id: "mem-x", ts: "2026-09-25", scope: "hub", statement: "um fato suficientemente longo", durability: "durable", source_refs: ["AGENTS.md"], confidence: "high", validation_status: "verified" };
 
 /** Escreve um .jsonl num diretorio temporario e devolve o caminho. */
@@ -21,9 +25,19 @@ function fixture(name, content) {
   return p;
 }
 
-describe("memoria operacional — POSITIVO (arquivo real)", () => {
-  it("cada linha valida (schema, source_refs, enums, sem chave proibida)", () => {
-    const { errors, count } = validateMemoryFile();
+describe("memoria operacional — POSITIVO (fixture + arquivo real se houver)", () => {
+  it("a fixture satisfaz o schema (source_refs, enums, sem chave proibida)", () => {
+    const { errors, count } = validateMemoryFile(memoryFixture);
+    expect(errors, `fixture: ${count} linhas`).toEqual([]);
+  });
+
+  // O store do Tars nasce VAZIO (catalogo, nao projeto). So' e' julgado quando
+  // tem conteudo proprio; o store herdado do segtools nao e' o gate do Tars.
+  const realFile = path.join(repo, ".ai", "memory", "operational-memory.jsonl");
+  const realHasContent = fs.existsSync(realFile) && fs.readFileSync(realFile, "utf8").trim().length > 0;
+
+  it.skipIf(!realHasContent)("o store real (se nao vazio) tambem satisfaz o schema", () => {
+    const { errors, count } = validateMemoryFile(realFile);
     expect(errors, `arquivo: ${count} linhas`).toEqual([]);
   });
 });
@@ -58,9 +72,12 @@ describe("memoria operacional — NEGATIVO (linha malformada, AC-01)", () => {
   });
 
   it("a linha malformada nao contamina a linha boa", () => {
-    const { errors } = validateMemoryFile(fixture("misto.jsonl", `nao-e-json\n${good}\n`));
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatch(/^linha 1: JSON invalido/);
+    // A fixture vive num tmpdir: a `source_refs` e' o proprio caminho (absoluto),
+    // senao o `exists` do validateMemoryFile a julga contra a raiz do repo.
+    const bom = fixture("bom.jsonl", "");
+    const arquivo = fixture("misto.jsonl", `nao-e-json\n${JSON.stringify({ ...base, id: "mem-x", source_refs: [bom] })}\n`);
+    const { errors } = validateMemoryFile(arquivo);
+    expect(errors).toEqual([expect.stringMatching(/^linha 1: JSON invalido/)]);
   });
 });
 
@@ -168,7 +185,8 @@ describe("SEG-862 — doctor acusa linha invalida e duplicata", () => {
     expect(errors.some((e) => /identidade duplicada/.test(e))).toBe(true);
   });
   it("arquivo limpo -> sem erro", () => {
-    const f = fixture("mem.jsonl", `${memLine({ id: "mem-a" })}\n`);
+    const bom = fixture("bom.jsonl", ""); // source_ref absoluta que existe no FS real
+    const f = fixture("mem.jsonl", `${memLine({ id: "mem-a", source_refs: [bom] })}\n`);
     expect(doctor([{ file: f, kind: "memory" }]).errors).toEqual([]);
   });
 });

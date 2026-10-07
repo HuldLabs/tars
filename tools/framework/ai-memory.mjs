@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { findSecrets } from "./secrets-patterns.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+if (process.env.SHOW_REPO) process.stderr.write("REPO=" + REPO + " ARGV1=" + process.argv[1] + "\n");
 const FILE = path.join(REPO, ".ai", "memory", "operational-memory.jsonl");
 // SEG-862: o ledger de INCIDENTES (erro/recorrencia) tem schema proprio e mais curto.
 export const LEDGER_FILE = path.join(REPO, ".ai", "memory", "incident-ledger.jsonl");
@@ -57,12 +58,14 @@ export function validateMemoryEntry(e, opts = {}) {
 
   if (!Array.isArray(e.source_refs) || e.source_refs.length === 0) {
     errs.push("source_refs vazio (a prova tem de existir)");
-  } else if (opts.exists) {
+  } else if (opts.exists && !e.repo) {
     for (const r of e.source_refs) {
       // `arquivo.md:12` (linha) e' prova legitima: so' o CAMINHO precisa existir.
-      // `repo:caminho` (SOFON-MEM-1) prova num OUTRO repo: nao ha' o que conferir aqui.
       const rel = typeof r === "string" ? r.split("#")[0].split(":")[0] : "";
       if (/:/.test(String(r))) continue;
+      // Caminho ABSOLUTO (fixture em tmpdir, store importado a mao) e' julgado pelo
+      // FS real: `path.join(REPO, "/tmp/x")` daria inexistente para arquivo que existe.
+      if (path.isAbsolute(rel)) { if (!fs.existsSync(rel)) errs.push(`source_ref inexistente: '${String(r)}'`); continue; }
       if (!rel || !opts.exists(rel)) errs.push(`source_ref inexistente: '${String(r)}'`);
     }
   }
