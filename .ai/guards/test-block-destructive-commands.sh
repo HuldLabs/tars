@@ -24,4 +24,20 @@ check "rm -rf docker volumes"      "rm -rf /var/lib/docker/volumes/x"           
 check "rm -rf .cache"              "rm -rf .cache/"                                  allow
 check "override do operador"       "SEGTOOLS_ALLOW_DESTRUCTIVE=1 docker compose down -v" allow
 check "ls"                         "ls -la"                                          allow
+
+# --- regras de git (.ai/governance/git.md §Proibido) ---
+check "git add -A"                 "git add -A"                                      block
+check "git add ."                  "git add ."                                       block
+check "git add --all"              "git add --all"                                   block
+check "git add -u"                 "git add -u"                                      block
+check "git commit -a"              "git commit -a"                                   block
+check "git commit -am"             "git commit -am 'msg'"                            block
+check "git push --no-verify"       "git push --no-verify"                            block
+check "git commit --no-verify"     "git commit --no-verify -m x"                     block
+check "git add -f ignorado"        "git add -f .cache/x"                             block
+check "git add '--' explicito"     "git add -- tools/framework/tars.mjs"             allow
+check "git add PATH (sem --)"      "git add tools/framework/tars.mjs"                allow
+check "git commit pathspec"        "git commit -F /tmp/m -- tools/x.mjs"             allow
+check "git status"                 "git status --short"                              allow
+check "override git add -A"        "SEGTOOLS_ALLOW_DESTRUCTIVE=1 git add -A"         allow
 exit $fail

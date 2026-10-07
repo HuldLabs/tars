@@ -46,6 +46,22 @@ if printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])rm[[:space:]]+-[a-z]*r[a-z]*f
     fi
   fi
 fi
+# --- regras de git (.ai/governance/git.md §Proibido) --------------------------------
+# O gate `no-add-all` (.ai/gates/no-add-all/) ja' recusa a familia add/commit amplo, mas
+# ele so' esta no PreToolUse de quem o declara; a proibicao vale para TODO consumidor do
+# Tars, entao ela mora aqui — no guard que todo consumidor traz. Mesma mensagem/override
+# do resto do arquivo (o `block`, nao um exit proprio).
+# `git add` amplo: `-A`/`--all`/`-u`/`--update`/`.`
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+add[^;&|]*[[:space:]](-a|--all|-u|--update|\.)([[:space:]]|$|;)' && block "'git add -A/--all/-u/.' e' proibido — use pathspec explicito: 'git add -- <arquivo>...'."
+# `git add .` sem mais args (o `\.` acima ja' cobre o caso com espaco; este cobre 'git add .')
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+add[[:space:]]*\.?[[:space:]]*$' && block "'git add' sem pathspec e' proibido — use 'git add -- <arquivo>...'."
+# `git add -f`/`--force`: atravessa o .gitignore (INV-CACHE: .cache/ ja' foi parar na main)
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+add[^;&|]*[[:space:]](-f|--force|-[a-z]*f[a-z]*)([[:space:]]|$)' && block "'git add -f/--force' atravessa o .gitignore — nao commite o que esta ignorado."
+# `git commit -a`/`--all`: commita o que nao e' seu
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit[^;&|]*[[:space:]](-[a-z]*a[a-z]*|--all)([[:space:]]|$)' && block "'git commit -a/--all' e' proibido — commite com pathspec: 'git commit -F <msg> -- <arquivo>...'."
+# `--no-verify` em commit/push: pula os hooks. Nunca.
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])(git[[:space:]]+(commit|push)|git[[:space:]]+-c[^;&|]*commit)[^;&|]*--no-verify([[:space:]]|$)' && block "'--no-verify' pula os hooks de commit/push — nunca use (o gate e' o ponto)."
+
 # git clean -fdx / reset --hard: avisa (nao bloqueia)
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+clean[[:space:]]+-[a-z]*f[a-z]*d[a-z]*x([[:space:]]|$)' && warn "'git clean -fdx' remove todo arquivo nao rastreado — verifique 'git status'."
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)' && warn "'git reset --hard' descarta mudancas nao commitadas — verifique 'git status'."
