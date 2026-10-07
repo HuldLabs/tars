@@ -232,7 +232,9 @@ export async function hashSource(dest) {
 const LAYOUT = {
   skills: (item) => ({ path: join('skills', item), ext: '' }),
   rules: (item) => ({ path: join('rules', item), ext: '.md' }),
-  memory: (item) => ({ path: join('memory', 'agent', item), ext: '.md' }),
+  // Fato de memoria: o manifesto declara o nome do ARQUIVO como ele e' (`db` -> `db.md`);
+  // `.jsonl` ja' vem com a extensao no nome (o manifesto nao a inventa).
+  memory: (item) => ({ path: join('memory', 'agent', item), ext: item.endsWith('.jsonl') ? '' : '.md' }),
   gates: (item) => ({ path: join('gates', item), ext: '' }),
 }
 
@@ -279,12 +281,36 @@ export async function plan({ tars, project, manifest, lock }) {
   return { missing, stale, absent, copied }
 }
 
+/**
+ * Fato da camada base ganha `source: "base"` na copia (TARS-MEM-2): o `ai-memory` do
+ * consumidor le base+projeto e sem a marca nao distingue de onde veio o fato — o indice
+ * do boot sairia sem procedencia. O catalogo (origem) fica intacto: so' a copia muda.
+ * JSONL e' uma linha por fato; qualquer outra forma (agent/<name>.md) vai como esta'.
+ */
+export async function stampSource(dest) {
+  if (!dest.endsWith('.jsonl')) return
+  const out = []
+  for (const line of (await readFile(dest, 'utf8')).split('\n')) {
+    if (!line.trim()) continue
+    let e
+    try {
+      e = JSON.parse(line)
+    } catch {
+      out.push(line) // linha ilegivel nao e' nossa para consertar (o gate do ai-memory acusa)
+      continue
+    }
+    out.push(JSON.stringify(e?.source ? e : { ...e, source: 'base' }))
+  }
+  await writeFile(dest, out.length ? out.join('\n') + '\n' : '')
+}
+
 async function copyItem(tars, project, entry) {
   const src = join(tars, '.ai', sourceOf(entry))
   const dest = join(project, '.ai', 'base', destOf(entry))
   await mkdir(dirname(dest), { recursive: true })
   await rm(dest, { recursive: true, force: true })
   await cp(src, dest, { recursive: true })
+  if (entry.area === 'memory') await stampSource(dest)
   return hashSource(dest)
 }
 
@@ -346,6 +372,42 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 }
 
 // ---------------------------------------------------------------------------
+// init — porta de entrada do consumidor (docs/TARS.md §Catalogo-alvo: "a porta de
+// entrada e' `tars init`"). Cria o manifesto minimo e a memoria vazia, e ja' roda o
+// sync: projeto que nao consome nada nao precisa de `tars.toml`.
+// ---------------------------------------------------------------------------
+export const MANIFEST_TEMPLATE = `# Manifesto do consumidor do Tars (docs/TARS.md §Modelo). So' o DECLARADO vem.
+# As listas abaixo estao vazias de proposito: descomente e preencha o que este projeto
+# usa. O MOTOR vem sempre (ai-memory, ai-layer-check, o sync e os hooks), sem declarar.
+[tars]
+version = "\${version}"
+skills  = []                                        # ex.: ["agent-coordination", "segtools-sdd"]
+rules   = []                                        # ex.: ["base"]
+memory  = ["base"]                                  # fatia "base" da memoria (o fato promovido); outras: "git", "db"
+
+[gates]
+pre-commit = []                                     # do catalogo: commit-msg, gitleaks, no-add-all, layout-check, ds-gate
+pre-push   = []                                     # do catalogo: full-check
+local      = []                                     # do PROJETO (moradia propria, nao entra no lock): ex.: ["tools/gates/meu.sh"]
+`
+
+/** Cria o manifesto minimo e a memoria vazia, e sincroniza. */
+export async function init({ tars = findTars(), project = process.cwd(), log = console.log } = {}) {
+  const manifestPath = join(project, '.ai', 'tars.toml')
+  // Falha RUIDOSA antes de escrever: projeto que ja' tem manifesto nao e' inicializado
+  // por cima (o `init` nunca adivinha o que era do projeto).
+  if (existsSync(manifestPath)) throw new Error(`ja' existe ${relative(project, manifestPath)} — projeto ja' inicializado (edite a mao)`)
+  const version = (await tarsVersion(tars)) ?? 'v0.0'
+  await mkdir(join(project, '.ai', 'memory'), { recursive: true })
+  await writeFile(manifestPath, MANIFEST_TEMPLATE.replace('${version}', version))
+  // `memory = ["base"]` e' a fatia da memoria do MOTOR (TARS-MEM-2): o projeto iniciado
+  // ja' le a base promovida, sem cansar quem inicia com um item que talvez nao exista.
+  const r = await sync({ tars, project, log })
+  log(`init: ${relative(project, manifestPath)} + .ai/memory/ criados (Tars ${version}); rode \`tars sync\` apos declarar itens.`)
+  return { manifest: manifestPath, version, wrote: r.wrote }
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 function arg(name) {
@@ -354,21 +416,28 @@ function arg(name) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  const [cmd = 'sync'] = process.argv.slice(2).filter((a) => !a.startsWith('--'))
   const check = process.argv.includes('--check')
   try {
-    const r = await sync({
-      tars: arg('--tars') ?? findTars(),
+    const opts = {
+      tars: resolve(arg('--tars') ?? findTars()),
       project: resolve(arg('--project') ?? process.cwd()),
-      check,
-    })
-    const bad = check && (r.missing.length || r.stale.length || r.absent.length)
-    if (bad) {
-      console.error('\nbase do Tars inconsistente (rode `tars sync`).')
-      process.exit(1)
     }
-    if (check) console.log('base do Tars ok.')
+    if (cmd === 'init') {
+      await init(opts)
+    } else if (cmd === 'sync') {
+      const r = await sync({ ...opts, check })
+      const bad = check && (r.missing.length || r.stale.length || r.absent.length)
+      if (bad) {
+        console.error('\nbase do Tars inconsistente (rode `tars sync`).')
+        process.exit(1)
+      }
+      if (check) console.log('base do Tars ok.')
+    } else {
+      throw new Error(`comando desconhecido: '${cmd}' (use sync | init)`)
+    }
   } catch (err) {
-    console.error(`tars sync: ${err.message}`)
+    console.error(`tars ${cmd}: ${err.message}`)
     process.exit(1)
   }
 }

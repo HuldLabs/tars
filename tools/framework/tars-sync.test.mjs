@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { declare, hashSource, readManifest, sync } from "./tars-sync.mjs";
+import { declare, hashSource, init, readManifest, sync } from "./tars-sync.mjs";
 
 // AI-TARS fatia 3 (docs/TARS.md §Fatias): `tars sync` puxa do catalogo so' o
 // DECLARADO no `.ai/tars.toml` do projeto consumidor, trava sha256 em
@@ -184,5 +184,53 @@ describe("tars-sync — falhas", () => {
 describe("tars-sync — fixture do catalogo", () => {
   it("a fixture do Tars tem VERSION (contrato de origem)", () => {
     expect(fs.existsSync(path.join(TARS_FIXTURE, ".ai", "VERSION"))).toBe(true);
+  });
+});
+
+describe("tars-sync — camada base marcada", () => {
+  it("o fato do JSONL copiado marca `source: base` (origem no indice do consumidor)", async () => {
+    const { tars, project, base } = scaffold({
+      manifest: MANIFEST.replace('memory  = ["git"]', 'memory  = ["jsonl.jsonl"]'),
+    });
+    const jsonl = path.join(base, "memory", "agent", "jsonl.jsonl");
+    const fonte = path.join(tars, ".ai", "memory", "agent", "jsonl.jsonl");
+    fs.writeFileSync(fonte, JSON.stringify({ id: "mem-x", statement: "fato da base" }) + "\n");
+
+    await sync({ tars, project, log: () => {} });
+
+    expect(JSON.parse(fs.readFileSync(jsonl, "utf8")).source).toBe("base");
+    // O CATALOGO (origem) fica intacto: a marca e' da copia, nao do fato versionado.
+    expect(fs.readFileSync(fonte, "utf8")).not.toContain('"base"');
+    // E a copia marcada bate com o lock (rodar de novo nao reescreve).
+    const r = await sync({ tars, project, log: () => {} });
+    expect(r.wrote).toEqual([]);
+  });
+});
+
+describe("tars-sync — init", () => {
+  it("projeto novo ganha manifesto minimo, memoria vazia e ja' sincroniza", async () => {
+    const { tars, project, base, lock } = scaffold({ manifest: null });
+
+    const r = await init({ tars, project, log: () => {} });
+
+    const toml = fs.readFileSync(path.join(project, ".ai", "tars.toml"), "utf8");
+    expect(r.version).toBe("1.2.3");
+    expect(toml).toContain("version = \"1.2.3\"");
+    expect(toml).toContain("skills  = []");
+    expect(toml).toContain("# Manifesto do consumidor do Tars");
+    expect(declare(await readManifest(project))).toEqual([{ area: "memory", item: "base" }]);
+    expect(fs.existsSync(path.join(project, ".ai", "memory"))).toBe(true);
+    // O motor vem sempre: a copia da memoria base esta' la' e o manifesto e' legivel.
+    expect(fs.existsSync(base)).toBe(true);
+    expect(fs.existsSync(lock)).toBe(true);
+  });
+
+  it("init repetido falha ruidoso e nao toca no manifesto do projeto", async () => {
+    const { tars, project } = scaffold({ manifest: null });
+    await init({ tars, project, log: () => {} });
+    const antes = fs.readFileSync(path.join(project, ".ai", "tars.toml"), "utf8");
+
+    await expect(init({ tars, project, log: () => {} })).rejects.toThrow(/ja' existe .*tars\.toml/);
+    expect(fs.readFileSync(path.join(project, ".ai", "tars.toml"), "utf8")).toBe(antes);
   });
 });

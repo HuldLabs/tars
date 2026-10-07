@@ -1,0 +1,2 @@
+- [base](base.md) — fato da fatia base, declarado por `tars init`
+- [git](git.md) — fato da base usado no teste do sync
