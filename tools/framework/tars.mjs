@@ -29,6 +29,7 @@ import * as hooks from './tars-hooks.mjs'
 import * as syncMod from './tars-sync.mjs'
 import * as gitMod from './tars-git.mjs'
 import * as doctorMod from './tars-doctrines.mjs'
+import * as verifyMod from './tars-verify.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -71,6 +72,8 @@ const USAGE = [
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
+  '  verify <arquivo>           roda os `verify` de um bloco de claims e cobra o `expect` (exit',
+  '                             != 0 em PHANTOM/sem negativo/excesso de [ASSUMED]); `-` le stdin',
   '  git prune [--remote]       apaga branches ja incorporadas (--remote: tambem no origin)',
   '                             use --dry-run para so imprimir; nunca apaga main nem a atual',
   '',
@@ -153,6 +156,22 @@ async function doctorCommand(rest, project) {
   if (r.faltando.length) process.exit(1)
 }
 
+/** `tars verify <arquivo>` — despacho fino: o parser e o julgamento moram no modulo dono. */
+async function verifyCommand(rest) {
+  const mod = verifyMod
+  const cwd = argValue(rest, '--cwd')
+  const arquivo = rest.filter((a, i) => !a.startsWith('--') && rest[i - 1] !== '--cwd')[0]
+  if (!arquivo) throw new Error('uso: tars verify <arquivo|-> [--cwd <dir>] [--json]')
+  const r = mod.verify({
+    caminho: arquivo === '-' ? null : resolve(arquivo),
+    texto: arquivo === '-' ? readFileSync(0, 'utf8') : undefined,
+    cwd: resolve(cwd ?? process.cwd()),
+  })
+  if (rest.includes('--json')) console.log(JSON.stringify({ ...r, claims: r.claims.map(({ saida, ...c }) => c) }, null, 2))
+  else mod.format(r)
+  if (r.falhas.length) process.exit(1)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -167,6 +186,7 @@ const COMMANDS = {
   hooks: runHooksCommand,
   promote: promoteCommand,
   doctor: doctorCommand,
+  verify: verifyCommand,
   git: gitCommand,
 }
 
