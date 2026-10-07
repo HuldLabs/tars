@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Gerado por `tars sync` (pre-commit) — nao edite a mao: o proximo sync sobrescreve.
+# Os gates vem de `[gates]` do .ai/tars.toml (catalogo em .ai/base/gates/, locais do projeto).
+set -e
+root="$(git rev-parse --show-toplevel)"
+if [ -x "$root/dist/tars" ]; then exec "$root/dist/tars" hooks pre-commit "$@"; fi
+if command -v tars >/dev/null 2>&1; then exec tars hooks pre-commit "$@"; fi
+if [ -f "$root/tools/framework/tars.mjs" ]; then exec node "$root/tools/framework/tars.mjs" hooks pre-commit "$@"; fi
+echo "hook pre-commit: nao achei o motor do Tars (dist/tars, tars ou tools/framework/tars.mjs) — rode `tars sync`" >&2
+exit 1

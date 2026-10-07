@@ -1,0 +1,25 @@
+# Manifesto do Tars consumindo a SI MESMO (modo `self` do sync — docs/TARS.md §Modelo).
+#
+# O Tars e' o seu PRIMEIRO consumidor: a doutrina vale para ele primeiro (o commit
+# a2f7731/cd860d1 saiu sem emoji, sem trailer e sem gate porque `.githooks/` nao existia e
+# o git engoliu tudo calado — a propria falha que o `tars doctor` passou a acusar depois).
+#
+# Em modo `self` (projeto == catalogo) NAO ha' copia: a base JA' e' o `.ai/` do catalogo.
+# O sync so' faz o wiring do harness e os hooks do git. Os itens declarados abaixo sao,
+# portanto, so' os GATES e os GUARDS que o Tars usa — nao ha' `[tars].skills/rules/memory`
+# a copiar para lugar nenhum (o catalogo E' a fonte desses itens).
+[tars]
+version = "0.0.1-dev.6"
+
+# Guards do agente: os que o `.claude/settings.json` do proprio Tars roda (PreToolUse).
+guards = [
+  "block-destructive-commands",
+  "block-secret-dump",
+]
+
+[gates]
+# commit-msg recebe o arquivo da mensagem (argv do hook do git); gitleaks varre o indice.
+# Mesma politica do consumidor segtools (.ai/tars.toml de la'): o menor conjunto que cobre
+# mensagem + segredo. no-add-all fica no guard de agente, nao no hook do git.
+pre-commit = ["gitleaks"]
+commit-msg = ["commit-msg"]
