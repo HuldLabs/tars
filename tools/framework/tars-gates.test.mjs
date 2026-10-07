@@ -45,6 +45,40 @@ describe("gate commit-msg", () => {
     expect(r.stderr).toMatch(/licao|Lesson/i);
   });
 
+  it("aceita Lesson em 4 campos (a licao que forca a causa)", () => {
+    const r = valida(
+      "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
+        "  porque: o parser nunca zerava por item\n  causa raiz: o contrato nao exigia reset por item\n" +
+        "  correcao: tools/framework/tars-verify.mjs\n",
+    );
+    expect(r.status).toBe(0);
+  });
+
+  it("recusa Lesson em 4 campos com 'causa raiz' == 'porque' (cave um nivel)", () => {
+    const r = valida(
+      "✨ feat(hub): mexe no motor\n\nLesson:\n  erro: o acumulador da secao errada\n" +
+        "  porque: o parser nunca zerava por item\n  causa raiz: o parser nunca zerava por item\n" +
+        "  correcao: tools/framework/tars-verify.mjs\n",
+    );
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/causa raiz/);
+  });
+
+  it("Incident de fix exige os 4 campos (1 linha NAO basta)", () => {
+    const r = valida("🐛 fix(hub): conserta o parser\n\nIncident: o parser acumulava na secao errada\n");
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/4 campos|Incident/i);
+  });
+
+  it("aceita Incident de fix com os 4 campos", () => {
+    const r = valida(
+      "🐛 fix(hub): conserta o parser\n\nIncident:\n  erro: pipocava no host errado\n" +
+        "  porque: o adapter lia o env do MCP\n  causa raiz: nao havia gate de origem de host\n" +
+        "  correcao: .ai/gates/commit-msg/validate-commit.mjs\n",
+    );
+    expect(r.status).toBe(0);
+  });
+
   it("sem o arquivo da mensagem reprova com a instrucao", () => {
     const r = rodar([gate], { env: { TARS_PROJECT: os.tmpdir() } });
     expect(r.status).toBe(1);

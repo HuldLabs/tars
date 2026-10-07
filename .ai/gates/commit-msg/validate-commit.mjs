@@ -26,6 +26,13 @@ const INCIDENT_TYPES = new Set(['fix', 'bug', 'hotfix']);
 const LESSON_TYPES = new Set(['feat', 'refactor', 'perf']);
 const NO_TRAILER_MIN = 10; // "nada novo" so vale se nomear (motivo >=10 chars)
 
+// Licao/incidente em QUATRO CAMPOS (fabber LESSONS-LEARNED.md, item 36 do relatorio).
+// Um checklist sozinho pega o sintoma de novo; os 4 campos forcam a CAUSA. "be more careful"
+// nunca e' causa nem correcao — e o campo `causa raiz` nao pode repetir o `porque`.
+const CAMPOS = ['erro', 'porque', 'causa raiz', 'correcao'];
+const CAMPO_RE = new RegExp('^\\s*(?:[-*]\\s*)?(' + CAMPOS.join('|') + ')\\s*:\\s*(.*)$', 'i');
+const VAGO_RE = /^(seja mais cuidadoso|ter mais cuidado|be more careful|prestar aten[cç][aã]o|mais aten[cç][aã]o)\b/i;
+
 /** Coleta os trailers `Lesson:`/`No-Lesson:`/`Incident:`/`No-Incident:` do corpo. */
 function trailers(msg) {
   const out = {};
@@ -36,16 +43,76 @@ function trailers(msg) {
   return out;
 }
 
-/** Exige o trailer (ou o No-* com motivo) do tipo, senao aborta com exemplo. */
-function requireTrailer(type, tr, kind) {
-  const has = tr[kind] || (tr[`no-${kind}`] && tr[`no-${kind}`].length >= NO_TRAILER_MIN);
-  if (has) return;
+/**
+ * Le o BLOCO de 4 campos (`erro:` / `porque:` / `causa raiz:` / `correcao:`) do corpo.
+ * Devolve o mapa dos que apareceram (min/max de 3-4 campos por secao) — quem exige e' o
+ * requireTrailer, que tambem confere `causa raiz` != `porque` (senao nao cavou o nivel).
+ */
+function blocoLicao(msg) {
+  const campos = {};
+  for (const line of msg.split(/\r?\n/)) {
+    const m = line.match(CAMPO_RE);
+    if (m) campos[m[1].toLowerCase()] = m[2].trim();
+  }
+  return campos;
+}
+
+/** Normaliza para comparar causa raiz × porque (minúsculas, sem pontuação/acento de borda). */
+const norm = (s) => s.toLowerCase().replace(/[.;:!?\s]+$/g, '').trim();
+
+/**
+ * Exige o registro do tipo. O gate aceita DUAS formas:
+ *   1. trailer `Lesson:`/`Incident:` em 1 linha, ou `No-<Kind>: <motivo >=10 chars>`;
+ *   2. o bloco de 4 campos (`erro`/`porque`/`causa raiz`/`correcao`) — que o commit de
+ *      `fix` OBRIGA (item 36): o trailer de 1 linha resolve o incidente; a causa raiz exige
+ *      os quatro. `causa raiz` == `porque` reprova: nao cavou o nivel.
+ */
+function requireTrailer(type, tr, blocos, kind) {
   const cap = kind[0].toUpperCase() + kind.slice(1);
-  console.error(`\ncommit-msg: commit '${type}' sem registro de ${kind === 'lesson' ? 'licao' : 'incidente'}.`);
-  console.error(`  registre o ${kind === 'lesson' ? 'aprendizado' : 'incidente'} ou use um trailer:`);
-  console.error(`    ${cap}: <texto|id>`);
-  console.error(`    No-${cap}: <motivo com >=${NO_TRAILER_MIN} chars>`);
-  console.error(`  ex.:   ${cap}: o adapter sobe no host do MCP`);
+  const temNo = tr[`no-${kind}`] && tr[`no-${kind}`].length >= NO_TRAILER_MIN;
+  const b = blocos[kind] || {};
+  const faltando = CAMPOS.filter((c) => !b[c]);
+  const temBloco = faltando.length === 0;
+  // `causa raiz` == `porque` = nao cavou o nivel. Vale para o Incident E para a licao: a
+  // frase repetida e' o sintoma, nao a causa (fabber LESSONS-LEARNED.md).
+  const mesmas = b['causa raiz'] && norm(b['causa raiz']) === norm(b['porque']);
+  const exigeCausa = () => {
+    console.error(`\ncommit-msg: '${cap}' tem 'causa raiz' igual ao 'porque' — cave um nivel.`);
+    console.error('  `porque` e o mecanismo imediato; `causa raiz` e o buraco ESTRUTURAL que o permitiu');
+    console.error('  (o check que falta, a instrucao ambigua, o buraco de processo). Se forem a mesma frase,');
+    console.error('  a licao vai voltar a acontecer.\n');
+    process.exit(1);
+  };
+
+  if (kind === 'incident') {
+    // `fix` de verdade: o Incident tem de vir COM os 4 campos (1 linha nao basta).
+    if (!temBloco) {
+      console.error(`\ncommit-msg: '${type}' exige o Incident em 4 campos (INV-LESSON-1).`);
+      console.error(`  campos que faltam ou estao vazios: ${faltando.length ? faltando.join(', ') : '—'}`);
+      console.error('  escreva no corpo:');
+      console.error('    Incident:');
+      console.error('      erro: <o que estava errado, concreto>');
+      console.error('      porque: <o mecanismo imediato>');
+      console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
+      console.error('      correcao: <o arquivo/gate que muda — nunca "ter mais cuidado">');
+      console.error(`  ou escape com No-Incident: <motivo com >=${NO_TRAILER_MIN} chars>\n`);
+      process.exit(1);
+    }
+    if (mesmas) exigeCausa();
+    return;
+  }
+
+  // Licao: trailer de 1 linha OU bloco completo (a escolha e' do autor).
+  if (mesmas) exigeCausa();
+  if (tr[kind] || temNo || temBloco) return;
+  console.error(`\ncommit-msg: commit '${type}' sem registro de licao.`);
+  console.error('  registre o aprendizado em 1 linha ou no bloco de 4 campos:');
+  console.error(`    Lesson: <texto|id>   (ou No-Lesson: <motivo com >=${NO_TRAILER_MIN} chars>)`);
+  console.error('    Lesson:');
+  console.error('      erro: <o que estava errado>');
+  console.error('      porque: <o mecanismo imediato>');
+  console.error('      causa raiz: <o buraco estrutural; NAO repita o porque>');
+  console.error('      correcao: <o arquivo/gate que muda>');
   console.error('  (escapar e' + ' trailer, nunca --no-verify)\n');
   process.exit(1);
 }
@@ -106,8 +173,16 @@ if (mode === '--validate') {
   // As linhas acima ja isentaram merge/revert/fixup!/squash!.
   const ctype = first.match(/(?:^\S+\s+)?([a-z]+)(\(|!|:)/)?.[1];
   const body = lines.slice(1).join('\n');
-  if (INCIDENT_TYPES.has(ctype)) requireTrailer(ctype, trailers(body), 'incident');
-  if (LESSON_TYPES.has(ctype)) requireTrailer(ctype, trailers(body), 'lesson');
+  const blocos = { incident: blocoLicao(body), lesson: blocoLicao(body) };
+  // "be more careful" nunca e' causa raiz nem correcao (fabber LESSONS-LEARNED.md).
+  for (const [campo, valor] of Object.entries(blocos.lesson)) {
+    if ((campo === 'causa raiz' || campo === 'correcao') && VAGO_RE.test(valor)) {
+      console.error(`commit-msg: '${campo}' vago ('${valor.slice(0, 40)}') — nomeie o arquivo/gate, nao o cuidado.`);
+      process.exit(1);
+    }
+  }
+  if (INCIDENT_TYPES.has(ctype)) requireTrailer(ctype, trailers(body), blocos, 'incident');
+  if (LESSON_TYPES.has(ctype)) requireTrailer(ctype, trailers(body), blocos, 'lesson');
   process.exit(0);
 }
 

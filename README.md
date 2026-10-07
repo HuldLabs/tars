@@ -86,6 +86,7 @@ tars check                         # só valida base × lock (o gate); exit 1 se
 tars hooks <pre-commit|commit-msg|pre-push|local> [args]   # roda os gates do hook
 tars promote --area <memory|skill|gate> --item <nome>      # sobe item do projeto ao catálogo
 tars doctor [--json]                                       # confere doutrina × gate × prova
+tars verify <arquivo>                                      # roda os `verify` de um bloco de claims
 ```
 
 ### Sem Node — o binário `tars`
@@ -175,6 +176,40 @@ quando há PHANTOM ou DRIFT; doutrina de outro projeto sai **PROJETO** (o doctor
 `gate = "nenhum"` é obrigatório declarar: doutrina sem gate deixa de ser esquecimento e vira
 dívida nomeada.
 
+#### `tars-verify.mjs` — o `verify`
+
+```sh
+node <tars>/tools/framework/tars-verify.mjs <arquivo|-> [--cwd <dir>] [--json]
+```
+
+O `doctor` cobra a **doutrina**; o `verify` cobra a **entrega**. O bloco de entrega vira dado —
+uma claim por linha — e cada uma é **re-executada** contra a árvore:
+
+```
+claim: o adapter sobe no host do MCP | verify: node x.mjs | expect: [DERIVED] rc=0
+claim: o parser cobre o caso vazio  | verify: node y.mjs | expect: /^ok$/ | verify-negativo: node -e "process.exit(1)"
+```
+
+- `claim:` — o que se afirma ser verdade (texto livre).
+- `verify:` — o comando que um **terceiro** roda (shell, `--cwd` como base).
+- `expect:` — a saída literal que o comando deve conter (**substring**), ou `/regex/`. Vazio =
+  só o exit 0 importa.
+- tag — `[VERIFIED]` / `[DERIVED]` / `[ASSUMED]` / `[UNKNOWN]`, no `claim:` ou no `expect:`.
+  Ausente = `[UNKNOWN]`, o mais fraco: **bloqueia incondicional** ("saída não rodada nesta
+  sessão nunca conta como `[VERIFIED]`").
+- `verify-negativo:` — o comando que **deve falhar** no alvo (INV-IAC-1). Um "rodou sem erro"
+  não distingue quem convergiu de quem nunca testou o alvo certo.
+
+O `verify` sai ≠ 0 e nomeia o motivo (um PHANTOM por claim não provada):
+
+- **PHANTOM** — o `verify` falhou, ou a saída não casa o `expect`, ou o campo falta.
+- **NEGATIVO** — claim de "corrigido/testado" sem nenhuma prova negativa no bloco.
+- **ASSUMED** — mais de 3 claims `[ASSUMED]` (as que passam do teto reprovam).
+- **UNKNOWN** — claim sem tag, mesmo que o `verify` passe.
+
+Proveniência: fabber `ai-layer-benchmark.md:250-270` (vocabulário de tags) e
+`architectural-premises.md:75-115` (INV-IAC-1). `-` lê o bloco da entrada padrão.
+
 #### `tars-promote.mjs` — a promoção
 
 ```sh
@@ -193,7 +228,7 @@ catálogo — a promoção é revisada à mão. Escreve no working tree do Tars,
 
 | Gate | Hook | O que cobra |
 |---|---|---|
-| `commit-msg` | `commit-msg` | mensagem `<emoji> <type>(<scope>): <descrição>`, sujeito ≤ 72; `feat/refactor/perf` exigem `Lesson:`/`No-Lesson:`, `fix/hotfix` exigem `Incident:`/`No-Incident:` |
+| `commit-msg` | `commit-msg` | mensagem `<emoji> <type>(<scope>): <descrição>`, sujeito ≤ 72; `feat/refactor/perf` exigem `Lesson:` (1 linha) ou o bloco de 4 campos (`erro/porque/causa raiz/correcao`), `fix/hotfix` exigem `Incident:` **em 4 campos** (`causa raiz` ≠ `porque`) ou `No-Incident:` |
 | `gitleaks` | `pre-commit` | nenhum segredo no que vai ser commitado (`protect --staged`); sem o binário, avisa alto e passa |
 | `no-add-all` | `pre-commit` + `PreToolUse` de agente | nenhum `git add` amplo (`-A`/`--all`/`-u`/`.`), `git add -f` ou `git commit -a` |
 
