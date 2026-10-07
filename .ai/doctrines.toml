@@ -58,6 +58,14 @@ prova = "printf '\\u2728 feat(hub): mexe no motor\\n\\nLesson:\\n  erro: e\\n  p
 onde = "commit-msg"
 
 [[doctrine]]
+id = "fail/erro-nao-se-engole"
+titulo = "`catch {}` vazio e `except: pass` REPROVAM no staged (TARS-SWALLOW-1)"
+fonte = ".ai/gates/lint-swallow/GATE.md:1-14"
+gate = "../../.ai/gates/lint-swallow"
+prova = "printf 'try { f() } catch {}\\n' > /tmp/tars-doc-swallow.mjs && node .ai/gates/lint-swallow/gate.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
 id = "git/branch-name"
 titulo = "Branch `<tipo>/<slug>`"
 fonte = ".ai/governance/git.md:5-16"
