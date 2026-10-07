@@ -484,6 +484,19 @@ export function resolveGuardFile(project, file) {
   return null
 }
 
+/**
+ * O caminho que o hook DEVE citar: o mesmo que `resolveGuardFile` achou, relativo a raiz do
+ * projeto (o comando usa `$CLAUDE_PROJECT_DIR/.ai/...`). Emitir `.ai/guards/` fixo enquanto o
+ * arquivo mora em `.ai/base/guards/` fazia o harness rodar `bash: no such file` — e o projeto
+ * que so' usa a base copiada nao tem `.ai/guards/` nenhum (defeito do seo-brain, 07/10).
+ */
+export function guardRelPath(project, file) {
+  const full = resolveGuardFile(project, file)
+  if (!full) return null
+  const rel = relative(join(project, '.ai'), full).split('\\').join('/')
+  return `.ai/${rel}`
+}
+
 /** Guard declarado pelo PROJETO (`[tars].guards`), na pasta propria ou na base copiada. */
 export function projectGuardHooks(project, manifest) {
   const out = []
@@ -500,8 +513,11 @@ export function projectGuardHooks(project, manifest) {
 function baseHooks(project) {
   const eventos = { PreToolUse: [], PreCompact: [], SessionStart: [] }
   for (const h of BASE_HOOKS) {
-    if (project && !resolveGuardFile(project, h.file)) continue
-    const entry = { matcher: h.matcher, hooks: [{ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/.ai/guards/${h.file}"` }] }
+    // O caminho do hook e' o que o `resolveGuardFile` ACHOU (projeto ou base copiada); fixo em
+    // `.ai/guards/` o harness rodaria um arquivo que nao existe (defeito do seo-brain).
+    const rel = project ? guardRelPath(project, h.file) : `.ai/guards/${h.file}`
+    if (!rel) continue
+    const entry = { matcher: h.matcher, hooks: [{ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/${rel}"` }] }
     const slot = eventos[h.event] ??= []
     const same = slot.find((e) => e.matcher === h.matcher)
     if (same) same.hooks.push(...entry.hooks)

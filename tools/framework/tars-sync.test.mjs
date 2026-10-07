@@ -368,6 +368,64 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     expect(fs.existsSync(path.join(project, ".ai", "base", "guards", "test-alpha-guard.sh"))).toBe(true);
   });
 
+  it("hook da base cita o caminho que EXISTE (projeto ou base copiada), nao `.ai/guards/` fixo", async () => {
+    // O consumidor que so' usa a base copiada tem os guards em `.ai/base/guards/`. Emitir
+    // `.ai/guards/<file>` fixo fazia o harness rodar `bash: no such file` (seo-brain, 07/10).
+    const { tars, project, base } = scaffold();
+    fs.mkdirSync(path.join(base, "guards"), { recursive: true });
+    for (const f of ["precompact-persist-state.sh", "sessionstart-context-digest.sh", "ensure-memory-link.sh"])
+      fs.copyFileSync(path.join(tars, ".ai", "guards", f), path.join(base, "guards", f));
+
+    await sync({ tars, project, log: () => {} });
+
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    const comandos = (evento) => s.hooks[evento].flatMap((e) => e.hooks.map((h) => h.command));
+    // PreCompact e SessionStart: os DOIS eventos da base (o defeito cobria so' o primeiro).
+    expect(comandos("PreCompact")).toEqual(['bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/precompact-persist-state.sh"']);
+    expect(comandos("SessionStart")).toEqual([
+      'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/sessionstart-context-digest.sh"',
+      'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/ensure-memory-link.sh"',
+    ]);
+    // E o caminho citado tem de EXISTIR de fato — e' a asserção que pega o regresso.
+    for (const c of [...comandos("PreCompact"), ...comandos("SessionStart")]) {
+      const rel = c.match(/CLAUDE_PROJECT_DIR\/(.+)"$/)[1];
+      expect(fs.existsSync(path.join(project, rel))).toBe(true);
+    }
+    expect(fs.existsSync(path.join(base, "guards", "precompact-persist-state.sh"))).toBe(true);
+  });
+
+  it("guard da base no PROJETO (`.ai/guards/`) vence a copia da base", async () => {
+    // `resolveGuardFile` procura no projeto primeiro: o hook tem de citar o que ele achou.
+    const { tars, project } = scaffold();
+    fs.mkdirSync(path.join(project, ".ai", "guards"), { recursive: true });
+    fs.writeFileSync(path.join(project, ".ai", "guards", "sessionstart-context-digest.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "sessionstart-context-digest.sh"), "#!/usr/bin/env bash\nexit 0\n");
+
+    await sync({ tars, project, log: () => {} });
+
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(s.hooks.SessionStart.flatMap((e) => e.hooks.map((h) => h.command))).toEqual([
+      'bash "$CLAUDE_PROJECT_DIR/.ai/guards/sessionstart-context-digest.sh"',
+    ]);
+  });
+
+  it("biblioteca (`lib-*.sh`) copiada como dependencia NAO vira hook", async () => {
+    // `lib-json.sh` e' `source`ado pelo guard, nao um hook: amarra-la ao PreToolUse faria o
+    // harness RODAR a biblioteca (que so' define funcoes e sai 0) sem cobrar nada.
+    const { tars, project } = scaffold({
+      manifest: MANIFEST.replace("alpha-guard", "block-destructive-commands"),
+    });
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "block-destructive-commands.sh"), "#!/usr/bin/env bash\nsource \"$(dirname \"$0\")/lib-json.sh\"\n");
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "lib-json.sh"), "jget() { :; }\n");
+
+    await sync({ tars, project, log: () => {} });
+
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(s.hooks)).not.toContain("lib-json.sh");
+    // Mas a biblioteca VAI para a base: sem ela o guard que a `source`a nao roda.
+    expect(fs.existsSync(path.join(project, ".ai", "base", "guards", "lib-json.sh"))).toBe(true);
+  });
+
   it("rodar de novo nao reescreve o settings.json (idempotente)", async () => {
     const { tars, project } = scaffold();
     await sync({ tars, project, log: () => {} });
