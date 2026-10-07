@@ -32,6 +32,7 @@ import * as doctorMod from './tars-doctrines.mjs'
 import * as verifyMod from './tars-verify.mjs'
 import * as memoryMod from './tars-memory.mjs'
 import * as refsMod from './tars-check-refs.mjs'
+import * as handoffMod from './tars-handoff.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -78,6 +79,8 @@ const USAGE = [
   '                             != 0 em PHANTOM/sem negativo/excesso de [ASSUMED]); `-` le stdin',
   '  check-refs <prompt.md>     cobra que a DECISAO citada no despacho exista na arvore: sha',
   '                             ancestral de HEAD e caminho presente (exit != 0 se invisivel)',
+  '  handoff check [HANDOFF.md] valida a secao do TOPO (proximo passo, sha, data, branch no git;',
+  '                             intencao opcional); exit != 0 quando o cursor esta morto',
   '  memory audit [--file]      cobra a FONTE de cada fato (arquivo/ancora/hash): reprova em',
   '                             MISSING, ancora ausente ou DRIFT do trecho; sem hash = aviso',
   '  git prune [--remote]       apaga branches ja incorporadas (--remote: tambem no origin)',
@@ -203,6 +206,22 @@ async function checkRefsCommand(rest, project) {
   if (!r.ok) process.exit(1)
 }
 
+/** `tars handoff check [HANDOFF.md]` — despacho fino: o julgamento mora no modulo dono. */
+async function handoffCommand(rest, project) {
+  const sub = rest[0]
+  if (sub !== 'check') throw new Error(`use \`tars handoff check [HANDOFF.md] [--cwd <dir>] [--json]\` (recebi '${sub ?? ''}')`)
+  const arquivo = rest.slice(1).filter((a, i, l) => !a.startsWith('--') && l[i - 1] !== '--cwd')[0]
+  // O `cwd` do git e' o do PROJETO (o HANDOFF fala dos shas/branches do repo dele), nao o
+  // de quem chamou: rodar o binario de dentro do Tars sobre o HANDOFF de outro repo tinha de
+  // julgar o outro repo. Sem `--cwd`, o diretorio do proprio HANDOFF manda.
+  const cwd = resolve(argValue(rest, '--cwd') ?? project ?? (arquivo ? dirname(resolve(arquivo)) : process.cwd()))
+  const dias = argValue(rest, '--dias')
+  const r = handoffMod.checkHandoff(resolve(arquivo ?? join(cwd, 'HANDOFF.md')), { cwd, dias: dias ? Number(dias) : undefined })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else console.log(handoffMod.format(r))
+  if (!r.ok) process.exit(1)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -220,6 +239,7 @@ const COMMANDS = {
   verify: verifyCommand,
   memory: memoryCommand,
   'check-refs': checkRefsCommand,
+  handoff: handoffCommand,
   git: gitCommand,
 }
 
