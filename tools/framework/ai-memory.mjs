@@ -697,7 +697,13 @@ function flag(name) {
   return i !== -1 ? process.argv[i + 1] : undefined;
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// Incident: dist/tars procura `.ai/` na raiz `/`. No `bun build --compile` TODO modulo
+// embutido responde o MESMO `import.meta.url` do entrypoint, entao o guard abaixo ficava
+// verdadeiro quando o `tars.mjs` so' IMPORTAVA este modulo — o main rodava lendo `FILE`
+// (o `.ai/` ao lado do modulo, que no binario vira `/$bunfs/root` -> raiz `/`) e o
+// `sync --check` morria com ENOENT. `TARS_AS_MODULE` (posto pelo `tars.mjs`, mesmo padrao
+// dos modulos donos) desliga o auto-run quando somos biblioteca.
+const isMain = !process.env.TARS_AS_MODULE && process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain && process.argv.includes("--check")) {
   const file = flag("--file");
   const { errors, count } = validateMemoryFile(file);

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir, loadTags, resolveTag } from "./ai-memory.mjs";
 
 // Gate da memoria operacional (regra sem teste = sugestao). Portado da ideia do
@@ -521,5 +523,33 @@ describe("tags controladas (TARS-TAGS-1)", () => {
     expect(cat.tags.length).toBeGreaterThanOrEqual(30);
     expect(cat.ambientes).toEqual(["any", "posix", "linux", "wsl", "macos", "windows"]);
     expect(cat.classes).toEqual(["A", "B", "C", "D"]);
+  });
+});
+
+// Incident: dist/tars procura `.ai/` na raiz `/` (familia E do import.meta.url).
+// No `bun build --compile` TODO modulo embutido responde o MESMO `import.meta.url` do
+// entrypoint; o guard de auto-run `process.argv[1] === import.meta.url` do ai-memory.mjs
+// ficava verdadeiro quando o `tars.mjs` so' o IMPORTAVA, e o main do ai-memory rodava lendo
+// `FILE` (o `.ai/` ao lado do modulo, que no binario vira `/$bunfs` -> raiz `/`). O teste
+// REPRODUZ a compilacao real (`bun build --compile tars.mjs`) e roda um comando que NAO e'
+// do ai-memory: sem o guard, o main dele dispara no import e a leitura de FILE explode.
+describe("ai-memory como BIBLIOTECA (nao roda o main no import)", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const bun = join(process.env.HOME ?? "/root", ".bun", "bin", "bun");
+  const temBun = fs.existsSync(bun);
+
+  it("binario compilado (tars.mjs) nao dispara o gate do ai-memory no import", () => {
+    if (!temBun) return; // sem bun nao ha' como compilar (o binario e' o objeto do defeito)
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-bin-"));
+    const bin = join(dir, "tars");
+    const build = spawnSync(bun, ["build", "--compile", join(here, "tars.mjs"), "--outfile", bin], { encoding: "utf8" });
+    expect(build.status).toBe(0);
+    // `--help` NAO toca a memoria: se o main do ai-memory rodar no import, ele le FILE e morre
+    // com ENOENT da raiz `/` antes de a ajuda responder.
+    const r = spawnSync(bin, ["--help"], { encoding: "utf8", cwd: dir, env: { PATH: "/usr/bin:/bin", HOME: process.env.HOME } });
+    expect(r.stderr).not.toMatch(/ENOENT|operational-memory\.jsonl/);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("uso: tars <comando>");
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

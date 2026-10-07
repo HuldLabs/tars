@@ -246,7 +246,10 @@ export function validate(root = REPO) {
 }
 
 // CLI — só roda quando executado direto (o teste importa as funções acima).
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// Mesma guarda do `ai-memory.mjs`: no `bun build --compile` todo modulo embutido responde o
+// `import.meta.url` do entrypoint, entao `isMain` viraria verdadeiro ao apenas IMPORTAR este
+// modulo — `TARS_AS_MODULE` (posto pelo `tars.mjs`) desliga o auto-run quando somos biblioteca.
+const isMain = !process.env.TARS_AS_MODULE && process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const argv = process.argv.slice(2);
   const rootIdx = argv.indexOf("--root");
