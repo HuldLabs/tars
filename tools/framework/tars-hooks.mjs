@@ -23,6 +23,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HOOKS, parseToml } from './tars-sync.mjs'
+import { jsRuntime } from './tars-runtime.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
 export const BASE = 'base'
@@ -77,20 +78,24 @@ function target(project, hook, item) {
   return join(base, item.nome)
 }
 
-/** Comando do gate: pasta => o `gate.mjs` dela (ou o unico `.mjs`/`.sh`); arquivo => ele mesmo. */
-function command(dir, hook) {
+/** Comando do gate: pasta => o `gate.mjs` dela (ou o unico `.mjs`/`.sh`); arquivo => ele mesmo.
+ *  O runtime JS vem do resolvedor UNICO (`tars-runtime.mjs`): no binario compilado o
+ *  `process.execPath` e' o proprio `tars`, nao um runtime — montar o comando com ele fazia o
+ *  binario engolir o caminho do gate como argumento e sair 0 (Incident: gate calado). */
+function command(dir, hook, runtime) {
+  const js = (alvo) => [runtime.cmd, alvo]
   if (!statSync(dir).isFile()) {
     // `prepare-commit-msg`: o passo e' o `--inject` do validador (injeta o emoji do tipo),
     // nao o `gate.mjs` que so' VALIDA. O validador viaja junto do gate (item de catalogo = pasta).
     if (hook === 'prepare-commit-msg') {
       const inject = join(dir, 'validate-commit.mjs')
-      if (existsSync(inject)) return [process.execPath, inject, '--inject']
+      if (existsSync(inject)) return [...js(inject), '--inject']
     }
     const gate = join(dir, 'gate.mjs')
-    if (existsSync(gate)) return [process.execPath, gate]
+    if (existsSync(gate)) return js(gate)
     return null
   }
-  if (dir.endsWith('.mjs')) return [process.execPath, dir]
+  if (dir.endsWith('.mjs')) return js(dir)
   if (dir.endsWith('.sh')) return ['sh', dir]
   return null
 }
@@ -101,13 +106,21 @@ function command(dir, hook) {
  */
 export function runHooks({ hook, manifest, project, args = [], log = console.log, err = console.error, spawn = spawnSync } = {}) {
   const rodados = []
+  // O runtime dos gates `.mjs` e' resolvido UMA vez (R3) e passado a quem monta o comando.
+  // Sem runtime NENHUM, falha antes de tocar qualquer gate: um "ok" aqui seria o gate calado.
+  const runtime = jsRuntime()
+  if (!runtime) {
+    const nome = planGates(manifest, hook).find((g) => g.origem === 'base')?.nome ?? hook
+    err(`gate ${nome}: nenhum runtime JS (node/bun) — os gates .mjs NAO rodam (instale node ou bun).`)
+    return { ok: false, rodados, falhou: { nome, motivo: 'sem-runtime' } }
+  }
   for (const item of planGates(manifest, hook)) {
     const dir = target(project, hook, item)
     if (!existsSync(dir)) {
       err(`gate ${item.nome}: NAO ENCONTRADO em ${dir} — o manifesto declara e o arquivo nao existe (rode tars sync).`)
       return { ok: false, rodados, falhou: { nome: item.nome, motivo: 'ausente' } }
     }
-    const cmd = command(dir, hook)
+    const cmd = command(dir, hook, runtime)
     if (!cmd) {
       err(`gate ${item.nome}: nao sei executar ${dir} (esperado pasta com gate.mjs, ou arquivo .mjs/.sh).`)
       return { ok: false, rodados, falhou: { nome: item.nome, motivo: 'sem-exec' } }
@@ -116,7 +129,7 @@ export function runHooks({ hook, manifest, project, args = [], log = console.log
     const params = manifest.gates?.params?.[item.nome] ?? {}
     const r = spawn(cmd[0], [...cmd.slice(1), ...args], {
       stdio: 'inherit',
-      env: { ...process.env, TARS_PROJECT: project, TARS_GATE: item.nome, TARS_GATE_PARAMS: JSON.stringify(params) },
+      env: { ...process.env, ...runtime.env, TARS_PROJECT: project, TARS_GATE: item.nome, TARS_GATE_PARAMS: JSON.stringify(params) },
     })
     rodados.push(item.nome)
     if (r.error) {

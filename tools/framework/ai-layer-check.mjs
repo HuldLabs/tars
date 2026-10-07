@@ -20,6 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { jsRuntime } from "./tars-runtime.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const AI = ".ai";
@@ -169,10 +170,13 @@ export function validateDrift(root = REPO) {
       const src = path.join(root, rel);
       if (fs.existsSync(src)) fs.cpSync(src, path.join(tmp, rel), { recursive: true });
     }
+    // O rulesync e' um CLI Node: quem executa o `.js` dele e' um runtime JS DE VERDADE, nao o
+    // `process.execPath` (que no binario compilado do Tars e' o proprio `tars` — Incident).
+    const rt = jsRuntime() ?? { cmd: "node", env: {} };
     const res = spawnSync(
-      process.execPath,
+      rt.cmd,
       [bin, "generate", "--input-roots", AI, "--targets", TARGETS.join(","), "--features", FEATURES.join(",")],
-      { cwd: tmp, encoding: "utf8", timeout: 180_000 },
+      { cwd: tmp, encoding: "utf8", timeout: 180_000, env: { ...process.env, ...rt.env } },
     );
     if (res.status !== 0) {
       return [`rulesync generate falhou (exit ${res.status})`, `rode task ai:generate e encene as saidas geradas (nao editar a mao)`];
