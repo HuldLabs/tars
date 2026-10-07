@@ -19,21 +19,16 @@ consumo (abaixo).
 
 ## O ecossistema
 
-Nomes vêm de ficção científica: **Sofon** e **Tomo** de *O Problema dos Três Corpos* (o
-sófon é um próton desdobrado em supercomputador; Tomoko é o avatar dele — a face do sófon);
-**Pion** é uma partícula subatômica (méson), na mesma família do sófon.
+O Tars faz parte do **ecossistema HuldLabs** — ver o perfil da organização:
+<https://github.com/HuldLabs>. Cada peça é um catálogo e o projeto instala só o que usa.
 
-| Peça | Responde | O que é |
+| Peça | Papel | Repo |
 |---|---|---|
-| **Tars** | como a gente trabalha | catálogo de método; **transversal** a toda stack (este repo) |
-| **Tomo** | como o app aparece | design system; **transversal e multi-stack** (Next, Jinja…) |
-| **Sofon** | o que o app é | framework/runtime da stack **Next** (núcleo, plataforma, módulos, banco) |
-| **Pion** | o que o app é | framework da stack **Python** (nasce do seo-brain, com base no thood e no seo-expert) |
-
-O conceito é **framework modular self-service multi-stack**: cada peça é um item de catálogo,
-e o projeto instala **só o que usa**. Um projeto Python+React (seo-brain) ou Python+Jinja
-(thood) pode consumir Tomo e Tars sem adotar o Sofon inteiro. Cada stack nova é uma
-partícula: PHP → *Phonon*.
+| **Tars** | como a gente trabalha | [HuldLabs/tars](https://github.com/HuldLabs/tars) (este repo) |
+| **Tomo** | como o app aparece | [HuldLabs/tomo](https://github.com/HuldLabs/tomo) |
+| **Sofon** | o que o app é (stack Next) | [HuldLabs/sofon](https://github.com/HuldLabs/sofon) |
+| **Pion** | o que o app é (stack Python) | [HuldLabs/pion](https://github.com/HuldLabs/pion) |
+| **Kipp** | como o trabalho anda | [HuldLabs/kipp](https://github.com/HuldLabs/kipp) |
 
 ## Modelo de consumo
 
