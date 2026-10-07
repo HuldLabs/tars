@@ -10,7 +10,8 @@ describe('tars — despacho', () => {
   it('expoe exatamente os subcomandos do desenho', () => {
     // `upgrade-notes` entrou com o caminho de upgrade (ecc63bd, TARS-VERSAO item 6): o
     // consumidor le' as notas entre a versao do `.ai/tars.lock` e a atual.
-    expect(Object.keys(COMMANDS).sort()).toEqual(['check', 'check-refs', 'doctor', 'git', 'handoff', 'hooks', 'init', 'memory', 'promote', 'sync', 'upgrade-notes', 'verify'])
+    // `incident` entrou com TARS-INCIDENTE-AUTO fatia 1 (o ledger deixa de ser escrito a mao).
+    expect(Object.keys(COMMANDS).sort()).toEqual(['check', 'check-refs', 'doctor', 'git', 'handoff', 'hooks', 'incident', 'init', 'memory', 'promote', 'sync', 'upgrade-notes', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {

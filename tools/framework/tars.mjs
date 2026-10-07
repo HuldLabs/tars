@@ -15,8 +15,8 @@
 //   tars promote --area <memory|skill|gate> --item <nome> [--project <dir>] [--tars <dir>]
 //   tars --help
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, dirname, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 // Os donos de cada comando entram por import ESTATICO: o `bun build --compile` so' embute
 // o que enxerga em tempo de build — `await import(join(home(), 'tars-sync.mjs'))` virava
 // `/$bunfs/root/tars-sync.mjs` e o binario morria em runtime (Incident: dist/tars perde modulo).
@@ -34,6 +34,9 @@ import * as memoryMod from './tars-memory.mjs'
 import * as refsMod from './tars-check-refs.mjs'
 import * as handoffMod from './tars-handoff.mjs'
 import * as upgradeMod from './tars-upgrade.mjs'
+// `tars incident` (TARS-INCIDENTE-AUTO): o ledger deixa de ser escrito a mao. O modulo DONO
+// mora em tars-incident.mjs; aqui so' o despacho fino (R3).
+import * as incidentMod from './tars-incident.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -59,6 +62,13 @@ function defaultTars() {
 
 const args = process.argv.slice(2)
 const cmd = args[0] ?? '--help'
+
+/** A raiz do CATALOGO, quando da' para saber: `TARS_HOME` > repo achado a partir do binario. */
+function tarsHome() {
+  if (process.env.TARS_HOME) return process.env.TARS_HOME
+  const d = defaultTars()
+  return d && !d.startsWith('/$bunfs/') ? d : null
+}
 
 /** Resolve o caminho base dos modulos: irmão do script ou do binario compilado. */
 function home() {
@@ -86,8 +96,10 @@ const USAGE = [
   '                             intencao opcional); exit != 0 quando o cursor esta morto',
   '  memory audit [--file]      cobra a FONTE de cada fato (arquivo/ancora/hash): reprova em',
   '                             MISSING, ancora ausente ou DRIFT do trecho; sem hash = aviso',
-  '  git prune [--remote]       apaga branches ja incorporadas (--remote: tambem no origin)',
-  '                             use --dry-run para so imprimir; nunca apaga main nem a atual',
+  '  incident add --titulo T    registra a falha no ledger de incidentes do PROJETO (id/data/repo',
+  '    --o-que X --causa C        gerados; recusa campo vazio nomeando-o). Marca `recorrencia` e',
+  '    --correcao R               imprime RECORRENTE: <ids> quando ja repetiu (>= 2 -> lembrete',
+  '    [--tags a,b] [--fonte F]   de harness-postmortem). Tudo em uma linha so.',
   '',
   '  --help                     esta ajuda',
   '',
@@ -157,9 +169,26 @@ async function gitCommand(rest, project) {
   })
 }
 
+/**
+ * O modulo DONO do doctor e' carregado na HORA: o `import` estatico acima entra no bundle do
+ * `bun build --compile` e, sem Node, um `./dist/tars doctor` antigo nao enxerga o modulo novo
+ * (Incident: dist/tars perde modulo — a familia do import estatico). Em fonte e' identico; no
+ * binario, o arquivo ao lado do executavel vence. Falha aqui (sem rede/arquivo) volta ao estatico.
+ */
+async function doctorModulo() {
+  if (COMPILED && tarsHome()) {
+    try {
+      return await import(pathToFileURL(join(tarsHome(), 'tools', 'framework', 'tars-doctrines.mjs')).href)
+    } catch {
+      /* cai no estatico */
+    }
+  }
+  return doctorMod
+}
+
 /** `tars doctor` — despacho fino para o modulo dono (a classificacao mora la', nao aqui). */
 async function doctorCommand(rest, project) {
-  const r = doctorMod.doctor({
+  const r = (await doctorModulo()).doctor({
     tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars()),
     project: resolve(argValue(rest, '--project') ?? project ?? process.cwd()),
   })
@@ -194,6 +223,28 @@ async function memoryCommand(rest, project) {
   if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
   else console.log(memoryMod.format(r))
   if (!r.ok) process.exit(1)
+}
+
+/** `tars incident add ...` — despacho fino: o julgamento mora no modulo dono (tars-incident). */
+async function incidentCommand(rest, project) {
+  const sub = rest[0]
+  if (sub !== 'add') throw new Error(`use \`tars incident add --titulo T --o-que X --causa C --correcao R [--tags a,b] [--fonte F]\` (recebi '${sub ?? ''}')`)
+  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  // O ledger e' do PROJETO consumidor (`.ai/memory/incident-ledger.jsonl`), nunca o do catalogo.
+  const file = resolve(argValue(rest, '--file') ?? join(raiz, '.ai', 'memory', 'incident-ledger.jsonl'))
+  const r = incidentMod.incidentAdd({
+    titulo: argValue(rest, '--titulo'),
+    o_que: argValue(rest, '--o-que'),
+    causa: argValue(rest, '--causa'),
+    correcao: argValue(rest, '--correcao'),
+    tags: argValue(rest, '--tags'),
+    fonte: argValue(rest, '--fonte'),
+    repo: argValue(rest, '--repo') ?? basename(raiz),
+    hoje: argValue(rest, '--data') ?? new Date().toISOString().slice(0, 10),
+    file,
+  })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else console.log(incidentMod.format(r))
 }
 
 /** `tars check-refs <prompt.md|->` — despacho fino: o parse e o julgamento moram no modulo dono. */
@@ -260,6 +311,7 @@ const COMMANDS = {
   doctor: doctorCommand,
   verify: verifyCommand,
   memory: memoryCommand,
+  incident: incidentCommand,
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,
