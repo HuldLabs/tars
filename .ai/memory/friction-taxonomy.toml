@@ -1,0 +1,104 @@
+# friction-taxonomy.toml — taxonomia de atrito (SSOT)
+#
+# Portado (R1) da versão mais completa: tokenhood .ai/governance/friction-taxonomy.toml
+# (ADR 017 §J.2); farmega.v2 tem uma redução (.ai/governance/friction-taxonomy.toml).
+# Cada categoria: description, detector_patterns, detector_type, remediation_ref,
+# frequency_baseline (calibrar com dados reais), severity.
+
+schema_version = 1
+last_updated = "2026-10-06"
+notes = """
+Atrito é conceito de primeira classe: detectar recorrencia proativamente.
+frequency_baseline=0 até calibrar com o corpus real (handoffs/incident-ledger/auto-memory).
+Detectores casam linguagem REAL do corpus — calibrar reduzindo falso-negativo sem inflar falso-positivo.
+"""
+
+[misunderstood_intent]
+label = "Misunderstood Intent"
+description = "O agente implementou algo diferente do pedido (rejeição, reescrita, 'não era isso')."
+detector_patterns = ["rejeita entrega", "não era isso", "refazer do zero", "entendeu errado", "wrong approach"]
+detector_type = "behavioral"
+remediation_ref = "fluxo de correção de escopo"
+frequency_baseline = 0
+severity = "high"
+
+[buggy_self_code]
+label = "Buggy Self-Code"
+description = "Código com bugs não detectados (testes falham, CI quebra, exception em runtime)."
+detector_patterns = ["tests? fail", "CI quebrou", "exception.*runtime", "AttributeError", "TypeError", "PermissionError"]
+detector_type = "regex"
+remediation_ref = "quality-loop"
+frequency_baseline = 0
+severity = "high"
+
+[scope_creep]
+label = "Scope Creep"
+description = "Mudou arquivos fora do escopo (diff inesperado, gate de escopo bloqueou)."
+detector_patterns = ["scope_gate.*blocked", "fora do escopo", "out of scope", "unexpected.*diff", "allowed_paths"]
+detector_type = "regex"
+remediation_ref = "gate de escopo (boundary)"
+frequency_baseline = 0
+severity = "medium"
+
+[skipped_checks]
+label = "Skipped Checks"
+description = "Declarou conclusão sem rodar verificações obrigatórias (sem prova fresca)."
+detector_patterns = ["verify_completion_claims.*FAIL", "lint.*not.*run", "testes.*não.*executados", "sem evidência", "sem prova fresca", "pride_check.*FAIL"]
+detector_type = "regex"
+remediation_ref = "evidence-gate"
+frequency_baseline = 0
+severity = "high"
+
+[missing_handoff]
+label = "Missing Handoff"
+description = "Não deixou contexto suficiente para a próxima sessão continuar sem retrabalho."
+detector_patterns = ["o que foi feito", "contexto perdido", "preciso entender o que", "current-state", "session.*context.*lost"]
+detector_type = "behavioral"
+remediation_ref = "handoff/recall"
+frequency_baseline = 0
+severity = "medium"
+
+[shortcut_spiral]
+label = "Shortcut Spiral"
+description = "Atalhos crescentes para entregar rápido (testes comentados, TODO acumulando, warnings ignorados)."
+detector_patterns = ["TODO.*urgente", "comentado temporariamente", "skip.*test", "funciona mas", "depois.*melhoro"]
+detector_type = "regex"
+remediation_ref = "quality-loop"
+frequency_baseline = 0
+severity = "high"
+
+[confidence_mirage]
+label = "Confidence Mirage"
+description = "Alta confiança em algo incorreto (score alto mas falhou; sem dissent em decisão arriscada)."
+detector_patterns = ["confidence.*high.*but.*fail", "sem dissent", "skeptic.*não.*invocado"]
+detector_type = "behavioral"
+remediation_ref = "confidence-thresholds"
+frequency_baseline = 0
+severity = "high"
+
+[phantom_verification]
+label = "Phantom Verification"
+description = "Afirma ter verificado o que não verificou ('testado e funciona' sem log)."
+detector_patterns = ["verify_completion_claims.*unverified", "testado e funciona.*sem log", "I believe.*works", "should work"]
+detector_type = "regex"
+remediation_ref = "verify-completion-claims"
+frequency_baseline = 0
+severity = "critical"
+
+[deferred_debt]
+label = "Deferred Debt"
+description = "Empurra decisão difícil para o futuro sem registro (TODO sem item, workaround sem issue)."
+detector_patterns = ["TODO(?!.*work-item)", "FIXME(?!.*issue)", "workaround.*sem issue", "decidir depois"]
+detector_type = "regex"
+remediation_ref = "quality-loop"
+frequency_baseline = 0
+severity = "medium"
+
+[filesystem_pollution]
+label = "Filesystem Pollution"
+description = "Deixa temporários/logs/artefatos de dev no repo (.scratch, .tmp, debug_)."
+detector_patterns = ["\\.scratch\\.py", "\\.tmp\\.md", "_scratch/", "debug_.*\\.py", "test_manual_.*\\.py"]
+detector_type = "glob"
+remediation_ref = "file-creation"
+frequency_baseline = 0
+severity = "low"

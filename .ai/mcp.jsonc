@@ -1,0 +1,21 @@
+// Fonte dos servidores MCP da camada de IA (ADR-019 rev. 2): o rulesync
+// traduz para `.mcp.json` (Claude Code), `.codex/` e `opencode.jsonc`.
+// Nunca guardar valor de segredo aqui: so' o NOME da variavel (o segredo
+// vive no sops, ver ADR-013).
+{
+  "mcpServers": {
+    "projects": {
+      "command": "docker",
+      "args": [
+        "exec", "-i", "-u", "node",
+        "-e", "DB_HOST=host.docker.internal",
+        "-e", "PROJECTS_MCP_ACTOR=opus",
+        "-w", "/workspace",
+        "segtools-dev",
+        "node", "tools/framework/secrets.mjs", "exec", "--",
+        "bun", "--conditions=react-server", "tools/framework/host/projects-mcp.ts"
+      ],
+      "env": { "MSYS_NO_PATHCONV": "1" }
+    }
+  }
+}

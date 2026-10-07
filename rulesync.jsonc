@@ -1,0 +1,17 @@
+{
+  // Fonte da camada de IA (ADR-019 rev. 2): o runtime `.ai/` e' o input; o rulesync traduz
+  // para cada ferramenta. `inputRoots` e' a arvore de origem (default `<cwd>/.rulesync`).
+  "targets": ["claudecode", "codexcli", "opencode"],
+  // F1 do ADR-019: regras e skills. F2 (SEG-845): hooks, mcp e permissions
+  // tambem sao gerados a partir de `.ai/{hooks,mcp,permissions}.jsonc`.
+  "features": ["rules", "skills", "hooks", "mcp", "permissions"],
+  "inputRoots": [".ai"],
+
+  // Camada 4 do ADR-019 (SEG-846): catalogo self-service. Skills de terceiros vem do upstream
+  // por instalador com lockfile (`task ai:skills:restore`), nao por copia a mao. O rulesync
+  // baixa em `.rulesync/skills/.curated/<nome>/` e trava commit+hash em `rulesync.lock`;
+  // `tools/framework/ai-skills-sync.mjs` copia para `.ai/skills/<nome>/`.
+  "sources": [
+    { "source": "shadcn-ui/ui", "skills": ["shadcn", "migrate-radix-to-base"] }
+  ]
+}

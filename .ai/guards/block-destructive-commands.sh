@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# PreToolUse — bloqueia comandos DESTRUTIVOS (volumes Docker, reset/clean).
+# Adaptado do Fabber (aviso #56: `docker compose down -v` destruiu os volumes de dev).
+# Override: SEGTOOLS_ALLOW_DESTRUCTIVE=1 (operador, por invocacao — NUNCA o agente).
+# Fails OPEN.
+set -uo pipefail
+
+source "$(dirname "$0")/lib-json.sh"
+HOOK_INPUT="$(cat 2>/dev/null || true)"
+CMD="$(jget tool_input.command)"; TOOL="$(jget tool_name)"
+case "$TOOL" in Bash|PowerShell) ;; *) exit 0 ;; esac
+[ -z "$CMD" ] && exit 0
+
+OVERRIDE_VAR="SEGTOOLS_ALLOW_DESTRUCTIVE"
+block() {
+  {
+    echo "BLOCKED by .ai/guards/block-destructive-commands.sh: $1"
+    echo ""
+    echo "Override (so o OPERADOR, por invocacao): $OVERRIDE_VAR=1 <cmd>"
+    echo "Um agente setar $OVERRIDE_VAR por conta propria e o comportamento que este hook existe p/ impedir."
+  } >&2
+  exit 2
+}
+warn() { echo "WARNING (block-destructive-commands.sh): $1" >&2; }
+
+if printf '%s' "$CMD" | grep -Eq "(^|[[:space:]])${OVERRIDE_VAR}=1([[:space:]]|$)"; then
+  echo "OVERRIDE ACTIVE: $OVERRIDE_VAR=1 — guarda destrutiva ignorada pelo operador." >&2
+  exit 0
+fi
+
+LC="$(printf '%s' "$CMD" | tr '[:upper:]' '[:lower:]')"
+
+# docker compose down -v/--volumes (qualquer ordem de flags)
+if printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])docker([[:space:]]+compose|-compose)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+down([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(-v|--volumes)([[:space:]]|$)'; then
+  block "'docker compose down -v/--volumes' remove os volumes nomeados."
+fi
+# docker volume rm/prune
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])docker[[:space:]]+volume[[:space:]]+(rm|prune)([[:space:]]|$)' && block "'docker volume rm/prune' destroi volumes."
+# docker system prune --volumes
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])docker[[:space:]]+system[[:space:]]+prune[[:space:]].*--volumes' && block "'docker system prune --volumes' destroi volumes."
+# rm -rf em /var/lib/docker/volumes (rm -rf .cache/ e permitido)
+if printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])rm[[:space:]]+-[a-z]*r[a-z]*f[[:space:]]'; then
+  if ! printf '%s' "$LC" | grep -Eq 'rm[[:space:]]+-[a-z]*r[a-z]*f[[:space:]]+\.cache(/|$)'; then
+    if printf '%s' "$LC" | grep -Eq 'rm[[:space:]]+-[a-z]*r[a-z]*f[[:space:]]+/var/lib/docker/volumes/'; then
+      block "'rm -rf /var/lib/docker/volumes/...' destroi dados de volume."
+    fi
+  fi
+fi
+# git clean -fdx / reset --hard: avisa (nao bloqueia)
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+clean[[:space:]]+-[a-z]*f[a-z]*d[a-z]*x([[:space:]]|$)' && warn "'git clean -fdx' remove todo arquivo nao rastreado — verifique 'git status'."
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)' && warn "'git reset --hard' descarta mudancas nao commitadas — verifique 'git status'."
+
+exit 0

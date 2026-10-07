@@ -1,0 +1,18 @@
+// Fonte das permissoes da camada de IA (ADR-019 rev. 2): o rulesync gera
+// `permissions.allow/ask/deny` no `.claude/settings.json` (e o equivalente
+// em Codex/OpenCode). Categorias em minusculo, padrao glob -> acao.
+{
+  "permission": {
+    "bash": {
+      "git status *": "allow",
+      "git log *": "allow",
+      "git diff *": "allow",
+      "git show *": "allow",
+      "git branch *": "allow",
+      "docker ps *": "allow",
+      "docker logs *": "allow",
+      "docker images *": "allow",
+      "git *": "allow"
+    }
+  }
+}

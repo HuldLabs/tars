@@ -1,0 +1,9 @@
+{
+  "arquivos": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".ai/memory/agent/MEMORY.md",
+    ".ai/memory/INDEX.md"
+  ],
+  "teto_tokens": 15800
+}

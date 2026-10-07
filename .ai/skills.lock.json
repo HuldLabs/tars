@@ -1,0 +1,19 @@
+{
+  "lockfileVersion": 1,
+  "sources": {
+    "shadcn-ui/ui": {
+      "owner": "shadcn-ui",
+      "repo": "ui",
+      "path": "skills",
+      "commit": "295a1f114a138f23b5dfee0e0c6812394dfeb90c",
+      "skills": {
+        "shadcn": {
+          "sha256": "sha256-72daebc2486fbfe58651dcf28bade9c6ae13ddd88e66789564cea7901ef2f0c6"
+        },
+        "migrate-radix-to-base": {
+          "sha256": "sha256-3cbaf68aaabc63cba573e22b8dab9d87dc15612b2b1e31b65efcbcbcfd1e0340"
+        }
+      }
+    }
+  }
+}

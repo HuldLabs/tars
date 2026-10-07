@@ -1,0 +1,37 @@
+// Fonte dos hooks da camada de IA (ADR-019 rev. 2). O rulesync traduz para
+// cada ferramenta. Os scripts moram em `.ai/guards/` (fonte), nao mais em
+// `.claude/hooks/`. Eventos canonicos em camelCase.
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "command": "bash \"./.ai/guards/block-secret-dump.sh\""
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "command": "bash \"./.ai/guards/block-destructive-commands.sh\""
+      }
+    ],
+    "preCompact": [
+      {
+        "matcher": "manual|auto",
+        "command": "bash \"./.ai/guards/precompact-persist-state.sh\""
+      }
+    ],
+    "sessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "command": "bash \"./.ai/guards/sessionstart-context-digest.sh\""
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "command": "bash \"./.ai/guards/ensure-memory-link.sh\""
+      }
+    ],
+    "stop": [
+      { "command": "bash \"./.ai/guards/stop-unfinished-work.sh\"" }
+    ]
+  }
+}

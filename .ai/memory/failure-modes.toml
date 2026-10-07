@@ -1,0 +1,140 @@
+# failure-modes.toml — taxonomia dos modos de falha de agente (SSOT)
+#
+# Portado (R1) da versão mais completa: tokenhood .ai/governance/failure-modes.toml (v3.4 G.3)
+# — que por sua vez inspirou farmega.v2/.ai/governance/failure-modes.toml.
+# Cada modo mapeia: detect, prevent, recover, blast_radius.
+# Fonte: docs/architecture/adrs/019-ai-layer-v3-4-trustworthy-agents-and-quality-loop.md
+# Uso: classificar incidentes (incident-ledger) e calibrar detectores.
+
+schema_version = 1
+
+# ── A: confiança ──────────────────────────────────────────────────────────
+[[failure_mode]]
+id = "FM-A1"
+name = "Phantom confidence"
+category = "confidence"
+description = "Afirma fato como verificado quando é suposição de treino/achismo."
+blast_radius = "high"
+detection = "lint de vocabulário de confiança (probably/likely/I believe/should work)"
+prevention = ["vocabulário [VERIFIED]/[DERIVED]/[ASSUMED]/[UNKNOWN]", "regra investigate-before-answering"]
+recovery = "Re-executar a afirmação com a tag explícita após rodar o comando de verificação."
+
+[[failure_mode]]
+id = "FM-A2"
+name = "Phantom completion"
+category = "confidence"
+description = "Declara 'feito' sem rodar o comando de verificação / ver a saída real."
+blast_radius = "high"
+detection = "verify-completion-claims (claim | verify | expect)"
+prevention = ["completion-claims.yaml com verification_command por AC", "gate roda antes de delivered"]
+recovery = "Reabrir; rodar cada claim de forma independente; re-verificar."
+
+[[failure_mode]]
+id = "FM-A3"
+name = "Context anxiety"
+category = "confidence"
+description = "Corre/declara feito porque o contexto está ficando longo."
+blast_radius = "medium"
+detection = "critério do REVIEWER (relê o mesmo arquivo sem mudança)"
+prevention = ["regra: nunca declarar feito por contexto longo", "precompact/compactação controlada"]
+recovery = "Compactar; reabrir a fatia; completar direito."
+
+# ── B: escopo ─────────────────────────────────────────────────────────────
+[[failure_mode]]
+id = "FM-B1"
+name = "Scope creep"
+category = "scope"
+description = "Mexe fora do allowed_paths ou adiciona feature não pedida."
+blast_radius = "medium"
+detection = "boundary gate (test_architecture)"
+prevention = ["allowed_paths/forbidden_paths no spec", "diff mínimo; sem refactor oportunista"]
+recovery = "Reverter o fora-de-escopo; reimplementar só o delta permitido."
+
+[[failure_mode]]
+id = "FM-B2"
+name = "Overengineering"
+category = "scope"
+description = "Cria abstração para futuro hipotético fora do spec (KISS)."
+blast_radius = "low"
+detection = "critério do REVIEWER (complexidade)"
+prevention = ["minimum-viable-change", "regra file-creation (minimizar arquivos)"]
+recovery = "REVIEWER marca; DEV volta ao mínimo."
+
+# ── C: processo ───────────────────────────────────────────────────────────
+[[failure_mode]]
+id = "FM-C1"
+name = "Red baseline implementation"
+category = "process"
+description = "Implementa sobre baseline vermelho, compondo falhas."
+blast_radius = "high"
+detection = "session-start (checa estado verde)"
+prevention = ["fix do baseline antes de trabalho novo", "session-start"]
+recovery = "Consertar baseline; re-rodar session-start; então implementar."
+
+[[failure_mode]]
+id = "FM-C2"
+name = "Skipped review gate"
+category = "process"
+description = "Marca a fatia como done sem o gate de REVIEW passar."
+blast_radius = "high"
+detection = "progress (AC de review pendente)"
+prevention = ["review-gates", "checklist do progress enforced"]
+recovery = "Reabrir; rodar o gate de REVIEW; fechar só com o AC verde."
+
+[[failure_mode]]
+id = "FM-C3"
+name = "Harness drift"
+category = "process"
+description = "Modifica a camada de IA (.ai) fora do protocolo, sem aprovação."
+blast_radius = "medium"
+detection = "gate de topologia do harness (test_architecture)"
+prevention = [".ai canônico (só .ai é fonte)", "exec-policy"]
+recovery = "Reverter mudança não autorizada; abrir postmortem do harness."
+
+# ── D: social / multi-turno ───────────────────────────────────────────────
+[[failure_mode]]
+id = "FM-D1"
+name = "Fake agreement"
+category = "social"
+description = "Concorda com a crítica mesmo quando a resposta anterior estava certa."
+blast_radius = "low"
+detection = "detector de conformidade"
+prevention = ["reviewer cego à narrativa do DEV", "papel SKEPTIC adversarial"]
+recovery = "SKEPTIC re-desafia a concessão suspeita."
+
+[[failure_mode]]
+id = "FM-D2"
+name = "Sycophantic reversal"
+category = "social"
+description = "Reverte decisão correta porque o humano demonstrou desagrado."
+blast_radius = "medium"
+detection = "detector de conformidade"
+prevention = ["vocabulário de confiança baseado em evidência", "papel SKEPTIC"]
+recovery = "SKEPTIC marca; humano revisa original vs revertido."
+
+[[failure_mode]]
+id = "FM-D3"
+name = "Lazy agent"
+category = "social"
+description = "Entrega mínima, omite passos ou pula verificação para parecer feito."
+blast_radius = "medium"
+detection = "pride-check (critérios de fechamento)"
+prevention = ["contrato de escrita do assistente", "checklist de fechamento"]
+recovery = "pride-check bloqueia o merge; completar todos os critérios."
+
+# ── padrões nomeados (apelidos estáveis) ──────────────────────────────────
+[shortcut_spiral]        # Crosley #1
+category = "process"
+description = "Atalhos crescentes sob pressão, comprometendo qualidade progressivamente."
+[confidence_mirage]      # Crosley #2
+category = "confidence"
+description = "Soa confiante sem evidência verificada suficiente."
+[phantom_verification]   # Crosley #3
+category = "confidence"
+description = "Afirma que uma verificação passou quando não há prova real."
+[deferred_debt]          # Crosley #4
+category = "scope"
+description = "Deixa dívida estrutural documentada/rastreada de forma incompleta."
+[filesystem_pollution]   # Crosley #5
+category = "process"
+description = "Deixa artefatos temporários/logs de debug/não-escopo na árvore."
