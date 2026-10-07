@@ -22,7 +22,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findTars, parseToml } from './tars-sync.mjs'
+import { findTars, parseToml, NONINTERACTIVE_ENV } from './tars-sync.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -136,6 +136,42 @@ export function classify(d, base = process.cwd(), { spawn = rodaProva } = {}) {
 /** A doutrina nao esta' sendo cobrada: o doctor sai != 0 (R4 — falha alta). */
 export const FALHA = ['PHANTOM', 'DRIFT']
 
+/**
+ * A PONTA que faz o guard rodar: o `.claude/settings.json` do consumidor. Doutrina OK nao
+ * basta se o harness nao roda nada. Duas checagens, ambas de CLASSE (07/10):
+ *   - `env` nao interativo ausente: um comando de agente BLOQUEIA esperando senha (o `git fetch`
+ *     de 8 min);
+ *   - hook apontando arquivo AUSENTE: o harness roda `bash: no such file` em toda sessao.
+ * Qualquer das duas = FALHA com o comando de correcao (`tars sync`).
+ */
+export function wiringCheck(project) {
+  const file = join(project, '.claude', 'settings.json')
+  if (!existsSync(file)) return { ok: false, detalhe: 'sem .claude/settings.json — rode `tars sync`', orfa: [], avisos: [] }
+  let s
+  try {
+    s = JSON.parse(readFileSync(file, 'utf8'))
+  } catch (err) {
+    return { ok: false, detalhe: `settings.json ilegivel: ${err.message} — rode \`tars sync\``, orfa: [], avisos: [] }
+  }
+  const avisos = Object.entries(NONINTERACTIVE_ENV)
+    .filter(([k, v]) => s.env?.[k] !== v)
+    .map(([k, v]) => `${k} (esperado '${v}')`)
+  const orfa = []
+  for (const [evento, entradas] of Object.entries(s.hooks ?? {}))
+    for (const e of entradas ?? [])
+      for (const h of e.hooks ?? []) {
+        const m = h.command?.match(/\.ai\/(base\/)?(guards\/[^"\s]+)/)
+        if (m && !existsSync(join(project, '.ai', 'base', m[2])) && !existsSync(join(project, '.ai', m[2])))
+          orfa.push(`${evento}: ${m[2]}`)
+      }
+  const detalhe = orfa.length
+    ? `hook apontando arquivo ausente (${orfa.join('; ')}) — rode \`tars sync\``
+    : avisos.length
+      ? `sem ambiente nao interativo: ${avisos.join(', ')} — rode \`tars sync\``
+      : 'env nao interativo presente; todo hook aponta arquivo existente'
+  return { ok: !orfa.length && !avisos.length, detalhe, orfa, avisos }
+}
+
 /** Carrega, classifica e resume. `faltando` e' o que derruba o exit code. */
 export function doctor({ tars, project } = {}) {
   const catalogo = resolve(tars ?? findTars())
@@ -149,16 +185,25 @@ export function doctor({ tars, project } = {}) {
   const porStatus = Object.fromEntries(
     ['OK', 'PHANTOM', 'SEM GATE', 'DRIFT', 'PROJETO'].map((s) => [s, itens.filter((i) => i.status === s).length]),
   )
-  return { tars: catalogo, project: root, itens, porStatus, faltando: itens.filter((i) => FALHA.includes(i.status)) }
+  const wiring = wiringCheck(root)
+  return {
+    tars: catalogo,
+    project: root,
+    itens,
+    porStatus,
+    wiring,
+    faltando: [...itens.filter((i) => FALHA.includes(i.status)), ...(wiring.ok ? [] : [{ id: 'wiring/settings', status: 'FALHA' }])],
+  }
 }
 
 /** Uma linha por doutrina: `STATUS  id  onde  gate`, com o detalhe abaixo quando ha' o que dizer. */
-export function format({ itens, porStatus, tars, project }, log = console.log) {
+export function format({ itens, porStatus, tars, project, wiring }, log = console.log) {
   log(`tars doctor — ${itens.length} doutrina(s) · catalogo ${tars} · projeto ${project}`)
   for (const i of itens) {
     log(`${i.status.padEnd(9)} ${i.id}  [${i.onde}]  gate=${i.gate}`)
     if (i.status !== 'OK') log(`          ${i.detalhe}`)
   }
+  if (wiring) log(`${(wiring.ok ? 'OK' : 'FALHA').padEnd(9)} wiring/settings  [session-start]  ${wiring.detalhe}`)
   log(
     `\nOK ${porStatus.OK} · PHANTOM ${porStatus.PHANTOM} · SEM GATE ${porStatus['SEM GATE']} · DRIFT ${porStatus.DRIFT}` +
       (porStatus.PROJETO ? ` · PROJETO ${porStatus.PROJETO}` : ''),

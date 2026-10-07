@@ -167,6 +167,8 @@ export async function readManifest(project) {
     memory: tars.memory ?? [],
     guards: tars.guards ?? [],
     governance: tars.governance ?? [],
+    // `[tars.env]` — ambiente extra do agente (o sync sempre injeta o NAO INTERATIVO).
+    env: cfg.env ?? {},
     gates,
   }
 }
@@ -438,23 +440,78 @@ export function preToolUseFor(manifest) {
     : []
 }
 
-export function claudeSettings(manifest) {
+/**
+ * Ambiente NAO INTERATIVO do agente: comando que abre prompt (senha de git, host key do
+ * ssh) bloqueia sem TTY ate' o timeout — foi o `git fetch` de 8 min em 07/10. `GIT_TERMINAL_PROMPT=0`
+ * faz o git FALHAR ALTO em vez de perguntar; `BatchMode` corta a senha no ssh; `GCM_INTERACTIVE=never`
+ * idem no credential manager. Um passo do sync fecha a CLASSE inteira para todo consumidor.
+ */
+export const NONINTERACTIVE_ENV = {
+  GIT_TERMINAL_PROMPT: '0',
+  GCM_INTERACTIVE: 'never',
+  GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=15',
+}
+
+/**
+ * Hooks que NAO dependem do manifesto: os da base. `guards` declara os do PROJETO e
+ * `paths` diz onde o arquivo mora DE FATO (o consumidor pode ter `.ai/guards/` proprio).
+ * Hook cujo arquivo nao existe e' OMITIDO: apontar para `.ai/guards/` ausente fazia o
+ * harness rodar um `bash: no such file` em toda sessao (defeito do seo-brain, 07/10).
+ */
+export const BASE_HOOKS = [
+  { event: 'PreCompact', matcher: 'manual|auto', file: 'precompact-persist-state.sh' },
+  { event: 'SessionStart', matcher: 'startup|resume|clear|compact', file: 'sessionstart-context-digest.sh' },
+  { event: 'SessionStart', matcher: 'startup|resume|clear|compact', file: 'ensure-memory-link.sh' },
+]
+
+/** Acha o arquivo da base: no projeto (`.ai/guards/`) primeiro, depois na base copiada. */
+export function resolveGuardFile(project, file) {
+  for (const rel of ['guards', join('base', 'guards')]) {
+    const full = join(project, '.ai', rel, file)
+    if (existsSync(full)) return full
+  }
+  return null
+}
+
+/** Guard declarado pelo PROJETO (`[tars].guards`), na pasta propria ou na base copiada. */
+export function projectGuardHooks(project, manifest) {
+  const out = []
+  for (const item of manifest.guards ?? []) {
+    const rel = destOf({ area: 'guards', item })
+    const full = join(project, '.ai', 'base', rel)
+    if (!existsSync(full)) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
+    out.push({ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/.ai/base/${rel}"` })
+  }
+  return out.length ? [{ matcher: 'Bash|PowerShell', hooks: out }] : []
+}
+
+/** Hooks da base, agrupados por evento; sem `project` (teste puro) todos entram. */
+function baseHooks(project) {
+  const eventos = { PreToolUse: [], PreCompact: [], SessionStart: [] }
+  for (const h of BASE_HOOKS) {
+    if (project && !resolveGuardFile(project, h.file)) continue
+    const entry = { matcher: h.matcher, hooks: [{ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/.ai/guards/${h.file}"` }] }
+    const slot = eventos[h.event] ??= []
+    const same = slot.find((e) => e.matcher === h.matcher)
+    if (same) same.hooks.push(...entry.hooks)
+    else slot.push(entry)
+  }
+  return eventos
+}
+
+/**
+ * `project` e' opcional: sem ele o settings sai completo (uso legado/teste). Com ele, hook
+ * cujo arquivo nao existe no consumidor e' omitido — o sync faz o certo por padrao.
+ */
+export function claudeSettings(manifest, project = null) {
+  const base = baseHooks(project)
   return {
     $schema: 'https://json.schemastore.org/claude-code-settings.json',
+    env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}) },
     hooks: {
-      PreToolUse: preToolUseFor(manifest),
-      PreCompact: [
-        { matcher: 'manual|auto', hooks: [{ type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/guards/precompact-persist-state.sh"' }] },
-      ],
-      SessionStart: [
-        {
-          matcher: 'startup|resume|clear|compact',
-          hooks: [
-            { type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/guards/sessionstart-context-digest.sh"' },
-            { type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/guards/ensure-memory-link.sh"' },
-          ],
-        },
-      ],
+      PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest))],
+      PreCompact: base.PreCompact,
+      SessionStart: base.SessionStart,
     },
   }
 }
@@ -463,7 +520,7 @@ export function claudeSettings(manifest) {
 export async function writeWiring(project, manifest) {
   const dir = join(project, '.claude')
   const file = join(dir, 'settings.json')
-  const body = JSON.stringify(claudeSettings(manifest), null, 2) + '\n'
+  const body = JSON.stringify(claudeSettings(manifest, project), null, 2) + '\n'
   if (existsSync(file) && (await readFile(file, 'utf8')) === body) return []
   await mkdir(dir, { recursive: true })
   await writeFile(file, body)
@@ -485,6 +542,12 @@ rules   = []                                        # ex.: ["base"]
 memory  = []                                        # fatias da memoria base por tema, ex.: ["git", "db"]
 guards  = []                                        # ex.: ["block-secret-dump", "sessionstart-context-digest"]
 governance = []                                     # ex.: ["EVOLUTION", "source-of-truth"]
+
+# Ambiente extra do agente (opcional). O sync SEMPRE injeta o nao interativo
+# (GIT_TERMINAL_PROMPT=0, GCM_INTERACTIVE=never, GIT_SSH_COMMAND com BatchMode).
+# Descomente so' o que este projeto acrescenta:
+# [env]
+# MINHA_CHAVE = "valor"
 
 [gates]
 pre-commit = []                                     # do catalogo: commit-msg, gitleaks, no-add-all, layout-check, ds-gate

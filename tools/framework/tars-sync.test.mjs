@@ -313,13 +313,29 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
         hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/alpha-guard.sh"' }],
       },
     ]);
-    expect(s.hooks.SessionStart[0].hooks.map((h) => h.command)).toEqual([
-      'bash "$CLAUDE_PROJECT_DIR/.ai/guards/sessionstart-context-digest.sh"',
-      'bash "$CLAUDE_PROJECT_DIR/.ai/guards/ensure-memory-link.sh"',
-    ]);
+    // `env` NAO INTERATIVO (07/10): sem ele um `git fetch` sem credencial bloqueia esperando
+    // senha que ninguem digita. As 3 chaves fecham a CLASSE para todo consumidor de uma vez.
+    expect(s.env).toEqual({
+      GIT_TERMINAL_PROMPT: "0",
+      GCM_INTERACTIVE: "never",
+      GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=15",
+    });
     // Guard do catalogo que NAO foi declarado nao entra no wiring: chamar guard inexistente
     // quebraria a sessao do consumidor.
     expect(JSON.stringify(s)).not.toContain("outro-guard.sh");
+  });
+
+  it("hook cujo arquivo NAO existe no consumidor e' OMITIDO (nao aponta para o vazio)", async () => {
+    // Consumidor SEM os guards da base: o hook nao pode sair apontando para `.ai/guards/`
+    // ausente — o harness rodaria `bash: no such file` e sujaria toda sessao (seo-brain, 07/10).
+    const { tars, project } = scaffold();
+    await sync({ tars, project, log: () => {} });
+
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(s)).not.toContain("sessionstart-context-digest.sh");
+    expect(JSON.stringify(s)).not.toContain("ensure-memory-link.sh");
+    // O guard DECLARADO tem arquivo na base copiada: continua entrando.
+    expect(JSON.stringify(s)).toContain(".ai/base/guards/alpha-guard.sh");
   });
 
   it("so' os guards declarados entram; nenhum declarado = PreToolUse vazio", async () => {

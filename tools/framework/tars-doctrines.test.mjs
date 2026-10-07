@@ -6,12 +6,22 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { classify, doctor, loadDoctrines, parseRef } from './tars-doctrines.mjs'
+import { NONINTERACTIVE_ENV } from './tars-sync.mjs'
 
 /** Projeto minimo: `.ai/tars.toml` + a fonte que as doutrinas declaram. */
-function fixture(doctrines, { fonte = true } = {}) {
+function fixture(doctrines, { fonte = true, wiring = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tars-doc-'))
   fs.mkdirSync(path.join(dir, '.ai'), { recursive: true })
   if (fonte) fs.writeFileSync(path.join(dir, 'REGRA.md'), '# regra\nlinha 2\nlinha 3\n')
+  // O doctor agora confere a PONTA (settings do harness). Fixture que testa SO' doutrina
+  // nasce com wiring em dia; os casos de wiring pedem `wiring: false`.
+  if (wiring) {
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, '.claude', 'settings.json'),
+      JSON.stringify({ env: NONINTERACTIVE_ENV, hooks: { PreToolUse: [] } }),
+    )
+  }
   const linhas = doctrines
     .map((d) => `[[doctrine]]\n${Object.entries(d).map(([k, v]) => `${k} = "${v}"`).join('\n')}`)
     .join('\n\n')
@@ -103,6 +113,48 @@ describe('doctor — o exit code', () => {
     const tars = fixture([{ id: 'a/b', fonte: 'REGRA.md:1', gate: 'nenhum', motivo: 'sem artefato', prova: 'false' }])
     const r = doctor({ tars, project: tars })
     expect(r.porStatus['SEM GATE']).toBe(1)
+    expect(r.faltando).toHaveLength(0)
+  })
+})
+
+describe('doctor — o wiring do harness (a ponta que faz o guard rodar)', () => {
+  const d = () => [{ id: 'a/b', fonte: 'REGRA.md:1', gate: 'g', prova: 'false' }]
+
+  it('settings SEM o env nao interativo = FALHA (o comando bloquearia esperando senha)', () => {
+    const tars = fixture(d())
+    const file = path.join(tars, '.claude', 'settings.json')
+    fs.writeFileSync(file, JSON.stringify({ env: {}, hooks: { PreToolUse: [] } }))
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.ok).toBe(false)
+    expect(r.wiring.detalhe).toMatch(/GIT_TERMINAL_PROMPT.*tars sync/)
+    expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
+  })
+
+  it('projeto SEM .claude/settings.json = FALHA nomeando o conserto', () => {
+    const tars = fixture(d(), { wiring: false })
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.detalhe).toContain('rode `tars sync`')
+    expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
+  })
+
+  it('hook apontando arquivo AUSENTE = FALHA (o harness rodaria bash: no such file)', () => {
+    const tars = fixture(d())
+    fs.writeFileSync(
+      path.join(tars, '.claude', 'settings.json'),
+      JSON.stringify({
+        env: NONINTERACTIVE_ENV,
+        hooks: { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/guards/nao-existe.sh"' }] }] },
+      }),
+    )
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.orfa).toEqual(['SessionStart: guards/nao-existe.sh'])
+    expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
+  })
+
+  it('wiring em dia nao derruba (o caso feliz)', () => {
+    const tars = fixture(d())
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.ok).toBe(true)
     expect(r.faltando).toHaveLength(0)
   })
 })
