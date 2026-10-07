@@ -8,7 +8,7 @@ import { HOOKS } from './tars-sync.mjs'
 
 describe('tars — despacho', () => {
   it('expoe exatamente os subcomandos do desenho', () => {
-    expect(Object.keys(COMMANDS).sort()).toEqual(['check', 'doctor', 'git', 'hooks', 'init', 'promote', 'sync', 'verify'])
+    expect(Object.keys(COMMANDS).sort()).toEqual(['check', 'doctor', 'git', 'hooks', 'init', 'memory', 'promote', 'sync', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {

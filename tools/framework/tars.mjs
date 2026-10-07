@@ -30,6 +30,7 @@ import * as syncMod from './tars-sync.mjs'
 import * as gitMod from './tars-git.mjs'
 import * as doctorMod from './tars-doctrines.mjs'
 import * as verifyMod from './tars-verify.mjs'
+import * as memoryMod from './tars-memory.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -74,6 +75,8 @@ const USAGE = [
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
   '  verify <arquivo>           roda os `verify` de um bloco de claims e cobra o `expect` (exit',
   '                             != 0 em PHANTOM/sem negativo/excesso de [ASSUMED]); `-` le stdin',
+  '  memory audit [--file]      cobra a FONTE de cada fato (arquivo/ancora/hash): reprova em',
+  '                             MISSING, ancora ausente ou DRIFT do trecho; sem hash = aviso',
   '  git prune [--remote]       apaga branches ja incorporadas (--remote: tambem no origin)',
   '                             use --dry-run para so imprimir; nunca apaga main nem a atual',
   '',
@@ -172,6 +175,18 @@ async function verifyCommand(rest) {
   if (r.falhas.length) process.exit(1)
 }
 
+/** `tars memory audit [--file <jsonl>] [--json]` — despacho fino (o julgamento mora no modulo dono). */
+async function memoryCommand(rest, project) {
+  const sub = rest[0]
+  if (sub !== 'audit') throw new Error(`use \`tars memory audit [--file <jsonl>] [--json]\` (recebi '${sub ?? ''}')`)
+  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  const file = resolve(argValue(rest, '--file') ?? join(raiz, '.ai', 'memory', 'operational-memory.jsonl'))
+  const r = memoryMod.auditMemory(file, { root: raiz })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else console.log(memoryMod.format(r))
+  if (!r.ok) process.exit(1)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -187,6 +202,7 @@ const COMMANDS = {
   promote: promoteCommand,
   doctor: doctorCommand,
   verify: verifyCommand,
+  memory: memoryCommand,
   git: gitCommand,
 }
 
