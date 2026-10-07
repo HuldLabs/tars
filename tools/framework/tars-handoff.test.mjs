@@ -114,6 +114,23 @@ describe('checkHandoff — o cursor bate com o git', () => {
     expect(checkHandoff(escreve(dir, 'b.md', base + 'Intencao: fazer-tudo\n'), { cwd: dir, hoje: HOJE, git }).ok).toBe(false)
   })
 
+  it('CASO POSITIVO (MAIN): projeto so-main valida com branch `main` citada', () => {
+    const dir = raiz()
+    const f = escreve(dir, 'HANDOFF.md', '# HANDOFF\n\n## Estado em 07/10/2026\n**Branch: `main`**\n**Proximo passo:** rodar a regua.\n')
+    const r = checkHandoff(f, { cwd: dir, hoje: HOJE, git: gitFalso({ branches: ['main'] }) })
+    expect(r.erros).toEqual([])
+    expect(r.ok).toBe(true)
+    expect(r.branch).toBe('main')
+  })
+
+  it('CASO NEGATIVO (MAIN): branch main que nao existe ainda reprova', () => {
+    const dir = raiz()
+    const f = escreve(dir, 'HANDOFF.md', '# HANDOFF\n\n## Estado em 07/10/2026\n**Branch: `main`**\n**Proximo passo:** rodar a regua.\n')
+    const r = checkHandoff(f, { cwd: dir, hoje: HOJE, git: gitFalso({ branches: [] }) })
+    expect(r.ok).toBe(false)
+    expect(r.erros.join()).toContain('main')
+  })
+
   it('HANDOFF ausente reprova ruidoso', () => {
     const r = checkHandoff(path.join(raiz(), 'nao-existe.md'), { git: gitFalso() })
     expect(r.ok).toBe(false)

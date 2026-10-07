@@ -120,6 +120,7 @@ export function checkHandoff(file, { cwd = process.cwd(), git, hoje = new Date()
  */
 function branchCitada(topo) {
   const campo = /\bbranch\s*:?\s*\**\s*`?([A-Za-z0-9][A-Za-z0-9._/-]*)`?/i.exec(topo)
+  if (campo && campo[1] === 'main') return 'main'
   if (campo && campo[1].includes('/')) return campo[1]
   for (const m of String(topo).matchAll(/\b([a-z][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*)\b/gi)) {
     if (existeNomeDeBranch(m[1])) return m[1]
@@ -131,8 +132,10 @@ function branchCitada(topo) {
  * Um token `tipo/slug` com a cara de um nome de branch. A lista de prefixos e' o que separa
  * `chore/ecossistema` (branch) de `docs/PRECOMPACT.md` (caminho de arquivo, que tambem e'
  * `palavra/palavra`) — sem ela o check acusava "branch nao existe" num doc citado.
+ * `main` entra sem prefixo: projeto so-main e' legitimo e a branch principal nao tem `tipo/`.
  */
 function existeNomeDeBranch(nome) {
+  if (nome === 'main') return true
   return /^(feat|fix|chore|docs|refactor|test|perf|ci|build|revert|hotfix)\/[A-Za-z0-9]/.test(nome)
     && !/\.[a-z]{2,4}$/i.test(nome)
 }
