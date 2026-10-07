@@ -85,6 +85,7 @@ tars sync                          # puxa o declarado para .ai/base/
 tars check                         # só valida base × lock (o gate); exit 1 se inconsistente
 tars hooks <pre-commit|commit-msg|pre-push|local> [args]   # roda os gates do hook
 tars promote --area <memory|skill|gate> --item <nome>      # sobe item do projeto ao catálogo
+tars doctor [--json]                                       # confere doutrina × gate × prova
 ```
 
 ### Sem Node — o binário `tars`
@@ -146,6 +147,33 @@ A ordem é deliberada: a **base primeiro** (mensagem, segredo, add amplo — com
 O gate recebe os argumentos do hook como estão (ex.: o arquivo da mensagem no `commit-msg`),
 mais `TARS_PROJECT` no ambiente, `TARS_GATE` com o nome e `TARS_GATE_PARAMS` com o JSON de
 `[gates.params.<nome>]`.
+
+#### `tars-doctrines.mjs` — o `doctor`
+
+```sh
+node <tars>/tools/framework/tars-doctrines.mjs [--tars <dir>] [--project <dir>] [--json]
+```
+
+A **doutrina é dado**: cada regra que a gente diz seguir declara a **fonte** onde está escrita
+(`arquivo:linha`), o **gate** que a aplica, a **prova** que a falsifica e **onde** ela roda.
+O par vive em `.ai/doctrines.toml` (catálogo) e na seção `[[doctrine]]` do `.ai/tars.toml` do
+projeto — que **vence pelo `id`**.
+
+```toml
+[[doctrine]]
+id     = "git/branch-name"          # <tema>/<slug>; é a chave de dedup
+fonte  = "docs/GIT.md:44-54"        # onde a regra está ESCRITA
+gate   = ".ai/base/gates/commit-msg"  # quem APLICA (`"nenhum"` + `motivo` = órfã nomeada)
+prova  = "node ... --validate-branch 'sem-tipo'"   # comando que REPROVA
+onde   = "pre-push"                 # pre-commit | commit-msg | pre-push | session-start | ci
+```
+
+O `doctor` roda cada `prova` e classifica: **OK** (a prova reprova — a regra é cobrada),
+**PHANTOM** (a prova passa: nada distingue quem segue de quem ignora), **SEM GATE** (órfã
+declarada com motivo — aviso), **DRIFT** (a fonte sumiu ou a linha saiu do texto). Sai ≠ 0
+quando há PHANTOM ou DRIFT; doutrina de outro projeto sai **PROJETO** (o doctor roda lá).
+`gate = "nenhum"` é obrigatório declarar: doutrina sem gate deixa de ser esquecimento e vira
+dívida nomeada.
 
 #### `tars-promote.mjs` — a promoção
 

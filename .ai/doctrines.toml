@@ -1,0 +1,212 @@
+# Doutrina como DADO (docs/TARS.md; `tars doctor`).
+#
+# Cada item declara o par que ate' agora so' existia na cabeca de quem escreveu o hook:
+#   fonte  — `arquivo:linha` onde a regra esta ESCRITA (a autoridade da prosa)
+#   gate   — quem APLICA; `"nenhum"` e obrigatorio declarar, com `motivo` (orfao nomeado)
+#   prova  — comando que REPROVA: se ele PASSA, a doutrina nao esta' sendo cobrada (PHANTOM)
+#   onde   — pre-commit | commit-msg | pre-push | session-start | ci
+#
+# `escopo`: `catalogo` vale em todo consumidor (a prova roda aqui, na raiz do Tars);
+# `segtools` descreve uma regra que so' o segtools tem — a prova roda no projeto dele e
+# entra no `.ai/tars.toml` de la', nao aqui. O projeto sempre vence pelo `id`.
+#
+# Medido no relatorio do doctor (07/10): das 20 doutrinas, 11 tem gate, 4 tem gate de
+# metade e 5 sao SEM GATE. As 4 orfas nomeadas abaixo sao divida, nao esquecimento.
+
+# ---------------------------------------------------------------------------
+# Catalogo — valem em qualquer consumidor
+# ---------------------------------------------------------------------------
+
+[[doctrine]]
+id = "git/atomic-commit"
+titulo = "Commit atomico, com pathspec explicito"
+fonte = ".ai/governance/git.md:31-36"
+gate = "../../.ai/gates/no-add-all"
+prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"}}' | node .ai/gates/no-add-all/no-add-all.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
+id = "git/commit-message"
+titulo = "`<emoji> <type>(<scope>): <descricao>`, sujeito <= 72"
+fonte = ".ai/gates/commit-msg/GATE.md:1-16"
+gate = "../../.ai/gates/commit-msg"
+prova = "printf 'sem emoji nem tipo\\n' > /tmp/tars-doc-msg.txt && node .ai/gates/commit-msg/gate.mjs /tmp/tars-doc-msg.txt"
+onde = "commit-msg"
+
+[[doctrine]]
+id = "git/lesson-trailer"
+titulo = "Trailer `Lesson:`/`Incident:` (INV-LESSON-1)"
+fonte = ".ai/gates/commit-msg/validate-commit.mjs:24-43"
+gate = "../../.ai/gates/commit-msg"
+prova = "printf '%s\\n\\n%s\\n' '✨ feat(hub): mexe no motor' 'sem trailer' > /tmp/tars-doc-lesson.txt && node .ai/gates/commit-msg/gate.mjs /tmp/tars-doc-lesson.txt"
+onde = "commit-msg"
+
+[[doctrine]]
+id = "git/branch-name"
+titulo = "Branch `<tipo>/<slug>`"
+fonte = ".ai/governance/git.md:5-16"
+gate = "../../.ai/gates/commit-msg/validate-commit.mjs"
+prova = "node .ai/gates/commit-msg/validate-commit.mjs --validate-branch 'sem-tipo'"
+onde = "pre-push"
+
+[[doctrine]]
+id = "git/tag-semver"
+titulo = "Tag `vX.Y.Z[-pre]`"
+fonte = ".ai/governance/git.md:18-26"
+gate = "../../.ai/gates/commit-msg/validate-commit.mjs"
+prova = "node .ai/gates/commit-msg/validate-commit.mjs --validate-tag 'v1'"
+onde = "pre-push"
+
+[[doctrine]]
+id = "git/no-no-verify"
+titulo = "Nunca `--no-verify`: o gate e' o ponto"
+fonte = ".ai/governance/git.md:33-36"
+gate = "../../.ai/guards/block-destructive-commands.sh"
+prova = "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit --no-verify -m x\"}}' | bash .ai/guards/block-destructive-commands.sh"
+onde = "pre-commit"
+
+[[doctrine]]
+id = "layout/file-placement"
+titulo = "Local do arquivo pela matriz de colocacao"
+fonte = ".ai/governance/source-of-truth.md:1-20"
+gate = "nenhum"
+motivo = "a matriz `config/file_placement.toml` e' do projeto; o catalogo tem o motor, nao a politica"
+prova = "test -f config/file_placement.toml && node tools/framework/layout-check.mjs --staged"
+onde = "pre-commit"
+escopo = "segtools"
+
+[[doctrine]]
+id = "layout/ssot-docs"
+titulo = "SSOT de docs (um lugar por tema; o resto aponta)"
+fonte = ".ai/governance/source-of-truth.md:1-20"
+gate = "nenhum"
+motivo = "prosa duplicada nao tem artefato comparavel; `refs-check` so' julga `TODO(KEY)`/`@see`"
+prova = "git grep -n 'FONTE UNICA' -- docs/ | head -1"
+onde = "ci"
+escopo = "segtools"
+
+# ---------------------------------------------------------------------------
+# Segtools — a prova roda no projeto dele; entram no `.ai/tars.toml` de la'
+# ---------------------------------------------------------------------------
+
+[[doctrine]]
+id = "segtools/changelog-gerado"
+titulo = "CHANGELOG gerado (cliff), nunca a mao"
+fonte = "segtools:cliff.toml:1-2"
+gate = "nenhum"
+motivo = "nada compara o CHANGELOG.md com o gerado; falta o gate de drift (fatia 5)"
+prova = "cmp -s CHANGELOG.md <(git-cliff --unreleased 2>/dev/null)"
+onde = "ci"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/idioma"
+titulo = "Identificador em ingles; texto/doc/canal em portugues"
+fonte = "segtools:docs/STANDARDS.md:3"
+gate = "nenhum"
+motivo = "exige dicionario — heuristico; so' entra como `report`, nunca `block`"
+prova = "git grep -nI '^## Idioma' -- docs/STANDARDS.md"
+onde = "ci"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/prova-pela-saida"
+titulo = "Prova pela saida (`claim|verify|expect`)"
+fonte = "segtools:docs/WORKING-AGREEMENT.md"
+gate = "nenhum"
+motivo = "sem artefato comparavel; a familia do `verify_completion_claims` do fabber.v2"
+prova = "git grep -n 'verify_completion' -- tools/ .ai/"
+onde = "ci"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/ports-check"
+titulo = "Portas centrais: faixa + registry, sem porta ocupada"
+fonte = "segtools:config/config.toml:34-42"
+gate = "nenhum"
+motivo = "`central/ports.mjs check` existe e falha, mas nenhum hook/task o chama"
+prova = "node tools/framework/ports.mjs check"
+onde = "ci"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/migration-imutavel"
+titulo = "Migration aplicada e imutavel; aditiva e conservadora"
+fonte = "segtools:docs/DATABASE.md"
+gate = "apps/hub/Taskfile.yml db:drift"
+prova = "git grep -q 'db:drift' -- apps/hub/Taskfile.yml"
+onde = "ci"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/config-unificada"
+titulo = "Config unificada (loader unico, `generated.json` conferido)"
+fonte = "segtools:config/config.toml"
+gate = "tools/framework/config-check.mjs --staged"
+prova = "node tools/framework/config-check.mjs"
+onde = "pre-commit"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/segredo-cifrado"
+titulo = "Segredo so' cifrado (sops/age); `.env` proibido"
+fonte = "segtools:docs/STANDARDS.md:169-170"
+gate = ".githooks/pre-commit"
+prova = "printf 'TOKEN_SECRET=abc123xyz\\n' > /tmp/tars-doc-secret.txt && sh .githooks/pre-commit 2>&1; rm -f /tmp/tars-doc-secret.txt"
+onde = "pre-commit"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/teste-duas-camadas"
+titulo = "Teste junto do codigo, em duas camadas"
+fonte = "segtools:docs/frontend/testes-duas-camadas.md"
+gate = ".githooks/pre-commit"
+prova = "sh .githooks/pre-commit"
+onde = "pre-commit"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/fatiar-antes-de-despachar"
+titulo = "Fatiar antes de despachar (10+5 min)"
+fonte = "segtools:.ai/skills/segtools-sdd/SKILL.md:8"
+gate = ".githooks/pre-commit"
+prova = "sh .githooks/pre-commit"
+onde = "pre-commit"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/br-no-ponto-de-decisao"
+titulo = "Registrar `BR-*` no ponto de decisao"
+fonte = "segtools:docs/STANDARDS.md:12"
+gate = "tools/method/rules/business-rules.py --check --staged"
+prova = "git grep -q 'business-rules' -- .githooks/pre-commit"
+onde = "pre-commit"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/contramedida-testada"
+titulo = "Contramedida com teste negativo (INV-IAC-1)"
+fonte = "segtools:docs/INVARIANTS.md:19"
+gate = "task gate:mutation"
+prova = "git grep -q 'gate:mutation' -- Taskfile.yml apps/hub/Taskfile.yml"
+onde = "ci"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/emoji-injetado"
+titulo = "Emoji injetado na mensagem se faltar"
+fonte = "segtools:docs/GIT.md:43"
+gate = "nenhum"
+motivo = "o prepare-commit-msg e' best-effort declarado: sem node E sem sh, avisa e passa"
+prova = "test -x .githooks/prepare-commit-msg"
+onde = "commit-msg"
+escopo = "segtools"
+
+[[doctrine]]
+id = "segtools/cache-descartavel"
+titulo = "`.cache/` e' o unico descartavel; `rm -rf .cache/` e' seguro"
+fonte = "segtools:docs/INVARIANTS.md:21-23"
+gate = ".githooks/pre-commit"
+prova = "git grep -q '_tmp_' -- .githooks/pre-commit"
+onde = "pre-commit"
+escopo = "segtools"

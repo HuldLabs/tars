@@ -41,8 +41,9 @@ export const AREAS = ['skills', 'rules', 'memory', 'gates', 'guards', 'governanc
 export const HOOKS = ['pre-commit', 'commit-msg', 'pre-push', 'local']
 
 // ---------------------------------------------------------------------------
-// Parser TOML minimo: secoes `[x]`, `chave = valor` e listas de string (uma linha
-// ou multilinha com `[` ... `]`). Comentario `#` fora de string e' descartado.
+// Parser TOML minimo: secoes `[x]`, array de tabelas `[[x]]` (as doutrinas do doctor),
+// `chave = valor` e listas de string (uma linha ou multilinha com `[` ... `]`). Comentario
+// `#` fora de string e' descartado.
 // ---------------------------------------------------------------------------
 export function parseToml(text) {
   const out = {}
@@ -70,6 +71,19 @@ export function parseToml(text) {
     }
     const trimmed = line.trim()
     if (!trimmed) continue
+    const arr = trimmed.match(/^\[\[([^\]]+)\]\]$/)
+    if (arr) {
+      // Array de TABELAS: cada `[[doctrine]]` acrescenta um objeto a lista. O `doctor` le as
+      // doutrinas do catalogo (`.ai/doctrines.toml`) e as do projeto por esta secao.
+      const caminho = arr[1].split('.')
+      let alvo = out
+      for (const parte of caminho.slice(0, -1)) alvo = alvo[parte] ??= {}
+      const lista = (alvo[caminho.at(-1)] ??= [])
+      if (!Array.isArray(lista)) throw new Error(`'${arr[1]}' ja' existe como valor simples neste TOML`)
+      section = {}
+      lista.push(section)
+      continue
+    }
     const sec = trimmed.match(/^\[([^\]]+)\]$/)
     if (sec) {
       // Secao aninhada de verdade (`[gates.params.g2]` cria o objeto no caminho) — o
@@ -104,6 +118,9 @@ const stripComment = (line) => {
   return line
 }
 
+/** Desfaz os escapes do TOML basico dentro de uma string (`\"`, `\\`, `\n`). */
+const unescape = (s) => s.replace(/\\(["\\/nrt])/g, (_, c) => ({ n: '\n', r: '\r', t: '\t' })[c] ?? c)
+
 function value(rest) {
   const t = rest.trim()
   if (t.startsWith('[')) {
@@ -112,7 +129,7 @@ function value(rest) {
     return list(m[1])
   }
   const s = t.match(/^"(.*)"$/)
-  return s ? s[1] : t
+  return s ? unescape(s[1]) : t
 }
 
 const list = (inner) =>
@@ -122,7 +139,7 @@ const list = (inner) =>
     .filter(Boolean)
     .map((s) => {
       const m = s.match(/^"(.*)"$/)
-      return m ? m[1] : s
+      return m ? unescape(m[1]) : s
     })
 
 // ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ import * as promote from './tars-promote.mjs'
 import * as hooks from './tars-hooks.mjs'
 import * as syncMod from './tars-sync.mjs'
 import * as gitMod from './tars-git.mjs'
+import * as doctorMod from './tars-doctrines.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -69,6 +70,7 @@ const USAGE = [
   '  check                      atalho de `sync --check` (o gate)',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
+  '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
   '  git prune [--remote]       apaga branches ja incorporadas (--remote: tambem no origin)',
   '                             use --dry-run para so imprimir; nunca apaga main nem a atual',
   '',
@@ -140,6 +142,17 @@ async function gitCommand(rest, project) {
   })
 }
 
+/** `tars doctor` — despacho fino para o modulo dono (a classificacao mora la', nao aqui). */
+async function doctorCommand(rest, project) {
+  const r = doctorMod.doctor({
+    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars()),
+    project: resolve(argValue(rest, '--project') ?? project ?? process.cwd()),
+  })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else doctorMod.format(r)
+  if (r.faltando.length) process.exit(1)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -153,6 +166,7 @@ const COMMANDS = {
   check: (rest, project) => sync('sync', [...rest, '--check'], project),
   hooks: runHooksCommand,
   promote: promoteCommand,
+  doctor: doctorCommand,
   git: gitCommand,
 }
 
