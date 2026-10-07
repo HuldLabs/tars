@@ -22,7 +22,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findTars, parseToml, NONINTERACTIVE_ENV } from './tars-sync.mjs'
+import { findTars, parseToml, NONINTERACTIVE_ENV, effectiveHooksPath, usesGitHooks, GIT_HOOKS } from './tars-sync.mjs'
 // TARS-REC-1: a classe que repetiu no ledger e' cobrada pelo doctor (a camada "acusa o estado
 // errado" da doutrina incidente-vira-prevencao). A CONTAGEM mora no ai-memory — aqui so' se le'.
 import { classesRecorrentes, readJsonl } from './ai-memory.mjs'
@@ -159,20 +159,56 @@ export function wiringCheck(project) {
   const avisos = Object.entries(NONINTERACTIVE_ENV)
     .filter(([k, v]) => s.env?.[k] !== v)
     .map(([k, v]) => `${k} (esperado '${v}')`)
+  // Hook apontando arquivo AUSENTE = FALHA, em TODOS os eventos (o doctor so' olhava o
+  // caminho `.ai/guards/...` e deixava passar um comando que cita qualquer outro arquivo).
+  // Um `bash: no such file` em PreCompact/SessionStart suja a sessao inteira.
   const orfa = []
   for (const [evento, entradas] of Object.entries(s.hooks ?? {}))
     for (const e of entradas ?? [])
       for (const h of e.hooks ?? []) {
-        const m = h.command?.match(/\.ai\/(base\/)?(guards\/[^"\s]+)/)
-        if (m && !existsSync(join(project, '.ai', 'base', m[2])) && !existsSync(join(project, '.ai', m[2])))
-          orfa.push(`${evento}: ${m[2]}`)
+        const cmd = h.command
+        if (typeof cmd !== 'string') continue
+        // Todo caminho do projeto citado por `$CLAUDE_PROJECT_DIR/<rel>` tem de existir.
+        for (const m of cmd.matchAll(/\$\{?CLAUDE_PROJECT_DIR\}?\/([^"\s;)]+)/g)) {
+          const rel = m[1]
+          if (!existsSync(join(project, rel))) orfa.push(`${evento}: ${rel}`)
+        }
       }
-  const detalhe = orfa.length
-    ? `hook apontando arquivo ausente (${orfa.join('; ')}) — rode \`tars sync\``
-    : avisos.length
-      ? `sem ambiente nao interativo: ${avisos.join(', ')} — rode \`tars sync\``
-      : 'env nao interativo presente; todo hook aponta arquivo existente'
-  return { ok: !orfa.length && !avisos.length, detalhe, orfa, avisos }
+  const git = gitHooksCheck(project)
+  return {
+    ok: !orfa.length && !avisos.length && git.ok,
+    detalhe: orfa.length
+      ? `hook apontando arquivo ausente (${orfa.join('; ')}) — rode \`tars sync\``
+      : !git.ok
+        ? git.detalhe
+        : avisos.length
+          ? `sem ambiente nao interativo: ${avisos.join(', ')} — rode \`tars sync\``
+          : 'env nao interativo presente; todo hook aponta arquivo existente',
+    orfa,
+    avisos,
+    git,
+  }
+}
+
+/**
+ * `core.hooksPath` que aponta para pasta INEXISTENTE ou sem os hooks do manifesto = FALHA:
+ * o git engole o commit sem rodar gate nenhum, calado. A checagem so' vale quando o
+ * consumidor USA hooks proprios — quem nao usa nao tem o que cobrar.
+ */
+export function gitHooksCheck(project) {
+  if (!usesGitHooks(project)) return { ok: true, detalhe: 'consumidor sem hooks proprios do git' }
+  const hooksPath = effectiveHooksPath(project)
+  const dir = join(project, hooksPath)
+  if (!existsSync(dir)) return { ok: false, detalhe: `core.hooksPath '${hooksPath}' aponta pasta inexistente — rode \`tars sync\`` }
+  const faltando = []
+  for (const hook of GIT_HOOKS) {
+    const f = join(dir, hook)
+    if (!existsSync(f)) faltando.push(`${hooksPath}/${hook}`)
+    else if (!(statSync(f).mode & 0o111)) faltando.push(`${hooksPath}/${hook} (sem bit executavel)`)
+  }
+  return faltando.length
+    ? { ok: false, detalhe: `hook do git ausente/nao executavel (${faltando.join('; ')}) — rode \`tars sync\`` }
+    : { ok: true, detalhe: `${hooksPath}/ com os hooks do git` }
 }
 
 /** Carrega, classifica e resume. `faltando` e' o que derruba o exit code. */

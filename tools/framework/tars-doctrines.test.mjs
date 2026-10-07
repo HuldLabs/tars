@@ -166,7 +166,7 @@ describe('doctor — o wiring do harness (a ponta que faz o guard rodar)', () =>
       }),
     )
     const r = doctor({ tars, project: tars })
-    expect(r.wiring.orfa).toEqual(['SessionStart: guards/nao-existe.sh'])
+    expect(r.wiring.orfa).toEqual(['SessionStart: .ai/guards/nao-existe.sh'])
     expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
   })
 
@@ -175,6 +175,83 @@ describe('doctor — o wiring do harness (a ponta que faz o guard rodar)', () =>
     const r = doctor({ tars, project: tars })
     expect(r.wiring.ok).toBe(true)
     expect(r.faltando).toHaveLength(0)
+  })
+
+  it('hook que cita arquivo ausente em QUALQUER evento = FALHA (nao so o caminho `.ai/guards/`)', () => {
+    // O doctor antigo so' casava o regex `.ai/guards/...` e deixava passar um PreCompact
+    // apontando para qualquer outro arquivo — o `bash: no such file` sujava a sessao (seo-brain).
+    const tars = fixture(d())
+    fs.writeFileSync(
+      path.join(tars, '.claude', 'settings.json'),
+      JSON.stringify({
+        env: NONINTERACTIVE_ENV,
+        hooks: {
+          PreCompact: [{ matcher: 'auto', hooks: [{ type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/sumiu.sh"' }] }],
+        },
+      }),
+    )
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.orfa).toEqual(['PreCompact: .ai/base/guards/sumiu.sh'])
+    expect(r.wiring.ok).toBe(false)
+  })
+
+  it('hook que cita arquivo EXISTENTE nao acusa (o caminho achado pelo sync)', () => {
+    const tars = fixture(d())
+    fs.mkdirSync(path.join(tars, '.ai', 'base', 'guards'), { recursive: true })
+    fs.writeFileSync(path.join(tars, '.ai', 'base', 'guards', 'ok.sh'), '#!/usr/bin/env bash\nexit 0\n')
+    fs.writeFileSync(
+      path.join(tars, '.claude', 'settings.json'),
+      JSON.stringify({
+        env: NONINTERACTIVE_ENV,
+        hooks: { PreCompact: [{ matcher: 'auto', hooks: [{ type: 'command', command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/ok.sh"' }] }] },
+      }),
+    )
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.orfa).toEqual([])
+    expect(r.wiring.ok).toBe(true)
+  })
+})
+
+describe('doctor — hooks do git (core.hooksPath)', () => {
+  const d = () => [{ id: 'a/b', fonte: 'REGRA.md:1', gate: 'g', prova: 'false' }]
+  /** Fixture com `.githooks/` declarado (o sinal de que o consumidor usa hooks proprios). */
+  const comGitHooks = () => {
+    const dir = fixture(d())
+    fs.mkdirSync(path.join(dir, '.githooks'), { recursive: true })
+    return dir
+  }
+
+  it('pasta `.githooks/` sem os hooks = FALHA (o git engole o commit calado)', () => {
+    const tars = comGitHooks()
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.ok).toBe(false)
+    expect(r.wiring.git.detalhe).toMatch(/pre-commit.*tars sync/)
+    expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
+  })
+
+  it('hook presente mas SEM bit executavel = FALHA (o git nao roda o que nao executa)', () => {
+    const tars = comGitHooks()
+    for (const h of ['pre-commit', 'commit-msg', 'pre-push'])
+      fs.writeFileSync(path.join(tars, '.githooks', h), '#!/usr/bin/env sh\n', { mode: 0o644 })
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.ok).toBe(false)
+    expect(r.wiring.git.detalhe).toMatch(/sem bit executavel/)
+  })
+
+  it('os 3 hooks executaveis = OK', () => {
+    const tars = comGitHooks()
+    for (const h of ['pre-commit', 'commit-msg', 'pre-push'])
+      fs.writeFileSync(path.join(tars, '.githooks', h), '#!/usr/bin/env sh\n', { mode: 0o755 })
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.git.ok).toBe(true)
+    expect(r.wiring.ok).toBe(true)
+  })
+
+  it('consumidor SEM hooks proprios nao e cobrado (nada a exigir)', () => {
+    const tars = fixture(d())
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.git.ok).toBe(true)
+    expect(r.wiring.git.detalhe).toMatch(/sem hooks proprios/)
   })
 })
 

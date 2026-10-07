@@ -422,12 +422,15 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   // O wiring por ferramenta e' a ponta que faz o guard RODAR: sem ele a base e' so' arquivo.
   const wired = await writeWiring(project, manifest)
   if (wired.length) log(`gera ${wired.join(', ')} (wiring do harness)`)
+  // A outra ponta: os hooks do GIT. Sem eles um commit passa sem gate nenhum.
+  const hooksWrote = await writeGitHooks(project, manifest)
+  if (hooksWrote.length) log(`gera ${hooksWrote.join(', ')} (hooks do git)`)
   log(
     wrote.length
       ? `sync: ${wrote.length} item(ns), ${Object.keys(files).length} no lock (${relative(project, lockPath)}).`
       : `sync: nada mudou, ${Object.keys(files).length} item(ns) ja' em dia.`,
   )
-  return { missing, stale, absent, copied, wrote, wired, lock: next }
+  return { missing, stale, absent, copied, wrote, wired, hooks: hooksWrote, lock: next }
 }
 
 // ---------------------------------------------------------------------------
@@ -552,6 +555,80 @@ export async function writeWiring(project, manifest) {
   await mkdir(dir, { recursive: true })
   await writeFile(file, body)
   return ['.claude/settings.json']
+}
+
+// ---------------------------------------------------------------------------
+// Hooks do GIT (fatia 3b): o Tars gera `.githooks/{pre-commit,commit-msg,pre-push}`
+// apontando para os gates do manifesto. So' quando o consumidor JA' usa hooks proprios
+// (`.githooks/` existe ou `core.hooksPath` ja' aponta para la'): o Tars nao troca o
+// `core.hooksPath` de quem nao pediu — wiring silencioso quebrado e' pior que ausente.
+// ---------------------------------------------------------------------------
+export const GIT_HOOKS = ['pre-commit', 'commit-msg', 'pre-push']
+export const DEFAULT_HOOKS_PATH = '.githooks'
+
+/** Onde os hooks do git moram: `core.hooksPath` do consumidor, ou `null` se ele nao declarou. */
+export function hooksPathOf(project) {
+  try {
+    const p = execFileSync('git', ['-C', project, 'config', '--get', 'core.hooksPath'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+    return p || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * O Tars so' escreve os hooks do git quando o consumidor JA' usa hooks proprios: o
+ * `core.hooksPath` esta' declarado, ou a pasta `.githooks/` ja' existe. Sem isso o `sync`
+ * trocaria o `core.hooksPath` de quem nunca pediu — wiring silencioso quebrado e' pior que
+ * ausente. Quem nao usa hooks do git simplesmente nao ganha pasta nova.
+ */
+export function usesGitHooks(project, hooksPath = hooksPathOf(project)) {
+  return hooksPath !== null || existsSync(join(project, DEFAULT_HOOKS_PATH))
+}
+
+/** A pasta efetiva dos hooks: o declarado, senao o default do projeto. */
+export function effectiveHooksPath(project) {
+  return hooksPathOf(project) ?? DEFAULT_HOOKS_PATH
+}
+
+/**
+ * Corpo do hook: chama o motor `tars hooks <hook>` com `$@` (o git passa o arquivo da
+ * mensagem no commit-msg). O binario e' preferido (`dist/tars`), senao o fonte — o
+ * consumidor nao precisa de Node quando tem o binario.
+ */
+function hookBody(project, hook) {
+  return (
+    '#!/usr/bin/env sh\n' +
+    `# Gerado por \`tars sync\` (${hook}) — nao edite a mao: o proximo sync sobrescreve.\n` +
+    '# Os gates vem de `[gates]` do .ai/tars.toml (catalogo em .ai/base/gates/, locais do projeto).\n' +
+    'set -e\n' +
+    'root="$(git rev-parse --show-toplevel)"\n' +
+    'if [ -x "$root/dist/tars" ]; then exec "$root/dist/tars" hooks ' + hook + ' "$@"; fi\n' +
+    'if command -v tars >/dev/null 2>&1; then exec tars hooks ' + hook + ' "$@"; fi\n' +
+    'if [ -f "$root/tools/framework/tars.mjs" ]; then exec node "$root/tools/framework/tars.mjs" hooks ' + hook + ' "$@"; fi\n' +
+    'echo "hook ' + hook + ': nao achei o motor do Tars (dist/tars, tars ou tools/framework/tars.mjs) — rode `tars sync`" >&2\n' +
+    'exit 1\n'
+  )
+}
+
+/** Gera os hooks do git declarados; idempotente (mesmo conteudo, nada muda). */
+export async function writeGitHooks(project, manifest, hooksPath = effectiveHooksPath(project)) {
+  if (!usesGitHooks(project, hooksPathOf(project))) return []
+  const dir = join(project, hooksPath)
+  const wrote = []
+  await mkdir(dir, { recursive: true })
+  for (const hook of GIT_HOOKS) {
+    if (!(manifest.gates?.[hook] ?? []).length) continue
+    const file = join(dir, hook)
+    const body = hookBody(project, hook)
+    if (existsSync(file) && (await readFile(file, 'utf8')) === body) continue
+    await writeFile(file, body, { mode: 0o755 })
+    wrote.push(`${hooksPath}/${hook}`)
+  }
+  return wrote
 }
 
 // ---------------------------------------------------------------------------

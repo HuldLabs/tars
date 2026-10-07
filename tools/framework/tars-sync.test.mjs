@@ -439,6 +439,58 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
   });
 });
 
+describe("tars-sync — hooks do git (fatia 3b)", () => {
+  it("consumidor SEM `.githooks/` nao ganha hook nenhum (o Tars nao troca o hooksPath de quem nao pediu)", async () => {
+    const { tars, project } = scaffold();
+    const r = await sync({ tars, project, log: () => {} });
+    expect(r.hooks).toEqual([]);
+    expect(fs.existsSync(path.join(project, ".githooks"))).toBe(false);
+  });
+
+  it("gera `.githooks/pre-commit` executavel apontando o motor, so' para o hook declarado", async () => {
+    const { tars, project } = scaffold();
+    fs.mkdirSync(path.join(project, ".githooks"), { recursive: true });
+
+    const r = await sync({ tars, project, log: () => {} });
+
+    // So' `pre-commit` esta' no `[gates]` do manifesto (roda o gate commit-msg): os outros
+    // hooks do git nao nascem — o consumidor so' paga o que declarou.
+    expect(r.hooks).toEqual([".githooks/pre-commit"]);
+    const f = path.join(project, ".githooks", "pre-commit");
+    const body = fs.readFileSync(f, "utf8");
+    expect(body).toContain("tars hooks pre-commit");
+    expect(fs.statSync(f).mode & 0o111).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(project, ".githooks", "commit-msg"))).toBe(false);
+  });
+
+  it("rodar de novo nao reescreve o hook (idempotente)", async () => {
+    const { tars, project } = scaffold();
+    fs.mkdirSync(path.join(project, ".githooks"), { recursive: true });
+    await sync({ tars, project, log: () => {} });
+    const f = path.join(project, ".githooks", "pre-commit");
+    const before = fs.statSync(f).mtimeMs;
+
+    const r = await sync({ tars, project, log: () => {} });
+
+    expect(r.hooks).toEqual([]);
+    expect(fs.statSync(f).mtimeMs).toBe(before);
+  });
+
+  it("`core.hooksPath` declarado tambem liga a geracao", async () => {
+    const { tars, project } = scaffold();
+    // O consumidor ja' usa hooks proprios numa pasta qualquer declarada no git.
+    fs.mkdirSync(path.join(project, ".minha-hooks"), { recursive: true });
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("git", ["-C", project, "init", "-q"]);
+    execFileSync("git", ["-C", project, "config", "core.hooksPath", ".minha-hooks"]);
+
+    const r = await sync({ tars, project, log: () => {} });
+
+    expect(r.hooks).toEqual([".minha-hooks/pre-commit"]);
+    expect(fs.existsSync(path.join(project, ".minha-hooks", "pre-commit"))).toBe(true);
+  });
+});
+
 describe("tars-sync — init", () => {
   it("projeto novo ganha manifesto minimo, memoria vazia e ja' sincroniza", async () => {
     const { tars, project, base, lock } = scaffold({ manifest: null });
