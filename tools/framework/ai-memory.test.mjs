@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated } from "./ai-memory.mjs";
+import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir } from "./ai-memory.mjs";
 
 // Gate da memoria operacional (regra sem teste = sugestao). Portado da ideia do
 // contract test do Fabber, adaptado ao nosso schema reduzido. NEGATIVO (as regras
@@ -303,5 +303,95 @@ describe("SOFON-MEM-1 — teto do boot no indice e mescla federada", () => {
     const md = renderIndex(m, { teto: Infinity });
     const ids = md.split("\n").filter((l) => l.startsWith("- [")).map((l) => l.slice(3, l.indexOf("]")));
     expect(ids).toEqual(["mem-duro", "mem-efemero", "mem-fed"]);
+  });
+});
+
+// TARS-MEM-2: memoria em DUAS camadas — base (copia do Tars, versionada) + projeto
+// (onde a sessao escreve). O boot le a uniao; o projeto vence a base. A escrita
+// (addEntry) NUNCA toca a base: e' sempre no arquivo do projeto.
+describe("TARS-MEM-2 — duas camadas (base + projeto)", () => {
+  const linha = (over = {}) => JSON.stringify({ ...base, ...over });
+  /** Dir temporario com `base/operational-memory.jsonl`; devolve {root, base, proj}. */
+  function duasCamadas(baseLinhas, projLinhas) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-2c-"));
+    const bdir = path.join(root, "base");
+    fs.mkdirSync(bdir, { recursive: true });
+    const bfile = path.join(bdir, "operational-memory.jsonl");
+    const pfile = path.join(root, "projeto.jsonl");
+    if (baseLinhas !== null) fs.writeFileSync(bfile, baseLinhas);
+    fs.writeFileSync(pfile, projLinhas ?? "");
+    return { root, base: bdir, bfile, proj: pfile };
+  }
+
+  it("1) so' base: a entrada aparece no indice marcada com a camada base", () => {
+    const { base, proj } = duasCamadas(linha({ id: "mem-b", statement: "fato que veio do Tars" }) + "\n", "");
+    const md = renderIndex(proj, { baseDir: base, teto: Infinity });
+    expect(md).toContain("- [mem-b] fato que veio do Tars");
+    expect(md).toContain("·  base");
+    expect(mergeLayers({ baseDir: base, projFile: proj }).entries.map((e) => e.camada)).toEqual(["base"]);
+  });
+
+  it("2) so' projeto: entra sem marca de camada (o projeto e' o default)", () => {
+    const { base, proj } = duasCamadas("", linha({ id: "mem-p", statement: "fato que nasceu aqui" }) + "\n");
+    const md = renderIndex(proj, { baseDir: base, teto: Infinity });
+    expect(md).toContain("- [mem-p] fato que nasceu aqui");
+    expect(md).not.toContain("·  base");
+    expect(mergeLayers({ baseDir: base, projFile: proj }).entries.map((e) => e.camada)).toEqual(["projeto"]);
+  });
+
+  it("3) uniao das duas: cada entrada traz a camada de origem", () => {
+    const { base: bdir, proj } = duasCamadas(linha({ id: "mem-b" }) + "\n", linha({ id: "mem-p" }) + "\n");
+    const { entries } = mergeLayers({ baseDir: bdir, projFile: proj });
+    expect(entries.map((e) => e.id)).toEqual(["mem-b", "mem-p"]);
+    expect(entries.map((e) => e.camada)).toEqual(["base", "projeto"]);
+  });
+
+  it("4) MESMO id: o projeto vence (uma linha so', a do projeto)", () => {
+    const { base, proj } = duasCamadas(
+      linha({ id: "mem-x", statement: "versao da base, ja' antiga" }) + "\n",
+      linha({ id: "mem-x", statement: "versao do projeto, mais nova" }) + "\n",
+    );
+    const { entries } = mergeLayers({ baseDir: base, projFile: proj });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].statement).toBe("versao do projeto, mais nova");
+    expect(entries[0].camada).toBe("projeto");
+  });
+
+  it("5) MESMO name: o projeto vence mesmo com id diferente", () => {
+    const { base, proj } = duasCamadas(
+      linha({ id: "mem-base1", name: "regra-do-dono" }) + "\n",
+      linha({ id: "mem-proj1", name: "regra-do-dono" }) + "\n",
+    );
+    const { entries } = mergeLayers({ baseDir: base, projFile: proj });
+    expect(entries.map((e) => e.id)).toEqual(["mem-proj1"]);
+  });
+
+  it("6) escrita vai SEMPRE para a camada projeto (a base fica intacta)", () => {
+    const { base: bdir2, bfile, proj } = duasCamadas(linha({ id: "mem-b" }) + "\n", "");
+    const antes = fs.readFileSync(bfile, "utf8");
+    addEntry({ ...JSON.parse(linha({ id: "mem-novo", statement: "fato escrito pela sessao" })) }, { file: proj });
+    expect(fs.readFileSync(bfile, "utf8")).toBe(antes);
+    expect(fs.readFileSync(proj, "utf8")).toContain("mem-novo");
+    expect(mergeLayers({ baseDir: bdir2, projFile: proj }).entries.map((e) => e.id)).toEqual(["mem-b", "mem-novo"]);
+  });
+
+  it("7) base AUSENTE nao quebra; base DECLARADA e ausente falha ruidoso", () => {
+    const { root, proj } = duasCamadas("", linha({ id: "mem-p" }) + "\n");
+    // Sem `baseDir` (base opcional): resolve o default, que nao existe -> sem erro.
+    expect(mergeLayers({ projFile: proj }).errors).toEqual([]);
+    // Declarada e inexistente: erro nomeando o caminho.
+    const errs = mergeLayers({ baseDir: path.join(root, "nao-existe"), projFile: proj }).errors;
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toMatch(/camada 'base' declarada e ausente/);
+  });
+
+  it("8) a config decide o diretorio da base (default `.ai/base/memory`)", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cfg-"));
+    expect(resolveBaseDir(root)).toBe(path.join(root, ".ai/base/memory"));
+    fs.mkdirSync(path.join(root, ".ai"), { recursive: true });
+    fs.writeFileSync(path.join(root, ".ai", "memory.config.json"), JSON.stringify({ base: "vendor/tars-memory" }));
+    expect(resolveBaseDir(root)).toBe(path.join(root, "vendor/tars-memory"));
+    // `--base` (override) ganha da config.
+    expect(resolveBaseDir(root, "outro/dir")).toBe(path.join(root, "outro/dir"));
   });
 });

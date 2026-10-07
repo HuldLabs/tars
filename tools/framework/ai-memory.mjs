@@ -206,6 +206,63 @@ const INDEX_SOURCE_FILE = path.join(REPO, ".ai", "memory", "memory.index.json");
 const COMPACT_TOKENS = 200;
 export const DEFAULT_BOOT_BUDGET = 15800;
 export const DEFAULT_TITLE_MAX = 68;
+
+// TARS-MEM-2: memoria em DUAS camadas. `base` e' a copia versionada que o sync do
+// Tars poe no repo (so' muda por promocao); `projeto` e' onde as sessoes escrevem.
+// O boot le a UNIAO; mesmo `id` ou mesmo `name` -> o projeto vence. A escrita vai
+// SEMPRE para o projeto (a base e' somente leitura aqui).
+export const DEFAULT_BASE_DIR = ".ai/base/memory";
+export const MEM_LAYERS = ["base", "projeto"]; // ordem de PRIORIDADE da base; o projeto vence por ultimo
+/** Le `.ai/memory.config.json` (ou `--base <dir>`); default `.ai/base/memory`. */
+export function resolveBaseDir(root = REPO, override) {
+  if (override) return path.resolve(root, override);
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(root, ".ai", "memory.config.json"), "utf8"));
+    if (typeof cfg.base === "string" && cfg.base.trim()) return path.resolve(root, cfg.base);
+  } catch { /* sem config: default */ }
+  return path.join(root, DEFAULT_BASE_DIR);
+}
+/**
+ * Mescla as camadas. `projeto` vence a `base` no mesmo `id` ou no mesmo `name`
+ * (um fato que foi promovido e voltou editado no projeto nao pode aparecer duas
+ * vezes). Cada entrada recebe `camada`; `errors` so' acusa base DECLARADA ausente
+ * (base opcional nao quebra o boot).
+ */
+export function mergeLayers({ baseDir, projFile = FILE, baseFile } = {}) {
+  const layers = [
+    { camada: "base", file: baseFile ?? path.join(baseDir ?? resolveBaseDir(), "operational-memory.jsonl"), required: !!baseDir },
+    { camada: "projeto", file: projFile, required: false },
+  ];
+  const errors = [];
+  const idx = new Map(); // chave (id | name) -> posicao em `ordem`
+  const ordem = [];
+  // Chaves de colisao: o `name` (quando existe) e o `id`. O `statement` NAO entra:
+  // dois fatos diferentes podem ter o mesmo texto e nao sao o mesmo fato.
+  const chaves = (e) => (e.name ? [`name:${e.name}`, `id:${e.id}`] : [`id:${e.id}`]);
+  for (const { camada, file, required } of layers) {
+    if (!fs.existsSync(file)) {
+      if (required) errors.push(`camada 'base' declarada e ausente: ${path.relative(REPO, file)}`);
+      continue;
+    }
+    for (const e of readJsonl(file).entries) {
+      if (!e || typeof e !== "object" || Array.isArray(e)) continue;
+      const ks = chaves(e);
+      const cur = ks.map((k) => idx.get(k)).find(Boolean)?.entry;
+      // Prioridade: base < projeto (a ordem de MEM_LAYERS e' a da prioridade
+      // crescente; o projeto e' lido por ultimo). Perdedor nao entra.
+      if (cur && MEM_LAYERS.indexOf(camada) < MEM_LAYERS.indexOf(cur.duracao)) continue;
+      if (cur) {
+        for (const k of chaves(cur)) idx.delete(k);
+        ordem.splice(ordem.indexOf(cur), 1);
+      }
+      const item = { ...e, camada };
+      const entry = { duracao: camada, ...item };
+      for (const k of ks) idx.set(k, { entry });
+      ordem.push(entry);
+    }
+  }
+  return { entries: ordem, errors };
+}
 /** Codifica um id no formato `mem-<slug>` (o gate reprova qualquer outro). */
 export function slugId(id, prefix) {
   return `${prefix}-${String(id).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)}`;
@@ -225,6 +282,11 @@ function shortTitle(s) {
 /** Linha do indice: `- [id] titulo curto  ·  <origem>`. Deterministico. */
 function indexRow(e, title, source) {
   return `- [${e.id}] ${shortTitle(title)}${source ? `  ·  ${source}` : ""}`;
+}
+
+/** Origem de uma entrada no indice: so' marca `base:`; o projeto e' o default. */
+function origemDe(e) {
+  return e.repo ?? e.source ?? (e.camada === "base" ? "base" : undefined);
 }
 
 /** Descarta os `undefined` de um objeto (para o JSON gravado nao virar ruido). */
@@ -253,7 +315,9 @@ export function readIndexBudget(root = REPO) {
  */
 export function capIndexEntries({ arquivos = [], root = REPO, file = FILE, entries } = {}) {
   const teto = arguments[0]?.teto ?? readIndexBudget(root).teto;
-  const todas = entries ?? readJsonl(file).entries.filter((e) => e && typeof e === "object" && !Array.isArray(e));
+  // TARS-MEM-2: sem `entries` explicito o indice e' a UNIAO das camadas (base+
+  // projeto), com o projeto vencendo — nunca so' o arquivo do projeto.
+  const todas = entries ?? mergeLayers({ baseDir: arguments[0]?.baseDir, projFile: file }).entries;
   // Ordem do indice: as durable do segtools primeiro (a casa dita), depois as dos
   // outros repos. Dentro de cada grupo, a ordem do arquivo (que e' por ts).
   const peso = (e) => (e.repo ? 4 : 0) + (String(e.durability) === "durable" ? 0 : 2);
@@ -284,7 +348,7 @@ export function capIndexEntries({ arquivos = [], root = REPO, file = FILE, entri
 function truncatedBlock(total, cap, entries) {
   const porOrigem = new Map();
   for (const e of entries.slice(cap)) {
-    const o = e.repo ?? "segtools"; // sem `repo` = fato da casa
+    const o = e.repo ?? e.camada ?? "projeto"; // sem `repo` = fato da casa (camada projeto)
     porOrigem.set(o, (porOrigem.get(o) ?? 0) + 1);
   }
   const detalhe = [...porOrigem].sort((a, b) => b[1] - a[1]).map(([o, n]) => `${o} ${n}`).join(", ");
@@ -295,8 +359,9 @@ function truncatedBlock(total, cap, entries) {
 export function renderIndex(memoryFile = FILE, opts = {}) {
   const budget = readIndexBudget();
   const { entries, cap, total, dropped, teto, available } = capIndexEntries({ ...budget, ...opts, file: memoryFile });
-  const rows = entries.map((e) => indexRow(e, e.statement, e.repo ?? e.source));
-  const tail = dropped > 0 ? truncatedBlock(total, cap, readJsonl(memoryFile).entries.filter((e) => e && typeof e === "object" && !Array.isArray(e))) : "";
+  const rows = entries.map((e) => indexRow(e, e.statement, origemDe(e)));
+  const todas = mergeLayers({ baseDir: opts.baseDir, projFile: memoryFile }).entries;
+  const tail = dropped > 0 ? truncatedBlock(total, cap, todas) : "";
   const cabec = Number.isFinite(teto) ? `Teto do boot: ${teto} tokens (${available} tok para o indice; ${cap} entradas).\n` : "";
   return `# Indice da memoria\n\nGerado por \`node tools/framework/ai-memory.mjs index\` — nao editar a mao.\n${cabec}\n${rows.length ? rows.join("\n") : "(vazio)"}\n${tail}`;
 }
@@ -309,9 +374,9 @@ export function renderLedgerIndex(ledgerFile = LEDGER_FILE) {
 }
 
 /** Grava os DOIS indices + o mapa completo (`.ai/memory/memory.index.json`). */
-export function writeIndex(memoryFile = FILE, ledgerFile = LEDGER_FILE) {
+export function writeIndex(memoryFile = FILE, ledgerFile = LEDGER_FILE, opts = {}) {
   const count = (md) => md.split("\n").filter((l) => l.startsWith("- [")).length;
-  const md = renderIndex(memoryFile);
+  const md = renderIndex(memoryFile, opts);
   const ledgerMd = renderLedgerIndex(ledgerFile);
   fs.writeFileSync(INDEX_FILE, md);
   fs.writeFileSync(LEDGER_INDEX_FILE, ledgerMd);
@@ -321,7 +386,7 @@ export function writeIndex(memoryFile = FILE, ledgerFile = LEDGER_FILE) {
     generated_by: "node tools/framework/ai-memory.mjs index",
     total: all.length,
     boot_cap: count(md),
-    entries: all.map((e) => compact({ source_id: e.id, id: e.id, repo: e.repo, source: e.source, scope: e.scope, statement: e.statement, ts: e.ts })),
+    entries: all.map((e) => compact({ source_id: e.id, id: e.id, camada: e.camada, repo: e.repo, source: e.source, scope: e.scope, statement: e.statement, ts: e.ts })),
   }), null, 2) + "\n");
   return { file: INDEX_FILE, lines: count(md), ledgerFile: LEDGER_INDEX_FILE, ledgerLines: count(ledgerMd), sourceFile: INDEX_SOURCE_FILE };
 }
@@ -512,7 +577,9 @@ if (isMain && process.argv.includes("--check")) {
     process.exit(1);
   }
 } else if (isMain && process.argv[2] === "index") {
-  const idx = writeIndex();
+  // TARS-MEM-2: `--base <dir>` aponta a camada base (configuracao, default e
+  // `.ai/base/memory`). A escrita do indice continua so' no repo.
+  const idx = writeIndex(FILE, LEDGER_FILE, { baseDir: resolveBaseDir(REPO, flag("--base")) });
   console.log(`ai-memory index ok (${path.relative(REPO, idx.file)}; ${idx.lines} no boot; ${path.relative(REPO, idx.ledgerFile)}; ${idx.ledgerLines} itens; mapa ${path.relative(REPO, idx.sourceFile)})`);
 } else if (isMain && process.argv[2] === "merge") {
   // SOFON-MEM-1: mescla a memoria federada (outros repos) na canonica do segtools.
