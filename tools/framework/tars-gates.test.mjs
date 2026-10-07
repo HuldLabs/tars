@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -328,5 +328,72 @@ describe("gate no-add-all", () => {
   it("falha ABERTA em payload vazio/roto", () => {
     expect(rodar([gate], { input: "" }).status).toBe(0);
     expect(rodar([gate], { input: "{nao-e-json" }).status).toBe(0);
+  });
+});
+
+describe("gate release-guard", () => {
+  const gate = GATE("release-guard", "release-guard.mjs");
+  const V = "0.0.1-dev.6";
+
+  // Repo de fixture com commit: o gate compara `.ai/VERSION` do worktree com o HEAD.
+  // `staged` (arquivos do commit) e' injetado pelo proprio `julgar`; a ponta CLI le o git.
+  function repo({ versaoHead = V, versaoAtual = V, arquivos = [], changelogStaged = false } = {}) {
+    const dir = tmp();
+    const git = (...args) => execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "init", "-q"], { stdio: "ignore" });
+    fs.mkdirSync(path.join(dir, ".ai"), { recursive: true });
+    fs.writeFileSync(path.join(dir, ".ai", "VERSION"), `${versaoHead}\n`);
+    git("add", ".ai/VERSION");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base");
+    fs.writeFileSync(path.join(dir, ".ai", "VERSION"), `${versaoAtual}\n`);
+    for (const a of arquivos) {
+      fs.mkdirSync(path.dirname(path.join(dir, a)), { recursive: true });
+      fs.writeFileSync(path.join(dir, a), "x\n");
+      git("add", a);
+    }
+    if (changelogStaged) {
+      fs.writeFileSync(path.join(dir, "CHANGELOG.md"), "## 0.0.1-dev.7\n");
+      git("add", "CHANGELOG.md");
+    }
+    return dir;
+  }
+
+  const julgar = async (dir, mensagem = "") => {
+    const mod = await import(path.join(HERE, "..", "..", ".ai", "gates", "release-guard", "release-guard.mjs"));
+    return mod.julgar(dir, { mensagem });
+  };
+
+  it("REPROVA motor tocado sem subir versao nem CHANGELOG", () => {
+    return julgar(repo({ arquivos: ["tools/framework/tars-sync.mjs"] })).then((r) => {
+      expect(r.ok).toBe(false);
+      expect(r.motivo).toMatch(/VERSION|CHANGELOG/);
+    });
+  });
+
+  it("REPROVA quando sobe a versao mas falta o CHANGELOG", () =>
+    julgar(repo({ versaoAtual: "0.0.1-dev.7", arquivos: ["tools/framework/tars-sync.mjs"] })).then((r) =>
+      expect(r.ok).toBe(false),
+    ));
+
+  it("APROVA versao + CHANGELOG juntos", () =>
+    julgar(repo({ versaoAtual: "0.0.1-dev.7", arquivos: ["tools/framework/tars-sync.mjs", ".ai/VERSION"], changelogStaged: true })).then(
+      (r) => expect(r.ok).toBe(true),
+    ));
+
+  it("APROVA `No-Release: <motivo>` no corpo", () =>
+    julgar(repo({ arquivos: [".ai/guards/lib-json.sh"] }), "chore: ajuste\n\nNo-Release: regeneracao de indice\n").then((r) =>
+      expect(r.ok).toBe(true),
+    ));
+
+  it("APROVA commit que nao toca o motor do Tars", () =>
+    julgar(repo({ arquivos: ["docs/x.md"] })).then((r) => expect(r.ok).toBe(true)));
+
+  it("REPROVA pela ponta CLI (exit 1) e passa com No-Release no COMMIT_EDITMSG", () => {
+    const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
+    const r = rodar([gate], { env: { TARS_PROJECT: dir } });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/RELEASE GUARD/);
+    fs.writeFileSync(path.join(dir, ".git", "COMMIT_EDITMSG"), "chore: x\n\nNo-Release: regeneracao de indice\n");
+    expect(rodar([gate], { env: { TARS_PROJECT: dir } }).status).toBe(0);
   });
 });
