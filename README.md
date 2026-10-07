@@ -75,10 +75,47 @@ gates, skills, regras e fatias de memória.
 
 ## Comandos
 
-Todos os scripts ficam em `tools/framework/`. A raiz do Tars é achada por `$TARS_HOME` ou
+Há **um ponto de entrada** (`tools/framework/tars.mjs`), e ele só **despacha** para o módulo
+dono de cada área — nada de lógica nova ali (R3). A raiz do Tars é achada por `$TARS_HOME` ou
 subindo diretórios até achar `.ai/VERSION`; passe `--tars <dir>` para forçar.
 
-### `tars-sync.mjs` — o sync
+```sh
+tars init                          # cria .ai/tars.toml mínimo e sincroniza
+tars sync                          # puxa o declarado para .ai/base/
+tars check                         # só valida base × lock (o gate); exit 1 se inconsistente
+tars hooks <pre-commit|commit-msg|pre-push|local> [args]   # roda os gates do hook
+tars promote --area <memory|skill|gate> --item <nome>      # sobe item do projeto ao catálogo
+```
+
+### Sem Node — o binário `tars`
+
+O consumidor pode ser um repo **só Python** (uv/venv), sem Node. Por isso o Tars se compila
+num **binário único**, com o runtime embutido:
+
+```sh
+bun run build   # bun build --compile tools/framework/tars.mjs --outfile dist/tars
+```
+
+`dist/tars` (Linux x64) responde aos mesmos subcomandos **sem Node instalado** — é o que o
+README, os hooks e os projetos consomem: o comando neutro `tars`, não o nome de um script. O
+`dist/` fica no `.gitignore` (o binário vai para **Release**, não para o Git).
+
+```sh
+export TARS_HOME=/caminho/para/tars     # ou --tars <dir> em cada comando
+"$TARS_HOME/dist/tars" init
+```
+
+Quem **já tem Node** pode chamar o mesmo arquivo direto — é equivalente:
+
+```sh
+node <tars>/tools/framework/tars.mjs sync
+```
+
+### Por dentro: os módulos
+
+Cada área mora no seu módulo; o ponto de entrada só roteia para eles.
+
+#### `tars-sync.mjs` — o sync
 
 ```sh
 node <tars>/tools/framework/tars-sync.mjs init     # cria .ai/tars.toml mínimo e sincroniza
@@ -91,7 +128,7 @@ node <tars>/tools/framework/tars-sync.mjs --check  # só valida base × lock (é
 - Base editada à mão ⇒ **drift**: acusa e não sobrescreve.
 - Rodar duas vezes sem mudança ⇒ nada muda (idempotente).
 
-### `tars-hooks.mjs` — o motor de gates
+#### `tars-hooks.mjs` — o motor de gates
 
 ```sh
 node <tars>/tools/framework/tars-hooks.mjs <pre-commit|commit-msg|pre-push|local> [args do hook]
@@ -110,7 +147,7 @@ O gate recebe os argumentos do hook como estão (ex.: o arquivo da mensagem no `
 mais `TARS_PROJECT` no ambiente, `TARS_GATE` com o nome e `TARS_GATE_PARAMS` com o JSON de
 `[gates.params.<nome>]`.
 
-### `tars-promote.mjs` — a promoção
+#### `tars-promote.mjs` — a promoção
 
 ```sh
 node <tars>/tools/framework/tars-promote.mjs --area <memory|skill|gate> --item <nome> \
@@ -157,17 +194,28 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
 
 ## Como um projeto novo começa
 
+Ponha o `tars` no PATH (o binário de Release, o script do catálogo ou `$TARS_HOME/dist/tars`) —
+o comando é o mesmo nos três casos; o projeto consumidor **não precisa de Node**.
+
 1. Aponte o Tars: `export TARS_HOME=/caminho/para/tars` (ou passe `--tars <dir>`).
-2. Na raiz do projeto novo, rode `node <tars>/tools/framework/tars-sync.mjs init`. Isso cria
-   `.ai/tars.toml` mínimo e `.ai/memory/`.
+2. Na raiz do projeto novo, rode **`tars init`**. Isso cria `.ai/tars.toml` mínimo e
+   `.ai/memory/`. Sem instalar nada, num repo só Python:
+
+   ```sh
+   env -i PATH=/usr/bin:/bin "$TARS_HOME/dist/tars" init
+   ```
 3. Edite o manifesto declarando o que o projeto usa (skills, gates, memória) e rode
-   `tars-sync.mjs sync`.
+   `tars sync`.
 4. Registre os hooks do projeto para chamar o motor, ex.:
 
    ```sh
    # .githooks/commit-msg
-   exec node "$TARS_HOME/tools/framework/tars-hooks.mjs" commit-msg "$1"
+   exec tars hooks commit-msg "$1"
    ```
+
+   O `tars` tem que estar no PATH do hook. Sem ele, use o caminho absoluto do binário:
+   `exec "$TARS_HOME/dist/tars" hooks commit-msg "$1"`. Quem preferir Node chama o script
+   direto: `exec node "$TARS_HOME/tools/framework/tars-hooks.mjs" commit-msg "$1"`.
 
 
 O **segtools** é o consumidor de referência: o Tars fica montado em `/projects/tars`, o
