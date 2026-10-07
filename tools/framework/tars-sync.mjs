@@ -36,7 +36,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
-export const AREAS = ['skills', 'rules', 'memory', 'gates']
+export const AREAS = ['skills', 'rules', 'memory', 'gates', 'guards', 'governance']
 /** Nomes que o manifesto pode declarar em `[gates]` (docs/TARS.md §Modelo). */
 export const HOOKS = ['pre-commit', 'commit-msg', 'pre-push', 'local']
 
@@ -148,6 +148,8 @@ export async function readManifest(project) {
     skills: tars.skills ?? [],
     rules: tars.rules ?? [],
     memory: tars.memory ?? [],
+    guards: tars.guards ?? [],
+    governance: tars.governance ?? [],
     gates,
   }
 }
@@ -236,6 +238,11 @@ const LAYOUT = {
   // `.jsonl` ja' vem com a extensao no nome (o manifesto nao a inventa).
   memory: (item) => ({ path: join('memory', 'agent', item), ext: item.endsWith('.jsonl') ? '' : '.md' }),
   gates: (item) => ({ path: join('gates', item), ext: '' }),
+  // Guard e' ARQUIVO (`.ai/guards/<nome>.sh`): o manifesto declara o nome sem extensao, como
+  // nas regras. O modo executavel vem junto (o `cp` preserva) — guard que nao executa nao guarda.
+  guards: (item) => ({ path: join('guards', item), ext: '.sh' }),
+  // Governanca e' ARQUIVO markdown solto (`.ai/governance/<nome>.md`), igual a regra.
+  governance: (item) => ({ path: join('governance', item), ext: '.md' }),
 }
 
 /** Fonte do item no Tars, relativa a `.ai/`. */
@@ -384,6 +391,8 @@ version = "\${version}"
 skills  = []                                        # ex.: ["agent-coordination", "segtools-sdd"]
 rules   = []                                        # ex.: ["base"]
 memory  = []                                        # fatias da memoria base por tema, ex.: ["git", "db"]
+guards  = []                                        # ex.: ["block-secret-dump", "sessionstart-context-digest"]
+governance = []                                     # ex.: ["EVOLUTION", "source-of-truth"]
 
 [gates]
 pre-commit = []                                     # do catalogo: commit-msg, gitleaks, no-add-all, layout-check, ds-gate

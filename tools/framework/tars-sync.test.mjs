@@ -19,6 +19,8 @@ version = "v0.3"
 skills  = ["alpha"]
 rules   = ["base"]
 memory  = ["git"]
+guards  = ["alpha-guard"]
+governance = ["alpha"]
 
 [gates]
 pre-commit = ["commit-msg"]
@@ -52,6 +54,10 @@ describe("tars-sync — so' o declarado e' copiado", () => {
       "gates/commit-msg",
       "gates/commit-msg/GATE.md",
       "gates/commit-msg/gate.mjs",
+      "governance",
+      "governance/alpha.md",
+      "guards",
+      "guards/alpha-guard.sh",
       "memory",
       "memory/agent",
       "memory/agent/git.md",
@@ -70,6 +76,8 @@ describe("tars-sync — so' o declarado e' copiado", () => {
       { area: "rules", item: "base" },
       { area: "memory", item: "git" },
       { area: "gates", item: "commit-msg" },
+      { area: "guards", item: "alpha-guard" },
+      { area: "governance", item: "alpha" },
     ]);
     expect(readLock(lock).files["memory/agent/git.md"].sha256).toBe(
       await hashSource(path.join(tars, ".ai", "memory", "agent", "git.md")),
@@ -85,7 +93,9 @@ describe("tars-sync — so' o declarado e' copiado", () => {
     expect(r.wrote).toContain("gates/commit-msg");
     expect(Object.keys(readLock(lock).files).filter((f) => f.startsWith("gates/"))).toEqual(["gates/commit-msg"]);
     expect(fs.existsSync(path.join(base, "gates", "tools"))).toBe(false);
-    expect(declare(await readManifest(project)).map((e) => e.item)).toEqual(["alpha", "base", "git", "commit-msg"]);
+    expect(declare(await readManifest(project)).map((e) => e.item)).toEqual([
+      "alpha", "base", "git", "commit-msg", "alpha-guard", "alpha",
+    ]);
   });
 
   it("gate declarado que o Tars nao tem falha ruidoso (o motor nao pode rodar fantasma)", async () => {
@@ -100,7 +110,14 @@ describe("tars-sync — so' o declarado e' copiado", () => {
     const l = readLock(lock);
     expect(l.lockfileVersion).toBe(1);
     expect(l.tars.version).toBe("v0.3");
-    expect(Object.keys(l.files).sort()).toEqual(["gates/commit-msg", "memory/agent/git.md", "rules/base.md", "skills/alpha"]);
+    expect(Object.keys(l.files).sort()).toEqual([
+      "gates/commit-msg",
+      "governance/alpha.md",
+      "guards/alpha-guard.sh",
+      "memory/agent/git.md",
+      "rules/base.md",
+      "skills/alpha",
+    ]);
     for (const f of Object.values(l.files)) expect(f.sha256).toMatch(/^(sha256-)?[0-9a-f]{64}$/);
   });
 });
@@ -178,6 +195,51 @@ describe("tars-sync — falhas", () => {
   it("projeto sem .ai/tars.toml falha nomeando o manifesto", async () => {
     const { tars, project } = scaffold({ manifest: null });
     await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/tars\.toml/);
+  });
+});
+
+describe("tars-sync — guards e governance (fatia 2b)", () => {
+  it("traz o guard e o doc de governanca declarados, com hash no lock", async () => {
+    const { tars, project, base, lock } = scaffold();
+
+    await sync({ tars, project, log: () => {} });
+
+    const guard = path.join(base, "guards", "alpha-guard.sh");
+    const gov = path.join(base, "governance", "alpha.md");
+    expect(fs.readFileSync(guard, "utf8")).toBe(fs.readFileSync(path.join(tars, ".ai", "guards", "alpha-guard.sh"), "utf8"));
+    expect(fs.readFileSync(gov, "utf8")).toBe(fs.readFileSync(path.join(tars, ".ai", "governance", "alpha.md"), "utf8"));
+    const l = readLock(lock);
+    expect(l.files["guards/alpha-guard.sh"].sha256).toBe(await hashSource(guard));
+    expect(l.files["governance/alpha.md"].sha256).toBe(await hashSource(gov));
+    // O que existe no catalogo e NAO foi declarado nao entra (nem guard, nem governanca).
+    expect(fs.existsSync(path.join(base, "guards", "outro-guard.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(base, "governance", "outro.md"))).toBe(false);
+  });
+
+  it("guarda o BIT EXECUTAVEL do guard na copia", async () => {
+    const { tars, project, base } = scaffold();
+
+    await sync({ tars, project, log: () => {} });
+
+    const src = fs.statSync(path.join(tars, ".ai", "guards", "alpha-guard.sh"));
+    const dest = fs.statSync(path.join(base, "guards", "alpha-guard.sh"));
+    expect(src.mode & 0o111).not.toBe(0);
+    expect(dest.mode & 0o111).toBe(src.mode & 0o111);
+  });
+
+  it("guard editado a mao no projeto acusa drift (o guard nao pode divergir do catalogo)", async () => {
+    const { tars, project, base } = scaffold();
+    await sync({ tars, project, log: () => {} });
+    fs.writeFileSync(path.join(base, "guards", "alpha-guard.sh"), "#!/usr/bin/env bash\necho burlado\n");
+
+    await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/drift/);
+  });
+
+  it("guard declarado que o Tars nao tem falha ruidoso", async () => {
+    const { tars, project } = scaffold({
+      manifest: MANIFEST.replace('guards  = ["alpha-guard"]', 'guards  = ["nao-existe"]'),
+    });
+    await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/guards: nao-existe/);
   });
 });
 
