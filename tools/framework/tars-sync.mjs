@@ -225,6 +225,15 @@ export function findTars(start = HERE) {
   throw new Error('nao achei a raiz do Tars (use --tars <dir> ou TARS_HOME)')
 }
 
+/** `findTars` que nao explode: devolve `null` quando nao ha' catalogo acima do `start`. */
+export function findTarsSafely(start = HERE) {
+  try {
+    return findTars(start)
+  } catch {
+    return null
+  }
+}
+
 /**
  * Versao do Tars: `.ai/VERSION` e' a FONTE (o `ai-layer-check` a valida como SemVer) e o
  * `package.json` e' o espelho. `tars --version`, o `tars.lock` do consumidor e as notas de
@@ -380,8 +389,17 @@ async function copyItem(tars, project, entry) {
   return hashSource(dest)
 }
 
+/**
+ * O projeto E' o proprio catalogo (o Tars consumindo a si mesmo). Nesse caso nao ha' o
+ * que COPIAR: a base ja' e' o `.ai/` do catalogo — copiar `.ai/gates/` para `.ai/base/`
+ * seria a duplicacao que a R3 proibe. O sync em modo `self` so' faz o wiring e os hooks
+ * do git (o Tars e o seu primeiro consumidor — a doutrina vale para ele primeiro).
+ */
+export const isSelf = (tars, project) => Boolean(tars) && resolve(tars) === resolve(project)
+
 export async function sync({ tars = findTars(), project = process.cwd(), check = false, log = console.log } = {}) {
   const manifest = await readManifest(project)
+  const self = isSelf(tars, project)
   const lockPath = join(project, '.ai', 'tars.lock')
   const lock = existsSync(lockPath) ? JSON.parse(await readFile(lockPath, 'utf8')) : null
   const { missing, stale, absent, copied } = await plan({ tars, project, manifest, lock })
@@ -407,7 +425,9 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 
   const files = {}
   const wrote = []
-  for (const entry of declare(manifest, { tars })) {
+  // Modo `self`: a base JA' e' o `.ai/` do catalogo — copiar `.ai/gates/` para `.ai/base/`
+  // seria a duplicacao que a R3 proibe. O sync so' faz wiring + hooks (abaixo).
+  for (const entry of self ? [] : declare(manifest, { tars })) {
     const key = destOf(entry)
     const locked = lock?.files?.[key]?.sha256
     const dest = join(project, '.ai', 'base', destOf(entry))
@@ -426,15 +446,20 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     tars: { version: manifest.version ?? readVersion(tars), commit: tarsCommit(tars) },
     files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),
   }
+  // Em modo `self` o lock nao existe: nao ha' item copiado para travar (a base e' o catalogo).
   const body = JSON.stringify(next, null, 2) + '\n'
   const before = existsSync(lockPath) ? await readFile(lockPath, 'utf8') : null
-  if (body !== before) await writeFile(lockPath, body)
+  if (!self && body !== before) await writeFile(lockPath, body)
   // O wiring por ferramenta e' a ponta que faz o guard RODAR: sem ele a base e' so' arquivo.
   const wired = await writeWiring(project, manifest)
   if (wired.length) log(`gera ${wired.join(', ')} (wiring do harness)`)
   // A outra ponta: os hooks do GIT. Sem eles um commit passa sem gate nenhum.
   const hooksWrote = await writeGitHooks(project, manifest)
   if (hooksWrote.length) log(`gera ${hooksWrote.join(', ')} (hooks do git)`)
+  // FALHA ALTA (R4): o consumidor que USA hooks proprios e fica sem NENHUM hook vivo tem o
+  // git engolindo commit calado — o sync nao pode sair 0 achando que esta' tudo bem.
+  const mortos = deadHooks(project, manifest)
+  if (mortos) throw new Error(mortos)
   log(
     wrote.length
       ? `sync: ${wrote.length} item(ns), ${Object.keys(files).length} no lock (${relative(project, lockPath)}).`
@@ -517,11 +542,12 @@ export function guardRelPath(project, file) {
 /** Guard declarado pelo PROJETO (`[tars].guards`), na pasta propria ou na base copiada. */
 export function projectGuardHooks(project, manifest) {
   const out = []
+  // O catalogo consumindo a si mesmo guarda o guard em `.ai/guards/`, nao em `.ai/base/guards/`.
+  const prefixo = isSelf(findTarsSafely(project), project) ? '.ai' : '.ai/base'
   for (const item of hookGuards(manifest)) {
     const rel = destOf({ area: 'guards', item })
-    const full = join(project, '.ai', 'base', rel)
-    if (!existsSync(full)) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
-    out.push({ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/.ai/base/${rel}"` })
+    if (!existsSync(join(project, prefixo, rel))) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
+    out.push({ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/${prefixo}/${rel}"` })
   }
   return out.length ? [{ matcher: 'Bash|PowerShell', hooks: out }] : []
 }
@@ -546,13 +572,20 @@ function baseHooks(project) {
 /**
  * `project` e' opcional: sem ele o settings sai completo (uso legado/teste). Com ele, hook
  * cujo arquivo nao existe no consumidor e' omitido — o sync faz o certo por padrao.
+ *
+ * PRESERVA o que nao e' do sync (merge sobre o arquivo atual): o sync e' dono de `$schema`,
+ * `env` e dos eventos da base (PreToolUse/PreCompact/SessionStart); o resto — `permissions`,
+ * evento que o projeto mantem a mao (Stop, ...) — fica intacto. Sem isso o `tars sync`
+ * APAGAVA o `Stop` (stop-unfinished-work) e o bloco `permissions` do proprio Tars (07/10).
  */
-export function claudeSettings(manifest, project = null) {
+export function claudeSettings(manifest, project = null, atual = null) {
   const base = baseHooks(project)
   return {
+    ...(atual ?? {}),
     $schema: 'https://json.schemastore.org/claude-code-settings.json',
     env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}) },
     hooks: {
+      ...(atual?.hooks ?? {}),
       PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest))],
       PreCompact: base.PreCompact,
       SessionStart: base.SessionStart,
@@ -564,7 +597,15 @@ export function claudeSettings(manifest, project = null) {
 export async function writeWiring(project, manifest) {
   const dir = join(project, '.claude')
   const file = join(dir, 'settings.json')
-  const body = JSON.stringify(claudeSettings(manifest, project), null, 2) + '\n'
+  let atual = null
+  if (existsSync(file)) {
+    try {
+      atual = JSON.parse(await readFile(file, 'utf8'))
+    } catch {
+      atual = null // ilegivel: o sync reescreve do zero (o doctor acusa o settings quebrado)
+    }
+  }
+  const body = JSON.stringify(claudeSettings(manifest, project, atual), null, 2) + '\n'
   if (existsSync(file) && (await readFile(file, 'utf8')) === body) return []
   await mkdir(dir, { recursive: true })
   await writeFile(file, body)
@@ -634,8 +675,12 @@ export async function writeGitHooks(project, manifest, hooksPath = effectiveHook
   const dir = join(project, hooksPath)
   const wrote = []
   await mkdir(dir, { recursive: true })
-  for (const hook of GIT_HOOKS) {
-    if (!(manifest.gates?.[hook] ?? []).length) continue
+  // `prepare-commit-msg` acompanha o `commit-msg`: e' quem INJETA o emoji do tipo (o
+  // `validate-commit.mjs --inject`), sem o qual o `commit-msg` reprova a mensagem escrita
+  // a mao sem emoji. Declarar `commit-msg` traz os dois — o par e' uma coisa so'.
+  const alvos = GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+  if (alvos.includes('commit-msg')) alvos.push('prepare-commit-msg')
+  for (const hook of alvos) {
     const file = join(dir, hook)
     const body = hookBody(project, hook)
     if (existsSync(file) && (await readFile(file, 'utf8')) === body) continue
@@ -643,6 +688,26 @@ export async function writeGitHooks(project, manifest, hooksPath = effectiveHook
     wrote.push(`${hooksPath}/${hook}`)
   }
   return wrote
+}
+
+/**
+ * O consumidor USA hooks proprios mas nenhum hook do manifesto esta' VIVO no disco: o git
+ * engole o commit calado (foi a falha do proprio Tars, 07/10 — `.githooks` apontado mas
+ * inexistente). Devolve a mensagem de erro (R4) ou `null` quando esta' tudo certo.
+ */
+export function deadHooks(project, manifest, hooksPath = effectiveHooksPath(project)) {
+  if (!usesGitHooks(project, hooksPathOf(project))) return null
+  const esperados = GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+  if (!esperados.length) return null
+  const dir = join(project, hooksPath)
+  if (!existsSync(dir)) return `HOOKS MORTOS: core.hooksPath=${hooksPath} nao existe — nenhum gate roda (rode \`tars sync\`)`
+  const faltando = esperados.filter((h) => {
+    const f = join(dir, h)
+    return !existsSync(f) || !(statSync(f).mode & 0o111)
+  })
+  return faltando.length
+    ? `HOOKS MORTOS: ${faltando.map((h) => `${hooksPath}/${h}`).join('; ')} ausente/nao executavel — nenhum gate roda (rode \`tars sync\`)`
+    : null
 }
 
 // ---------------------------------------------------------------------------

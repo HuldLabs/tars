@@ -128,7 +128,7 @@ async function sync(action, rest, project) {
 
 async function runHooksCommand(rest, project) {
   const [hook, ...rawArgs] = rest
-  if (!hook) throw new Error('falta o hook: use `tars hooks <pre-commit|commit-msg|pre-push|local> [args]`')
+  if (!hook) throw new Error('falta o hook: use `tars hooks <pre-commit|commit-msg|prepare-commit-msg|pre-push|local> [args]`')
   const mod = hooks
   const { parseToml } = syncMod
   // `--project` tambem vale aqui: sem ele o repo consumidor so' era encontravel por TARS_PROJECT.
@@ -328,7 +328,10 @@ async function main() {
     return
   }
   const handler = COMMANDS[cmd]
-  if (!handler) throw new Error(`comando desconhecido: '${cmd}' (use ${Object.keys(COMMANDS).join(' | ')})`)
+  // O gate roda `node .ai/gates/<nome>/gate.mjs`: esse argv[1] NAO e' nosso comando — sem este
+  // guarda o `TARS_GATE` (posto pelo `runHooks`) faria o CLI tentar despachar o caminho do gate.
+  if (!handler && !process.env.TARS_GATE) throw new Error(`comando desconhecido: '${cmd}' (use ${Object.keys(COMMANDS).join(' | ')})`)
+  if (!handler) return
   // Sem `--project` e sem TARS_PROJECT: quando rodado como CLI o padrao e' o cwd; importado
   // como biblioteca nao ha projeto implicito (o cwd ali e' o do runner de teste).
   const asCli = COMPILED || (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url)))

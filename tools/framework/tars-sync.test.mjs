@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { declare, hashSource, init, parseToml, readManifest, sync } from "./tars-sync.mjs";
 
@@ -508,6 +509,57 @@ describe("tars-sync — hooks do git (fatia 3b)", () => {
 
     expect(r.hooks).toEqual([".minha-hooks/pre-commit"]);
     expect(fs.existsSync(path.join(project, ".minha-hooks", "pre-commit"))).toBe(true);
+  });
+});
+
+describe("tars-sync — modo self (o Tars consumindo a si mesmo)", () => {
+  const SELF = `[tars]
+version = "1.2.3"
+guards = ["alpha-guard"]
+
+[gates]
+pre-commit = ["commit-msg"]
+commit-msg = ["commit-msg"]
+`;
+  // No modo self o projeto E' o catalogo: mesma pasta. A base JA' e' o `.ai/` do catalogo.
+  const selfScaffold = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tars-self-"));
+    const tars = path.join(root, "tars");
+    fs.cpSync(TARS_FIXTURE, tars, { recursive: true });
+    // Gates/guards que o manifesto declara moram no `.ai/` do catalogo (nao ha' `.ai/base/`).
+    fs.mkdirSync(path.join(tars, ".ai", "gates", "commit-msg"), { recursive: true });
+    fs.writeFileSync(path.join(tars, ".ai", "gates", "commit-msg", "gate.mjs"), "process.exit(0)\n");
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "alpha-guard.sh"), "exit 0\n");
+    fs.mkdirSync(path.join(tars, ".githooks"), { recursive: true });
+    fs.writeFileSync(path.join(tars, ".ai", "tars.toml"), SELF);
+    execFileSync("git", ["-C", tars, "init", "-q"]);
+    execFileSync("git", ["-C", tars, "config", "core.hooksPath", ".githooks"]);
+    return { tars };
+  };
+
+  it("NAO copia a base (nada de `.ai/base/`) — a base ja' e' o `.ai/` do catalogo (R3)", async () => {
+    const { tars } = selfScaffold();
+    await sync({ tars, project: tars, log: () => {} });
+    expect(fs.existsSync(path.join(tars, ".ai", "base"))).toBe(false);
+    expect(fs.existsSync(path.join(tars, ".ai", "tars.lock"))).toBe(false);
+  });
+
+  it("gera os hooks do git apontando o motor, so' os declarados (+ prepare-commit-msg do commit-msg)", async () => {
+    const { tars } = selfScaffold();
+    const r = await sync({ tars, project: tars, log: () => {} });
+    // `prepare-commit-msg` acompanha o `commit-msg` (injeta o emoji do tipo); `pre-push` nao
+    // e' declarado e por isso nao nasce.
+    expect(r.hooks).toEqual([".githooks/pre-commit", ".githooks/commit-msg", ".githooks/prepare-commit-msg"]);
+    expect(fs.existsSync(path.join(tars, ".githooks", "pre-push"))).toBe(false);
+  });
+
+  it("o guard declarado aponta `.ai/guards/` (nao `.ai/base/guards/`)", async () => {
+    const { tars } = selfScaffold();
+    await sync({ tars, project: tars, log: () => {} });
+    const s = JSON.parse(fs.readFileSync(path.join(tars, ".claude", "settings.json"), "utf8"));
+    const cmd = s.hooks.PreToolUse[0].hooks[0].command;
+    expect(cmd).toContain(".ai/guards/alpha-guard.sh");
+    expect(cmd).not.toContain(".ai/base/");
   });
 });
 

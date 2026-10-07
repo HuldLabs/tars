@@ -42,6 +42,10 @@ export function findProject(start = process.cwd()) {
  * `pre-commit` fica de fora do `pre-push` (o portao caro).
  */
 export function planGates(manifest, alvo) {
+  // `prepare-commit-msg` e' o GEMEO do `commit-msg`: nao tem lista propria no manifesto — ele
+  // roda os MESMOS gates do `commit-msg`, mas no passo `--inject` (o emoji entra antes de a
+  // mensagem ser validada). Sem manifesto proprio, o par fica uma coisa so' (R3).
+  if (alvo === 'prepare-commit-msg') alvo = 'commit-msg'
   if (!HOOKS.includes(alvo)) throw new Error(`hook desconhecido: '${alvo}' (use ${HOOKS.join(', ')})`)
   // `gates.params` e' configuracao, nao lista de gates: fora da varredura.
   const listas = (nome) => (Array.isArray(manifest.gates?.[nome]) ? manifest.gates[nome] : [])
@@ -57,15 +61,31 @@ export function planGates(manifest, alvo) {
   return [...base, ...local]
 }
 
-/** Onde o gate mora: base no `.ai/base/gates/<nome>/`, local no caminho do projeto. */
+/**
+ * O projeto E' o catalogo (o Tars consumindo a si mesmo, modo `self` do sync): o `.ai/VERSION`
+ * marca a raiz do Tars. Aqui a base nao e' `.ai/base/` — ela E' o proprio `.ai/` (copiar
+ * `.ai/gates/` para `.ai/base/` seria a duplicacao que a R3 proibe).
+ */
+export function isCatalog(project) {
+  return existsSync(join(project, '.ai', 'VERSION'))
+}
+
+/** Onde o gate mora: base no `.ai/base/gates/<nome>/` (ou `.ai/gates/` no catalogo), local no projeto. */
 function target(project, hook, item) {
   if (item.origem === 'local') return join(project, item.caminho)
-  return join(project, '.ai', BASE, 'gates', item.nome)
+  const base = isCatalog(project) ? join(project, '.ai', 'gates') : join(project, '.ai', BASE, 'gates')
+  return join(base, item.nome)
 }
 
 /** Comando do gate: pasta => o `gate.mjs` dela (ou o unico `.mjs`/`.sh`); arquivo => ele mesmo. */
-function command(dir) {
+function command(dir, hook) {
   if (!statSync(dir).isFile()) {
+    // `prepare-commit-msg`: o passo e' o `--inject` do validador (injeta o emoji do tipo),
+    // nao o `gate.mjs` que so' VALIDA. O validador viaja junto do gate (item de catalogo = pasta).
+    if (hook === 'prepare-commit-msg') {
+      const inject = join(dir, 'validate-commit.mjs')
+      if (existsSync(inject)) return [process.execPath, inject, '--inject']
+    }
     const gate = join(dir, 'gate.mjs')
     if (existsSync(gate)) return [process.execPath, gate]
     return null
@@ -87,7 +107,7 @@ export function runHooks({ hook, manifest, project, args = [], log = console.log
       err(`gate ${item.nome}: NAO ENCONTRADO em ${dir} — o manifesto declara e o arquivo nao existe (rode tars sync).`)
       return { ok: false, rodados, falhou: { nome: item.nome, motivo: 'ausente' } }
     }
-    const cmd = command(dir)
+    const cmd = command(dir, hook)
     if (!cmd) {
       err(`gate ${item.nome}: nao sei executar ${dir} (esperado pasta com gate.mjs, ou arquivo .mjs/.sh).`)
       return { ok: false, rodados, falhou: { nome: item.nome, motivo: 'sem-exec' } }
@@ -115,7 +135,10 @@ export function runHooks({ hook, manifest, project, args = [], log = console.log
 // --- CLI -------------------------------------------------------------------
 // `TARS_AS_MODULE` desliga o auto-run quando o `tars.mjs` importa o modulo no modo
 // `bun build --compile` (la o import.meta.url de todo modulo embutido vira o do entrypoint).
-if (!process.env.TARS_AS_MODULE && process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+// `TARS_GATE` marca o gate rodado pelo `command()`: la o `argv[1]` e' o do GATE (ex.:
+// `.ai/gates/gitleaks/gate.mjs`), nao o nosso — sem esta exclusao a guarda dispara no gate
+// e o nosso CLI engole os argumentos dele.
+if (!process.env.TARS_AS_MODULE && !process.env.TARS_GATE && process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const [hook, ...args] = process.argv.slice(2)
   if (!hook) {
     console.error(`uso: tars-hooks.mjs <${HOOKS.join('|')}> [args do hook]`)
