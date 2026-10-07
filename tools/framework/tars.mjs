@@ -9,7 +9,7 @@
 //
 // Uso:
 //   tars init [--tars <dir>] [--project <dir>]
-//   tars sync [--check] [--tars <dir>] [--project <dir>]
+//   tars sync [--check] [--adopt <hook>]... [--tars <dir>] [--project <dir>]
 //   tars check [--tars <dir>] [--project <dir>]      # atalho de `sync --check`
 //   tars hooks <pre-commit|commit-msg|pre-push|local> [args do hook...]
 //   tars promote --area <memory|skill|gate> --item <nome> [--project <dir>] [--tars <dir>]
@@ -82,6 +82,8 @@ const USAGE = [
   '',
   '  init                       cria .ai/tars.toml minimo e sincroniza o declarado',
   '  sync [--check]             puxa o declarado para .ai/base/ (--check: so valida)',
+  '    --adopt <hook>           adota o hook do projeto (guarda o original em <hook>.bak); sem',
+  '                             ele, hook sem a marca de autoria do Tars NAO e sobrescrito',
   '  check                      atalho de `sync --check` (o gate)',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
@@ -115,7 +117,7 @@ async function sync(action, rest, project) {
     project: resolve(argValue(rest, '--project') ?? project),
   }
   if (action === 'init') return void (await mod.init(opts))
-  const r = await mod.sync({ ...opts, check: rest.includes('--check') })
+  const r = await mod.sync({ ...opts, check: rest.includes('--check'), adopt: argValues(rest, '--adopt') })
   if (rest.includes('--check')) {
     const bad = r.missing.length || r.stale.length || r.absent.length
     if (bad) {
@@ -280,6 +282,13 @@ async function handoffCommand(rest, project) {
 function argValue(list, name) {
   const i = list.indexOf(name)
   return i === -1 ? null : list[i + 1]
+}
+
+/** Le TODOS os valores de `--nome <v>` (repetivel) — `--adopt` pode nomear varios hooks. */
+function argValues(list, name) {
+  const out = []
+  for (let i = 0; i < list.length; i++) if (list[i] === name && list[i + 1]) out.push(list[i + 1])
+  return out
 }
 
 /** `tars upgrade-notes [--from <>]` — as notas de upgrade do catalogo (modulo dono). */

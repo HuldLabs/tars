@@ -29,7 +29,7 @@
 // aqui cobre so' o que ele usa (secoes, listas de string, escalares) — KISS, sem dependencia.
 
 import { createHash } from 'node:crypto'
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -397,7 +397,7 @@ async function copyItem(tars, project, entry) {
  */
 export const isSelf = (tars, project) => Boolean(tars) && resolve(tars) === resolve(project)
 
-export async function sync({ tars = findTars(), project = process.cwd(), check = false, log = console.log } = {}) {
+export async function sync({ tars = findTars(), project = process.cwd(), check = false, adopt = [], log = console.log } = {}) {
   const manifest = await readManifest(project)
   const self = isSelf(tars, project)
   const lockPath = join(project, '.ai', 'tars.lock')
@@ -454,7 +454,7 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   const wired = await writeWiring(project, manifest)
   if (wired.length) log(`gera ${wired.join(', ')} (wiring do harness)`)
   // A outra ponta: os hooks do GIT. Sem eles um commit passa sem gate nenhum.
-  const hooksWrote = await writeGitHooks(project, manifest)
+  const hooksWrote = await writeGitHooks(project, manifest, undefined, adopt)
   if (hooksWrote.length) log(`gera ${hooksWrote.join(', ')} (hooks do git)`)
   // FALHA ALTA (R4): o consumidor que USA hooks proprios e fica sem NENHUM hook vivo tem o
   // git engolindo commit calado — o sync nao pode sair 0 achando que esta' tudo bem.
@@ -602,7 +602,12 @@ export async function writeWiring(project, manifest) {
     try {
       atual = JSON.parse(await readFile(file, 'utf8'))
     } catch {
-      atual = null // ilegivel: o sync reescreve do zero (o doctor acusa o settings quebrado)
+      // Ilegivel NAO autoriza reescrever do zero (R4): o merge viraria perda calada das
+      // chaves do dono. Falha alto nomeando o arquivo — quem quebrou o JSON conserta.
+      throw new Error(
+        `.claude/settings.json ilegivel (JSON invalido, nada sobrescrito): ${file}\n` +
+          `Conserte o JSON ou apague o arquivo para o Tars gerar do zero.`,
+      )
     }
   }
   const body = JSON.stringify(claudeSettings(manifest, project, atual), null, 2) + '\n'
@@ -669,8 +674,21 @@ function hookBody(project, hook) {
   )
 }
 
+/**
+ * A marca de autoria: o corpo que o sync gera traz esta linha. Arquivo SEM ela e' do dono —
+ * o sync nunca o sobrescreve (incident 07/10: `.githooks/pre-commit` de 319 linhas do
+ * segtools foi trocado pelo corpo generico, calado). Posse e' declarada no proprio arquivo,
+ * nunca inferida pela existencia da pasta.
+ */
+export const OWNED = '# Gerado por `tars sync`'
+
 /** Gera os hooks do git declarados; idempotente (mesmo conteudo, nada muda). */
-export async function writeGitHooks(project, manifest, hooksPath = effectiveHooksPath(project)) {
+export async function writeGitHooks(
+  project,
+  manifest,
+  hooksPath = effectiveHooksPath(project),
+  adopt = [],
+) {
   if (!usesGitHooks(project, hooksPathOf(project))) return []
   const dir = join(project, hooksPath)
   const wrote = []
@@ -680,12 +698,34 @@ export async function writeGitHooks(project, manifest, hooksPath = effectiveHook
   // a mao sem emoji. Declarar `commit-msg` traz os dois — o par e' uma coisa so'.
   const alvos = GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
   if (alvos.includes('commit-msg')) alvos.push('prepare-commit-msg')
+  const alheios = []
   for (const hook of alvos) {
     const file = join(dir, hook)
     const body = hookBody(project, hook)
-    if (existsSync(file) && (await readFile(file, 'utf8')) === body) continue
+    const existe = existsSync(file)
+    const atual = existe ? await readFile(file, 'utf8') : null
+    if (existe && atual === body) continue // idempotente: ja' e' o nosso
+    if (existe && !atual.includes(OWNED)) {
+      // Arquivo do dono: so' escreve com `--adopt` (e guarda o original em `.bak`).
+      if (!adopt.includes(hook)) {
+        alheios.push(`${hooksPath}/${hook}`)
+        continue
+      }
+      await writeFile(file + '.bak', atual)
+    }
     await writeFile(file, body, { mode: 0o755 })
+    // `writeFile` com `mode` NAO muda o bit de quem JA' existe: adotar um hook do projeto
+    // (0644) sem chmod deixaria o hook morto e o `deadHooks` reprovaria o sync logo abaixo.
+    await chmod(file, 0o755)
     wrote.push(`${hooksPath}/${hook}`)
+  }
+  // R4: falha alta nomeando cada arquivo e as duas saidas — adotar, ou declarar o gate como local.
+  if (alheios.length) {
+    const names = alheios.map((f) => `  - ${f}`).join('\n')
+    throw new Error(
+      `hook do projeto sem a marca de autoria (nada sobrescrito):\n${names}\n` +
+        `Adote com \`tars sync --adopt <hook>\` (o original fica em <hook>.bak) ou declare o gate como local.`,
+    )
   }
   return wrote
 }

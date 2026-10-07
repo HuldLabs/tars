@@ -497,6 +497,60 @@ describe("tars-sync — hooks do git (fatia 3b)", () => {
     expect(fs.statSync(f).mtimeMs).toBe(before);
   });
 
+  it("hook do projeto sem a marca de autoria NAO e' sobrescrito (incident 07/10)", async () => {
+    const { tars, project } = scaffold();
+    const dir = path.join(project, ".githooks");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, "pre-commit");
+    const meu = "#!/usr/bin/env sh\n# meu gate\n";
+    fs.writeFileSync(f, meu);
+
+    await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/autoria|adotar/);
+    // O gate do projeto continua byte a byte o mesmo.
+    expect(fs.readFileSync(f, "utf8")).toBe(meu);
+  });
+
+  it("`--adopt <hook>` adota o hook do projeto: vira o gerado e o original fica no `.bak`", async () => {
+    const { tars, project } = scaffold();
+    const dir = path.join(project, ".githooks");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, "pre-commit");
+    const meu = "#!/usr/bin/env sh\n# meu gate\n";
+    fs.writeFileSync(f, meu);
+
+    const r = await sync({ tars, project, log: () => {}, adopt: ["pre-commit"] });
+
+    expect(r.hooks).toContain(".githooks/pre-commit");
+    expect(fs.statSync(f).mode & 0o111).toBeGreaterThan(0);
+    expect(fs.readFileSync(f, "utf8")).toContain("# Gerado por `tars sync`");
+    expect(fs.readFileSync(f + ".bak", "utf8")).toBe(meu);
+  });
+
+  it("`prepare-commit-msg` do projeto tambem e' protegido (o sync o soma aos alvos)", async () => {
+    const manifest = `${MANIFEST}commit-msg = ["commit-msg"]
+`;
+    const { tars, project } = scaffold({ manifest });
+    const dir = path.join(project, ".githooks");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, "prepare-commit-msg");
+    const meu = "#!/usr/bin/env sh\n# meu injetor\n";
+    fs.writeFileSync(f, meu);
+
+    await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/prepare-commit-msg/);
+    expect(fs.readFileSync(f, "utf8")).toBe(meu);
+  });
+
+  it("`settings.json` ilegivel nao e' reescrito do zero: falha alto nomeando o arquivo", async () => {
+    const { tars, project } = scaffold();
+    const dir = path.join(project, ".claude");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, "settings.json");
+    fs.writeFileSync(f, "{ isso nao e' json");
+
+    await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/settings\.json/);
+    expect(fs.readFileSync(f, "utf8")).toBe("{ isso nao e' json");
+  });
+
   it("`core.hooksPath` declarado tambem liga a geracao", async () => {
     const { tars, project } = scaffold();
     // O consumidor ja' usa hooks proprios numa pasta qualquer declarada no git.
