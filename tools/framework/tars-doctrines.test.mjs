@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { classify, doctor, loadDoctrines, parseRef } from './tars-doctrines.mjs'
 import { NONINTERACTIVE_ENV } from './tars-sync.mjs'
 
@@ -221,6 +222,28 @@ describe('doctor — hooks do git (core.hooksPath)', () => {
     return dir
   }
 
+  it('`core.hooksPath` declarado apontando pasta INEXISTENTE = HOOKS MORTOS (R4)', () => {
+    const tars = fixture(d())
+    execFileSync('git', ['-C', tars, 'init', '-q'])
+    execFileSync('git', ['-C', tars, 'config', 'core.hooksPath', '.githooks'])
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.ok).toBe(false)
+    expect(r.wiring.git.ok).toBe(false)
+    expect(r.wiring.git.detalhe).toMatch(/HOOKS MORTOS: core\.hooksPath=\.githooks nao existe/)
+    expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
+  })
+
+  it('`core.hooksPath` declarado com a pasta OK = sem FALHA', () => {
+    const tars = fixture(d())
+    execFileSync('git', ['-C', tars, 'init', '-q'])
+    execFileSync('git', ['-C', tars, 'config', 'core.hooksPath', '.githooks'])
+    fs.mkdirSync(path.join(tars, '.githooks'), { recursive: true })
+    for (const h of ['pre-commit', 'commit-msg', 'pre-push'])
+      fs.writeFileSync(path.join(tars, '.githooks', h), '#!/usr/bin/env sh\n', { mode: 0o755 })
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.git.ok).toBe(true)
+  })
+
   it('pasta `.githooks/` sem os hooks = FALHA (o git engole o commit calado)', () => {
     const tars = comGitHooks()
     const r = doctor({ tars, project: tars })
@@ -252,6 +275,23 @@ describe('doctor — hooks do git (core.hooksPath)', () => {
     const r = doctor({ tars, project: tars })
     expect(r.wiring.git.ok).toBe(true)
     expect(r.wiring.git.detalhe).toMatch(/sem hooks proprios/)
+  })
+
+  it('cobra SO os hooks DECLARADOS no [gates] (declarar um nao exige os tres)', () => {
+    const tars = comGitHooks()
+    // O manifesto declara so' pre-commit: exigir commit-msg/pre-push reprovaria quem esta' certo.
+    fs.writeFileSync(path.join(tars, '.ai', 'tars.toml'), '[tars]\nversion = "1.0.0"\n\n[gates]\npre-commit = ["x"]\n')
+    fs.writeFileSync(path.join(tars, '.githooks', 'pre-commit'), '#!/usr/bin/env sh\n', { mode: 0o755 })
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.git.ok).toBe(true)
+  })
+
+  it('hook declarado que FALTA reprova (pasta existe mas o hook nao)', () => {
+    const tars = comGitHooks()
+    fs.writeFileSync(path.join(tars, '.ai', 'tars.toml'), '[tars]\nversion = "1.0.0"\n\n[gates]\npre-commit = ["x"]\n')
+    const r = doctor({ tars, project: tars })
+    expect(r.wiring.git.ok).toBe(false)
+    expect(r.wiring.git.detalhe).toMatch(/pre-commit/)
   })
 })
 

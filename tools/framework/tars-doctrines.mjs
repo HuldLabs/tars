@@ -211,23 +211,42 @@ export function wiringCheck(project) {
 }
 
 /**
+ * Os hooks do git que o MANIFESTO declara: so' o declarado ganha hook (o sync nao escreve
+ * os outros). Sem manifesto legivel, cai no catalogo inteiro — nao da' para cobrar menos.
+ */
+function declaredGitHooks(project) {
+  const file = join(project, '.ai', 'tars.toml')
+  if (!existsSync(file)) return GIT_HOOKS
+  try {
+    const cfg = parseToml(readFileSync(file, 'utf8'))
+    const declarados = GIT_HOOKS.filter((h) => (cfg.gates?.[h] ?? []).length)
+    return declarados.length ? declarados : GIT_HOOKS
+  } catch {
+    return GIT_HOOKS
+  }
+}
+
+/**
  * `core.hooksPath` que aponta para pasta INEXISTENTE ou sem os hooks do manifesto = FALHA:
  * o git engole o commit sem rodar gate nenhum, calado. A checagem so' vale quando o
- * consumidor USA hooks proprios — quem nao usa nao tem o que cobrar.
+ * consumidor USA hooks proprios — quem nao usa nao tem o que cobrar. E cobra so' os hooks
+ * DECLARADOS no `[gates]`: exigir os 3 de quem declarou um reprovaria quem esta' certo.
  */
 export function gitHooksCheck(project) {
   if (!usesGitHooks(project)) return { ok: true, detalhe: 'consumidor sem hooks proprios do git' }
   const hooksPath = effectiveHooksPath(project)
   const dir = join(project, hooksPath)
-  if (!existsSync(dir)) return { ok: false, detalhe: `core.hooksPath '${hooksPath}' aponta pasta inexistente — rode \`tars sync\`` }
+  // A frase e' a do dono: `HOOKS MORTOS` nomeia o que esta' acontecendo (nenhum gate roda) e o
+  // que fazer (`tars sync`). O git engole o commit calado — o erro tem de GRITAR (R4).
+  if (!existsSync(dir)) return { ok: false, detalhe: `HOOKS MORTOS: core.hooksPath=${hooksPath} nao existe — nenhum gate roda (rode \`tars sync\`)` }
   const faltando = []
-  for (const hook of GIT_HOOKS) {
+  for (const hook of declaredGitHooks(project)) {
     const f = join(dir, hook)
     if (!existsSync(f)) faltando.push(`${hooksPath}/${hook}`)
     else if (!(statSync(f).mode & 0o111)) faltando.push(`${hooksPath}/${hook} (sem bit executavel)`)
   }
   return faltando.length
-    ? { ok: false, detalhe: `hook do git ausente/nao executavel (${faltando.join('; ')}) — rode \`tars sync\`` }
+    ? { ok: false, detalhe: `HOOKS MORTOS: ${faltando.join('; ')} ausente/nao executavel — nenhum gate roda (rode \`tars sync\`)` }
     : { ok: true, detalhe: `${hooksPath}/ com os hooks do git` }
 }
 
