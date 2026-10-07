@@ -346,6 +346,28 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     expect(s.hooks.PreToolUse).toEqual([]);
   });
 
+  it("script de TESTE declarado (test-*.sh) NAO vira hook: prova, nao guard (item 1a)", async () => {
+    // `test-*.sh` e' a suite do guard: o consumidor o declara para ter a prova por perto,
+    // mas amarra-lo ao PreToolUse faria cada Bash pagar o teste inteiro. Vira proibido em
+    // DOIS papeis: a funcao pura (preToolUseFor) e o settings do consumidor real.
+    const { preToolUseFor } = await import("./tars-sync.mjs");
+    expect(preToolUseFor({ guards: ["alpha-guard", "test-alpha-guard"] })).toEqual([
+      {
+        matcher: "Bash|PowerShell",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/alpha-guard.sh"' }],
+      },
+    ]);
+    const { tars, project } = scaffold({
+      manifest: MANIFEST.replace('guards  = ["alpha-guard"]', 'guards  = ["alpha-guard", "test-alpha-guard"]'),
+    });
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "test-alpha-guard.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    await sync({ tars, project, log: () => {} });
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(s)).not.toContain("test-alpha-guard.sh");
+    // Mas a prova VAI para a base: consumidor roda a suite sem depender do catalogo.
+    expect(fs.existsSync(path.join(project, ".ai", "base", "guards", "test-alpha-guard.sh"))).toBe(true);
+  });
+
   it("rodar de novo nao reescreve o settings.json (idempotente)", async () => {
     const { tars, project } = scaffold();
     await sync({ tars, project, log: () => {} });

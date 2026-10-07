@@ -187,6 +187,17 @@ const guardDeps = (manifest, tars) =>
     ? GUARD_DEPS.filter((dep) => existsSync(join(tars, '.ai', 'guards', dep + '.sh')))
     : []
 
+/**
+ * Script de TESTE de guard (`test-*.sh`) e' prova, nao hook: roda no CI contra o guard,
+ * nunca no harness do agente (item 1a). Ele e' COPIADO (o consumidor roda a suite local),
+ * mas NAO vira comando do PreToolUse — senao cada Bash pagaria o teste inteiro e o
+ * consumidor declara-o so' para ter a prova por perto.
+ */
+export const isGuardTest = (item) => /(^|\/)test-/.test(item)
+
+/** Guard DECLARADO que de fato vira hook (o teste fica de fora). */
+const hookGuards = (manifest) => (manifest.guards ?? []).filter((g) => !isGuardTest(g))
+
 /** Itens do catalogo a copiar (tudo, menos o `local`, que e' do projeto). */
 export const declare = (manifest, { tars } = {}) =>
   AREAS.flatMap((area) => {
@@ -434,7 +445,7 @@ const guardCommand = (item) => `bash "$CLAUDE_PROJECT_DIR/.ai/base/${destOf({ ar
 
 /** PreToolUse: um comando por guard declarado; entrada vazia se nenhum. */
 export function preToolUseFor(manifest) {
-  const commands = (manifest.guards ?? []).map(guardCommand)
+  const commands = hookGuards(manifest).map(guardCommand)
   return commands.length
     ? [{ matcher: 'Bash|PowerShell', hooks: commands.map((command) => ({ type: 'command', command })) }]
     : []
@@ -476,7 +487,7 @@ export function resolveGuardFile(project, file) {
 /** Guard declarado pelo PROJETO (`[tars].guards`), na pasta propria ou na base copiada. */
 export function projectGuardHooks(project, manifest) {
   const out = []
-  for (const item of manifest.guards ?? []) {
+  for (const item of hookGuards(manifest)) {
     const rel = destOf({ area: 'guards', item })
     const full = join(project, '.ai', 'base', rel)
     if (!existsSync(full)) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
