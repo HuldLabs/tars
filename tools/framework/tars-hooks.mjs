@@ -68,7 +68,9 @@ export function planGates(manifest, alvo) {
  * `.ai/gates/` para `.ai/base/` seria a duplicacao que a R3 proibe).
  */
 export function isCatalog(project) {
-  return existsSync(join(project, '.ai', 'VERSION'))
+  // O consumidor tambem pode ter `.ai/VERSION` (o segtools tem, heranca de quando o Tars nasceu dele):
+  // so' e' catalogo quem tem a VERSION e NAO tem o `tars.lock` — todo consumidor sincronizado tem o lock.
+  return existsSync(join(project, '.ai', 'VERSION')) && !existsSync(join(project, '.ai', 'tars.lock'))
 }
 
 /** Onde o gate mora: base no `.ai/base/gates/<nome>/` (ou `.ai/gates/` no catalogo), local no projeto. */
