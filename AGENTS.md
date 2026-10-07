@@ -31,6 +31,9 @@ como atende cada uma**:
 
 ## Ao fechar trabalho
 
+- **Incidente → prevenção propagada.** Toda falha tem uma classe; conserte a classe na
+  camada mais automática que a impeça em todos os consumidores. Régua e o 5º campo
+  (`propagacao`) em `.ai/governance/incidente-vira-prevencao.md`.
 - **Limpeza (SOP).** Antes de fechar: apague morto, duplicata, flag sem uso e arquivo
   órfão; o que era temporário some junto. Entrega que reduz linhas ganha.
 - **Segredos.** **Nunca** imprima segredo (nem em log, teste ou evidência). O cofre
