@@ -169,10 +169,6 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
    exec node "$TARS_HOME/tools/framework/tars-hooks.mjs" commit-msg "$1"
    ```
 
-> **Nota (07/10):** o manifesto gerado pelo `init` hoje traz `rules = ["base"]` e
-> `memory = ["base"]` — itens que **ainda não existem** no catálogo, então o `init` falha com
-> "item declarado que não existe". Até corrigirem, rode o `init`, deixe essas duas listas
-> vazias (`[]`) e sincronize.
 
 O **segtools** é o consumidor de referência: o Tars fica montado em `/projects/tars`, o
 projeto aponta `TARS_HOME` para lá, declara em `.ai/tars.toml` só o que usa, e a `.ai` dele
@@ -192,7 +188,7 @@ O desenho completo está em `docs/TARS.md` (fonte única). O que falta:
 - **Médio encaixe, por demanda**: devcontainer (feature/template), CI (workflows que chamam os
   gates do manifesto), formato do `BENCHMARKS.md`, padrões por linguagem (ruff/uv, eslint/tsconfig),
   convenção de prints (`docs/reference/ux/<tema>`).
-- **Fatias pendentes**: corrigir o template do `init`; `task ai:promote`; tornar a memória base
+- **Fatias pendentes**: `task ai:promote`; tornar a memória base
   real (fatias por tema); e a `.ai` do segtools encolher ao que é dele.
 
 Fica **fora** do Tars, por desenho: runtime, banco, migrations, `test-db` e módulos → Sofon.

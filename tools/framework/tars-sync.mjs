@@ -383,7 +383,7 @@ export const MANIFEST_TEMPLATE = `# Manifesto do consumidor do Tars (docs/TARS.m
 version = "\${version}"
 skills  = []                                        # ex.: ["agent-coordination", "segtools-sdd"]
 rules   = []                                        # ex.: ["base"]
-memory  = ["base"]                                  # fatia "base" da memoria (o fato promovido); outras: "git", "db"
+memory  = []                                        # fatias da memoria base por tema, ex.: ["git", "db"]
 
 [gates]
 pre-commit = []                                     # do catalogo: commit-msg, gitleaks, no-add-all, layout-check, ds-gate
@@ -400,8 +400,6 @@ export async function init({ tars = findTars(), project = process.cwd(), log = c
   const version = (await tarsVersion(tars)) ?? 'v0.0'
   await mkdir(join(project, '.ai', 'memory'), { recursive: true })
   await writeFile(manifestPath, MANIFEST_TEMPLATE.replace('${version}', version))
-  // `memory = ["base"]` e' a fatia da memoria do MOTOR (TARS-MEM-2): o projeto iniciado
-  // ja' le a base promovida, sem cansar quem inicia com um item que talvez nao exista.
   const r = await sync({ tars, project, log })
   log(`init: ${relative(project, manifestPath)} + .ai/memory/ criados (Tars ${version}); rode \`tars sync\` apos declarar itens.`)
   return { manifest: manifestPath, version, wrote: r.wrote }

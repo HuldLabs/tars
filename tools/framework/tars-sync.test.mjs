@@ -218,7 +218,7 @@ describe("tars-sync — init", () => {
     expect(toml).toContain("version = \"1.2.3\"");
     expect(toml).toContain("skills  = []");
     expect(toml).toContain("# Manifesto do consumidor do Tars");
-    expect(declare(await readManifest(project))).toEqual([{ area: "memory", item: "base" }]);
+    expect(declare(await readManifest(project))).toEqual([]);
     expect(fs.existsSync(path.join(project, ".ai", "memory"))).toBe(true);
     // O motor vem sempre: a copia da memoria base esta' la' e o manifesto e' legivel.
     expect(fs.existsSync(base)).toBe(true);
