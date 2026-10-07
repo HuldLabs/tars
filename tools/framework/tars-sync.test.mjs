@@ -42,12 +42,16 @@ const treeOf = (dir) =>
     : [];
 
 describe("tars-sync — so' o declarado e' copiado", () => {
-  it("copia skills/rules/memory declarados, nada de `[gates]`", async () => {
+  it("copia skills/rules/memory e os gates DECLARADOS", async () => {
     const { tars, project, base, lock } = scaffold();
     await sync({ tars, project, log: () => {} });
 
     // memoria = ["git"] declarada; `db` existe no Tars e NAO pode vir.
     expect(treeOf(base)).toEqual([
+      "gates",
+      "gates/commit-msg",
+      "gates/commit-msg/GATE.md",
+      "gates/commit-msg/gate.mjs",
       "memory",
       "memory/agent",
       "memory/agent/git.md",
@@ -60,15 +64,34 @@ describe("tars-sync — so' o declarado e' copiado", () => {
       "skills/alpha/rules/x.md",
     ]);
     expect(fs.readFileSync(path.join(base, "rules", "base.md"), "utf8")).toBe("base rule\n");
-    expect(fs.existsSync(path.join(base, "gates"))).toBe(false);
+    expect(fs.existsSync(path.join(base, "gates", "commit-msg", "GATE.md"))).toBe(true);
     expect(declare(await readManifest(project))).toEqual([
       { area: "skills", item: "alpha" },
       { area: "rules", item: "base" },
       { area: "memory", item: "git" },
+      { area: "gates", item: "commit-msg" },
     ]);
     expect(readLock(lock).files["memory/agent/git.md"].sha256).toBe(
       await hashSource(path.join(tars, ".ai", "memory", "agent", "git.md")),
     );
+  });
+
+  it("`[gates].local` e' do PROJETO: nao e' copiado nem entra no lock", async () => {
+    const { tars, project, base, lock } = scaffold({
+      manifest: MANIFEST.replace("pre-commit = [\"commit-msg\"]", "pre-commit = [\"commit-msg\"]\nlocal      = [\"tools/gates/meu.sh\"]"),
+    });
+    const r = await sync({ tars, project, log: () => {} });
+
+    expect(r.wrote).toContain("gates/commit-msg");
+    expect(Object.keys(readLock(lock).files).filter((f) => f.startsWith("gates/"))).toEqual(["gates/commit-msg"]);
+    expect(fs.existsSync(path.join(base, "gates", "tools"))).toBe(false);
+    expect(declare(await readManifest(project)).map((e) => e.item)).toEqual(["alpha", "base", "git", "commit-msg"]);
+  });
+
+  it("gate declarado que o Tars nao tem falha ruidoso (o motor nao pode rodar fantasma)", async () => {
+    const { tars, project, base } = scaffold({ manifest: MANIFEST.replace('"commit-msg"', '"nao-existe"') });
+    await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/gates: nao-existe/);
+    expect(fs.existsSync(base)).toBe(false);
   });
 
   it("lock versiona o Tars (version + commit) e o sha256 de cada arquivo", async () => {
@@ -77,7 +100,7 @@ describe("tars-sync — so' o declarado e' copiado", () => {
     const l = readLock(lock);
     expect(l.lockfileVersion).toBe(1);
     expect(l.tars.version).toBe("v0.3");
-    expect(Object.keys(l.files).sort()).toEqual(["memory/agent/git.md", "rules/base.md", "skills/alpha"]);
+    expect(Object.keys(l.files).sort()).toEqual(["gates/commit-msg", "memory/agent/git.md", "rules/base.md", "skills/alpha"]);
     for (const f of Object.values(l.files)) expect(f.sha256).toMatch(/^(sha256-)?[0-9a-f]{64}$/);
   });
 });

@@ -1,20 +1,23 @@
 #!/usr/bin/env node
 // `tars sync` — puxa do catalogo Tars SO' o declarado no `.ai/tars.toml` do PROJETO
 // consumidor, para `.ai/base/`, e trava versao+sha256 em `.ai/tars.lock` (docs/TARS.md
-// §Manifesto, fatia 3). Estende o formato do `ai-skills-sync.mjs` (mesmo lockfileVersion,
+// §Manifesto, fatias 2-3). Estende o formato do `ai-skills-sync.mjs` (mesmo lockfileVersion,
 // mesmos nomes de flag) em vez de criar um terceiro fetcher: aqui a origem e' o PROPRIO
 // Tars em disco (nao a API do GitHub), porque o consumidor tem a base local.
 //
 // O que ele faz:
-//   * le `[tars]` (version/skills/rules/memory) do `.ai/tars.toml` do consumidor;
-//   * NAO le `[gates]` — o motor de hooks que consome os gates e' a fatia 3 seguinte
-//     (docs/TARS.md §Fatias); declarar gate aqui nao copia nem falha;
+//   * le `[tars]` (version/skills/rules/memory) e `[gates]` (pre-commit/pre-push/local) do
+//     `.ai/tars.toml` do consumidor;
 //   * copia cada item declarado de `<tars>/<area>/<item>` para `.ai/base/<area>/<item>`;
 //   * escreve `.ai/tars.lock` com a versao do Tars, o commit resolvido e o sha256 de cada
 //     arquivo copiado (arquivo de CONTEUDO, nao segredo);
 //   * item declarado que nao existe no Tars -> falha RUIDOSA (exit 1, nomeando o item);
 //   * base editada a mao no projeto -> drift ACUSA e nao sobrescreve calado (exit 1);
 //   * rodar de novo sem mudanca -> nada muda (idempotente).
+//
+// SO' os gates DECLARADOS vem (a fatia 4): o catalogo tem varios; o consumidor paga o
+// peso so' do que usa. O `local` do manifesto e' do PROJETO (moradia propria, nao entra no
+// lock) — quem o roda e' o motor `tars-hooks.mjs`, nao o sync.
 //
 // Uso (dentro do projeto consumidor):
 //   node <tars>/tools/framework/tars-sync.mjs [--tars <dir>] [--project <dir>] [--check]
@@ -33,7 +36,9 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
-export const AREAS = ['skills', 'rules', 'memory']
+export const AREAS = ['skills', 'rules', 'memory', 'gates']
+/** Nomes que o manifesto pode declarar em `[gates]` (docs/TARS.md §Modelo). */
+export const HOOKS = ['pre-commit', 'pre-push', 'local']
 
 // ---------------------------------------------------------------------------
 // Parser TOML minimo: secoes `[x]`, `chave = valor` e listas de string (uma linha
@@ -42,39 +47,50 @@ export const AREAS = ['skills', 'rules', 'memory']
 export function parseToml(text) {
   const out = {}
   let section = out
+  let key = null // chave cuja lista ainda esta' aberta (multilinha)
   let buffer = ''
 
+  const flush = () => {
+    const m = buffer.match(/^\[([\s\S]*)\]$/)
+    if (!m) throw new Error(`lista TOML nao fechada: ${buffer}`)
+    const [, vals] = section
+    section[key] = key in section ? [...section[key], ...list(m[1])] : list(m[1])
+    key = null
+    buffer = ''
+  }
+
   for (const raw of text.split('\n')) {
-    const line = stripComment(buffer ? raw : raw)
-    if (buffer) {
+    const line = stripComment(raw)
+    if (key) {
+      // Dentro de uma lista multilinha nao ha chave nem secao: so' mais valores e o `]`.
       buffer += ' ' + line.trim()
       if (!line.includes(']')) continue
-    } else {
-      const trimmed = line.trim()
-      if (!trimmed) continue
-      const sec = trimmed.match(/^\[([^\]]+)\]$/)
-      if (sec) {
-        section = out[sec[1]] ??= {}
-        continue
-      }
-      const kv = trimmed.match(/^([A-Za-z_][\w.-]*)\s*=\s*(.+)$/)
-      if (!kv) throw new Error(`linha TOML nao entendida: ${trimmed}`)
-      const [, key, rest] = kv
-      if (rest.startsWith('[') && !rest.includes(']')) {
-        buffer = rest
-        continue
-      }
-      section[key] = value(rest)
+      flush()
       continue
     }
-    if (buffer && buffer.includes(']')) {
-      const m = buffer.match(/^\[([\s\S]*)\]$/)
-      if (!m) throw new Error(`lista TOML nao fechada: ${buffer}`)
-      section.__pending ??= []
-      section.__pending.push(m[1])
-      buffer = ''
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const sec = trimmed.match(/^\[([^\]]+)\]$/)
+    if (sec) {
+      // Secao aninhada de verdade (`[gates.params.g2]` cria o objeto no caminho) — o
+      // manifesto usa isso para os parametros por gate.
+      const caminho = sec[1].split('.')
+      let alvo = out
+      for (const parte of caminho.slice(0, -1)) alvo = alvo[parte] ??= {}
+      section = alvo[caminho.at(-1)] ??= {}
+      continue
     }
+    const kv = trimmed.match(/^([A-Za-z_][\w.-]*)\s*=\s*(.+)$/)
+    if (!kv) throw new Error(`linha TOML nao entendida: ${trimmed}`)
+    const [, k, rest] = kv
+    if (rest.startsWith('[') && !rest.includes(']')) {
+      key = k
+      buffer = rest
+      continue
+    }
+    section[k] = value(rest)
   }
+  if (key) throw new Error(`lista TOML nao fechada: ${buffer}`)
   return out
 }
 
@@ -118,15 +134,31 @@ export async function readManifest(project) {
   const cfg = parseToml(await readFile(file, 'utf8'))
   const tars = cfg.tars
   if (!tars) throw new Error('.ai/tars.toml sem secao [tars]')
+  const gates = cfg.gates ?? {}
+  // `local` e' a unica lista do manifesto que NAO vem do catalogo: gate que mora no projeto.
+  // Chave desconhecida em `[gates]` e' erro de digitacao (ex.: `precommit`) e calaria o gate;
+  // `params` e' a configuracao por gate (docs/TARS.md: "os parametros vem do config do projeto").
+  for (const key of Object.keys(gates)) {
+    if (key !== 'params' && !HOOKS.includes(key)) {
+      throw new Error(`[gates] do .ai/tars.toml tem chave desconhecida: '${key}' (use ${HOOKS.join(', ')})`)
+    }
+  }
   return {
     version: tars.version ?? null,
     skills: tars.skills ?? [],
     rules: tars.rules ?? [],
     memory: tars.memory ?? [],
+    gates,
   }
 }
 
-export const declare = (manifest) => AREAS.flatMap((area) => manifest[area].map((item) => ({ area, item })))
+/** Itens do catalogo a copiar (tudo, menos o `local`, que e' do projeto). */
+export const declare = (manifest) =>
+  AREAS.flatMap((area) =>
+    area === 'gates'
+      ? HOOKS.filter((h) => h !== 'local').flatMap((h) => (manifest.gates[h] ?? []).map((item) => ({ area, item })))
+      : manifest[area].map((item) => ({ area, item })),
+  )
 
 // ---------------------------------------------------------------------------
 // Tars de origem
@@ -176,7 +208,12 @@ export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 export async function hashSource(dest) {
   if (existsSync(dest) && statSync(dest).isFile()) return sha256(await readFile(dest))
   const h = createHash('sha256')
-  for (const rel of await listFiles(dest)) {
+  const files = await listFiles(dest)
+  // Pasta VAZIA nao e' copiavel: `cp` de um diretorio sem arquivo nao cria nada no destino,
+  // entao o item ficaria eternamente "nao copiado" e o sync reescreveria a base a cada rodada.
+  // O hash do diretorio existente (vazio) e' o hash do nada: casa com o lock e para o laco.
+  if (!files.length) return sha256(Buffer.alloc(0))
+  for (const rel of files) {
     h.update(rel)
     h.update('\0')
     h.update(await readFile(join(dest, rel)))
@@ -188,13 +225,15 @@ export async function hashSource(dest) {
 // ---------------------------------------------------------------------------
 // Sync
 // ---------------------------------------------------------------------------
-// Layout do catalogo no Tars (`.ai/`): skill e' PASTA (`skills/<nome>/`); regra e fato de
-// memoria sao ARQUIVO (`rules/<nome>.md`, `memory/agent/<nome>.md`). O manifesto declara o
-// NOME, sem extensao e sem pasta — quem sabe onde o item mora e' este mapa (SSOT).
+// Layout do catalogo no Tars (`.ai/`): skill e gate sao PASTA (`skills/<nome>/`,
+// `gates/<nome>/`); regra e fato de memoria sao ARQUIVO (`rules/<nome>.md`,
+// `memory/agent/<nome>.md`). O manifesto declara o NOME, sem extensao e sem pasta — quem
+// sabe onde o item mora e' este mapa (SSOT).
 const LAYOUT = {
   skills: (item) => ({ path: join('skills', item), ext: '' }),
   rules: (item) => ({ path: join('rules', item), ext: '.md' }),
   memory: (item) => ({ path: join('memory', 'agent', item), ext: '.md' }),
+  gates: (item) => ({ path: join('gates', item), ext: '' }),
 }
 
 /** Fonte do item no Tars, relativa a `.ai/`. */

@@ -1,0 +1,1 @@
+# gate: commit-msg
