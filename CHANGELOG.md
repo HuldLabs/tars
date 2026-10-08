@@ -11,9 +11,20 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   cada consumidor. O módulo novo (`tars-secrets.mjs`) porta a lógica do `secrets.mjs` do
   segtools e a parametriza pela tabela `[secrets]` do `.ai/tars.toml` — o Tars é o catálogo,
   quem declara é o consumidor.
+- **Três camadas com merge campo a campo**: (1) **embutido** no Tars — só estrutura, nomes de
+  campo e caminhos **locais** (`~/.config/tars/<projeto>/`); **nenhuma ref `op://` e nenhuma
+  identidade** no catálogo. (2) **perfil do usuário**, fora do repo
+  (`~/.config/tars/profile.toml`; Windows `%APPDATA%\tars\profile.toml`) — as refs pessoais
+  (`cofre`, `bot`, `allowed_signers`). (3) **projeto** (`.ai/tars.toml [secrets]`), que
+  sobrescreve o perfil campo a campo. Ref que nenhuma camada declara **falha alta nomeando o
+  campo** (o campo da chave age, `cofre`, substitui o antigo `age_key_ref`).
+- `tars secrets check` ganha a linha **`refs`**: a **camada de origem** de cada ref
+  (`embutido | perfil | projeto`), nunca o valor.
+- `source="automation"` força **`OP_BIOMETRIC_UNLOCK_ENABLED=false`** no env do spawn do `op`
+  (não há dono nem leitor biométrico nesse caminho); com `owner` nada é forçado.
 - `key_scope` (`project` | `machine`) e `source` (`automation` | `owner`) **obrigatórios**, sem
-  fallback entre fontes. `project` exige `age_key_ref`; `machine` proíbe `age_key_ref` e
-  `sops_config` versionado — cada violação grita com a lista de valores válidos.
+  fallback entre fontes. `project` exige a ref `cofre`; `machine` proíbe `cofre` e `sops_config`
+  versionado — cada violação grita com a lista de valores válidos.
 - **Um wrapper único para `op`/`sops`**: toda ref é conferida como `^op://` antes do spawn
   (inválida = erro que **não** ecoa o valor) e o stderr volta **redigido** (valor de segredo
   conhecido vira `***`) — nunca `>/dev/null`.

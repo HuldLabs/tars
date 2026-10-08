@@ -16,9 +16,15 @@
 //   check    — NAO abre o cofre: julga chave (0600) x recipient do cache x .sops versionado,
 //              o template, se o cache decifra e se o ambiente de quem chama ja' esta' sujo.
 //
-// DEFAULTS NEUTROS: nada de "pablo" nem "dotfiles" — o nome do projeto vem do diretorio, e
-// os caminhos de `~/.config/tars/<projeto>/` (Windows: `%APPDATA%\tars\<projeto>\`). Toda
-// peca e' sobrescrevivel por projeto.
+// TRES CAMADAS, merge CAMPO A CAMPO num lugar so' (`resolve`): (1) EMBUTIDO no Tars — so'
+// estrutura, nomes de campo e caminhos LOCAIS (`~/.config/tars/<projeto>/`, Windows
+// `%APPDATA%\tars\<projeto>\`); NENHUMA ref `op://` e nenhuma identidade, porque identidade
+// nao viaja no catalogo. (2) PERFIL do usuario, FORA de repo (`~/.config/tars/profile.toml`,
+// Windows `%APPDATA%\tars\profile.toml`) — e' onde as refs pessoais moram. (3) PROJETO
+// (`.ai/tars.toml [secrets]`), que sobrescreve o perfil campo a campo. Comando que precisa de
+// uma ref que nenhuma camada declarou FALHA ALTA nomeando o campo (nada de fallback mudo).
+//
+// DEFAULTS NEUTROS: nada de "pablo" nem "dotfiles" — o nome do projeto vem do diretorio.
 //
 // NUNCA imprime valor de segredo — nem em erro, nem em log, nem em teste. O que sai e' o
 // NOME da chave e o CAMINHO do arquivo.
@@ -33,6 +39,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { actor } from './tars-actor.mjs'
+import { parseToml } from './tars-sync.mjs'
 
 /**
  * O helper que materializa o env RESOLVIDO pelo `op run` como JSON (porte do
@@ -123,17 +130,92 @@ function spawnOp(args, env) {
 }
 
 /**
- * Onde moram chave, cache, template e token quando o projeto nao declara caminho. Um lugar
- * so' (R3): `TARS_SECRETS_DIR` troca a BASE (o teste aponta para um tmpfs) e o nome do
- * projeto e' o diretorio — nada de constante com nome de pessoa.
+ * Os campos da config, com a UNICA coisa que os distingue: `ref: true` = guarda uma REFERENCIA
+ * `op://` (identidade — nenhuma camada embutida a declara); `padrao(dir)` = caminho LOCAL
+ * embutido. A tabela e' a SSOT do merge: acrescentar campo e' acrescentar linha aqui (R3).
  */
-export function configDir({ project = process.cwd(), env = process.env } = {}) {
-  const base =
+export const CAMPOS = {
+  cofre: { ref: true }, // a chave age do projeto no cofre
+  bot: { ref: true }, // a identidade de automacao no cofre
+  allowed_signers: { ref: true }, // o allowed_signers da assinatura de commit no cofre
+  age_key_file: { padrao: (dir) => path.join(dir, 'age.key') },
+  cache_file: { padrao: (dir) => path.join(dir, 'secrets.sops.json') },
+  template: { padrao: (dir) => path.join(dir, 'secrets.tpl') },
+  token_file: { padrao: (dir) => path.join(dir, 'op-token') },
+}
+
+/** As camadas, da mais fraca para a mais forte. A ordem E' o merge (campo a campo). */
+export const CAMADAS = ['embutido', 'perfil', 'projeto']
+
+/** A BASE da config do usuario: `TARS_SECRETS_DIR` troca tudo (o teste aponta para um tmpfs). */
+export function baseConfig({ env = process.env } = {}) {
+  return (
     env.TARS_SECRETS_DIR ||
     (process.platform === 'win32'
       ? path.join(env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'tars')
       : path.join(os.homedir(), '.config', 'tars'))
-  return path.join(base, path.basename(path.resolve(project)))
+  )
+}
+
+/**
+ * Onde moram chave, cache, template e token quando o projeto nao declara caminho. Um lugar
+ * so' (R3): o nome do projeto e' o diretorio — nada de constante com nome de pessoa.
+ */
+export function configDir({ project = process.cwd(), env = process.env } = {}) {
+  return path.join(baseConfig({ env }), path.basename(path.resolve(project)))
+}
+
+/** O PERFIL do usuario: FORA de repo (o projeto nunca o versiona), um por maquina. */
+export function perfilFile({ env = process.env } = {}) {
+  return path.join(baseConfig({ env }), 'profile.toml')
+}
+
+/**
+ * Le o perfil do usuario. Ausente = `{}` (nao e' erro: quem exige uma ref e' o comando que
+ * precisa dela). A tabela mora em `[secrets]`, igual a do projeto — assim o perfil pode
+ * crescer para outras secoes sem colidir.
+ */
+export function lerPerfil({ env = process.env, fs: fsm = fs } = {}) {
+  const f = perfilFile({ env })
+  if (!fsm.existsSync(f)) return {}
+  try {
+    return parseToml(fsm.readFileSync(f, 'utf8')).secrets ?? {}
+  } catch (e) {
+    throw new ErroConfig(`[secrets] perfil ilegivel em ${f}: ${e.message}`)
+  }
+}
+
+/**
+ * O MERGE, campo a campo, num lugar so'. Para cada campo vale a camada mais forte que o
+ * declara (projeto > perfil > embutido) e fica gravada a ORIGEM (`_origem`) — e' o que o
+ * `check` mostra e o que permite a mensagem de ref ausente nomear as tres camadas.
+ */
+function resolve(projeto, perfil, dir) {
+  const cfg = { _origem: {} }
+  for (const [campo, def] of Object.entries(CAMPOS)) {
+    for (const [camada, tabela] of [['projeto', projeto], ['perfil', perfil]]) {
+      if (tabela[campo] !== undefined && tabela[campo] !== null) {
+        cfg[campo] = tabela[campo]
+        cfg._origem[campo] = camada
+        break
+      }
+    }
+    if (cfg[campo] === undefined && def.padrao) {
+      cfg[campo] = def.padrao(dir)
+      cfg._origem[campo] = 'embutido'
+    }
+  }
+  return cfg
+}
+
+/** A ref `op://` do campo, vinda de QUALQUER camada — ausente GRITA nomeando o campo. */
+function exigeRef(cfg, campo, env = process.env) {
+  if (!cfg[campo]) {
+    throw new ErroConfig(
+      `[secrets] \`${campo}\` nao declarado em nenhuma camada (${CAMADAS.join(' | ')}): declare a ref \`op://\` no perfil (${perfilFile({ env })}) ou no \`.ai/tars.toml [secrets]\` do projeto`,
+    )
+  }
+  return validaRef(cfg[campo])
 }
 
 /**
@@ -141,8 +223,9 @@ export function configDir({ project = process.cwd(), env = process.env } = {}) {
  * so'), e cada violacao GRITA nomeando o que faltou (R4) — um `source` ausente nao pode
  * virar "usa o que der".
  */
-export function lerConfig(secrets = {}, { project = process.cwd(), env = process.env } = {}) {
+export function lerConfig(secrets = {}, { project = process.cwd(), env = process.env, perfil } = {}) {
   const dir = configDir({ project, env })
+  const emPerfil = perfil ?? lerPerfil({ env })
   const key_scope = secrets.key_scope ?? 'project'
   if (!ESCOPOS.includes(key_scope)) {
     throw new ErroConfig(`[secrets] key_scope invalido: '${key_scope}' (use ${ESCOPOS.join(' | ')})`)
@@ -155,32 +238,22 @@ export function lerConfig(secrets = {}, { project = process.cwd(), env = process
   if (!FONTES.includes(secrets.source)) {
     throw new ErroConfig(`[secrets] source invalido: '${secrets.source}' (use ${FONTES.join(' | ')})`)
   }
-  const age_key_ref = secrets.age_key_ref ?? null
+  const cfg = resolve(secrets, emPerfil, dir)
   const sops_config = secrets.sops_config ?? null
-  if (key_scope === 'project' && !age_key_ref) {
-    throw new ErroConfig('[secrets] key_scope=project exige age_key_ref (a referencia `op://` da chave age no cofre)')
-  }
-  // A ref da chave vem SO' do manifesto: ela nunca e' lida do template (ver `confereTemplate`).
-  if (key_scope === 'project') validaRef(age_key_ref)
-  if (key_scope === 'machine' && age_key_ref) {
-    throw new ErroConfig('[secrets] key_scope=machine PROIBE age_key_ref: a chave e\' gerada NA MAQUINA, nunca lida do cofre')
+  // A ref da chave vem de QUALQUER camada, mas nunca do template (ver `confereTemplate`).
+  if (key_scope === 'project') exigeRef(cfg, 'cofre', env)
+  if (key_scope === 'machine' && cfg.cofre) {
+    throw new ErroConfig('[secrets] key_scope=machine PROIBE cofre: a chave e\' gerada NA MAQUINA, nunca lida do cofre')
   }
   // Um `.sops.yaml` VERSIONADO com escopo de maquina seria uma segunda fonte de verdade: a
   // receita de cifra viajaria no git e a chave local nao a explicaria. Recusa alta.
   if (key_scope === 'machine' && sops_config) {
     throw new ErroConfig('[secrets] key_scope=machine PROIBE sops_config versionado (a receita mora so\' na chave gerada aqui)')
   }
-  return {
-    key_scope,
-    source: secrets.source,
-    age_key_ref,
-    sops_config,
-    dir,
-    age_key_file: secrets.age_key_file ?? path.join(dir, 'age.key'),
-    cache_file: secrets.cache_file ?? path.join(dir, 'secrets.sops.json'),
-    template: secrets.template ?? path.join(dir, 'secrets.tpl'),
-    token_file: secrets.token_file ?? path.join(dir, 'op-token'),
+  for (const campo of Object.keys(CAMPOS)) {
+    if (CAMPOS[campo].ref && cfg[campo]) validaRef(cfg[campo])
   }
+  return { ...cfg, key_scope, source: secrets.source, sops_config, dir }
 }
 
 /**
@@ -212,12 +285,21 @@ export function lerToken(cfg, { fs: fsm = fs } = {}) {
   return token
 }
 
-/** O ambiente que abre o cofre: token da SA (automation) e Connect FORA — ele FALHA em vez de cair num Connect inexistente. */
-function envDoCofre(cfg, base = process.env) {
+/**
+ * O ambiente com que o `op` e' SPAWNADO: token da SA (automation) e Connect FORA — ele FALHA
+ * em vez de cair num Connect inexistente. Em `automation` o desbloqueio por biometria e'
+ * FORCADO a `false`: nao ha' dono nem dedo na frente do leitor nesse caminho, e deixa-lo
+ * ligado faria o `op` pedir a mao humana — falha longe da causa. Com `owner` NADA e' forcado:
+ * a sessao do app e' do dono, e a biometria e' escolha dele.
+ */
+export function envDoCofre(cfg, base = process.env) {
   const env = { ...base }
   delete env.OP_CONNECT_HOST
   delete env.OP_CONNECT_TOKEN
-  if (cfg.source === 'automation') env.OP_SERVICE_ACCOUNT_TOKEN = lerToken(cfg)
+  if (cfg.source === 'automation') {
+    env.OP_SERVICE_ACCOUNT_TOKEN = lerToken(cfg)
+    env.OP_BIOMETRIC_UNLOCK_ENABLED = 'false'
+  }
   return env
 }
 
@@ -266,15 +348,15 @@ function garanteChave(cfg, env = process.env) {
   }
   fs.mkdirSync(path.dirname(cfg.age_key_file), { recursive: true, mode: 0o700 })
   // `--out-file`, NUNCA stdout (ADR-013 do segtools): material de chave em pipe vaza para o
-  // log de quem chamou o `op`. A ref vem do MANIFESTO — `validaRef` ja' a conferiu.
-  validaRef(cfg.age_key_ref)
+  // log de quem chamou o `op`. A ref vem de uma das CAMADAS — `validaRef` ja' a conferiu.
+  validaRef(cfg.cofre)
   const tmp = `${cfg.age_key_file}.novo`
   fs.rmSync(tmp, { force: true }) // sobra de um refresh morto no meio nao contamina o leitor
   try {
-    const r = spawnOp(['read', '--out-file', tmp, cfg.age_key_ref], envDoCofre(cfg, env))
+    const r = spawnOp(['read', '--out-file', tmp, cfg.cofre], envDoCofre(cfg, env))
     if (r.status !== 0 || !fs.existsSync(tmp)) {
       throw new ErroConfig(
-        `[secrets] o 1Password nao entregou a chave age (${cfg.age_key_ref}) em ${cfg.age_key_file}: ${(r.stderr || r.error?.message || '').trim()}`,
+        `[secrets] o 1Password nao entregou a chave age (${cfg.cofre}) em ${cfg.age_key_file}: ${(r.stderr || r.error?.message || '').trim()}`,
       )
     }
     protegeArquivo(tmp)
@@ -321,7 +403,7 @@ export function confereTemplate(cfg, { fs: fsm = fs } = {}) {
     }
     if (refs > 1) return { ok: false, detalhe: `linha ${i + 1}: mais de uma \`op://\` — cada linha e' uma chave` }
   }
-  if (cfg.age_key_ref && txt.includes(cfg.age_key_ref)) {
+  if (cfg.cofre && txt.includes(cfg.cofre)) {
     return { ok: false, detalhe: 'o template cita a ref da CHAVE age — ela vem so\' do manifesto' }
   }
   return { ok: true, detalhe: `${achadas} referencia(s) \`op://\` no formato \`KEY=op://...\`` }
@@ -566,6 +648,11 @@ export function check(cfg, { env = process.env, fs: fsm = fs, decifra = decifraM
 
   const sujos = envSujoNomes(env)
   add('ambiente', sujos.length === 0, sujos.length ? `variaveis vazando: ${sujos.join(', ')}` : 'sem OP_*/SOPS_AGE_KEY')
+
+  // A ORIGEM de cada ref (embutido | perfil | projeto) — nunca o valor: o que se julga aqui e'
+  // de ONDE a declaracao veio, nao o que ela diz.
+  const refs = Object.keys(CAMPOS).filter((c) => CAMPOS[c].ref)
+  add('refs', true, refs.map((c) => `${c}=${cfg._origem?.[c] ?? 'nenhum'}`).join(' '))
 
   return { ok: linhas.every((l) => l.ok), linhas }
 }

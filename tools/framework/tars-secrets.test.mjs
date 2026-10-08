@@ -11,15 +11,20 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  CAMADAS,
+  CAMPOS,
   ErroConfig,
   check,
   confereTemplate,
   configDir,
   decifraMapa,
+  envDoCofre,
   envDoFilho,
   exec,
   format,
   lerConfig,
+  lerPerfil,
+  perfilFile,
   reapResiduo,
   recipientDoCache,
   redige,
@@ -65,6 +70,8 @@ function stubOp({ keySrc, valores }) {
       "import { spawnSync } from 'node:child_process'",
       'const argv = process.argv.slice(2)',
       "fs.appendFileSync(process.env.TARS_STUB_LOG, JSON.stringify(argv) + '\\n')",
+      // O valor (nao so' o nome) da variavel de biometria: prova que ela chega ao SPAWN do `op`.
+      "fs.appendFileSync(process.env.TARS_STUB_ENV, String(process.env.OP_BIOMETRIC_UNLOCK_ENABLED) + '\\n')",
       "if (process.env.TARS_STUB_MORTO) process.exit(1)",
       "const i = (n) => argv.indexOf(n)",
       "if (argv[0] === 'read' && i('--out-file') !== -1) fs.copyFileSync(process.env.TARS_STUB_KEY_SRC, argv[i('--out-file') + 1])",
@@ -81,7 +88,9 @@ function stubOp({ keySrc, valores }) {
       'process.exit(0)',
     ].join('\n'),
   )
-  const env = { ...process.env, TARS_STUB_LOG: log }
+  const envLog = path.join(dir, 'env.log')
+  fs.writeFileSync(envLog, '')
+  const env = { ...process.env, TARS_STUB_LOG: log, TARS_STUB_ENV: envLog }
   if (keySrc) env.TARS_STUB_KEY_SRC = keySrc
   if (valores) env.TARS_STUB_VALORES = JSON.stringify(valores)
   // O seam: trocar o PATH nao basta no Windows — o libuv acha o `op.exe` de verdade antes
@@ -93,7 +102,7 @@ function stubOp({ keySrc, valores }) {
     fs.writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`, { mode: 0o755 })
   }
   process.env.TARS_SECRETS_OP = launcher
-  return { env, log, launcher, antes }
+  return { env, log, envLog, launcher, antes }
 }
 
 /** Uma chave age REAL (o `sops` so' cifra para um recipient de verdade). */
@@ -114,19 +123,19 @@ describe('schema [secrets]', () => {
   })
 
   it('source e OBRIGATORIO — nao ha fallback entre as fontes', () => {
-    expect(() => cfgDe({ key_scope: 'project', age_key_ref: 'op://tars/age-key/ref' }, tmp())).toThrow(/source e' OBRIGATORIO/)
+    expect(() => cfgDe({ key_scope: 'project', cofre: 'op://tars/age-key/ref' }, tmp())).toThrow(/source e' OBRIGATORIO/)
   })
 
   it('source fora da lista grita', () => {
     expect(() => cfgDe({ source: 'sqlite' }, tmp())).toThrow(/source invalido.*automation \| owner/)
   })
 
-  it('project exige age_key_ref', () => {
-    expect(() => cfgDe({ source: 'automation' }, tmp())).toThrow(/key_scope=project exige age_key_ref/)
+  it('project sem `cofre` em NENHUMA camada falha nomeando o campo e as camadas', () => {
+    expect(() => cfgDe({ source: 'automation' }, tmp())).toThrow(/`cofre` nao declarado em nenhuma camada \(embutido \| perfil \| projeto\)/)
   })
 
-  it('machine PROIBE age_key_ref', () => {
-    expect(() => cfgDe({ key_scope: 'machine', source: 'automation', age_key_ref: 'op://tars/age-key/ref' }, tmp())).toThrow(/machine PROIBE age_key_ref/)
+  it('machine PROIBE cofre', () => {
+    expect(() => cfgDe({ key_scope: 'machine', source: 'automation', cofre: 'op://tars/age-key/ref' }, tmp())).toThrow(/machine PROIBE cofre/)
   })
 
   it('machine PROIBE sops_config versionado', () => {
@@ -135,7 +144,7 @@ describe('schema [secrets]', () => {
 
   it('defaults neutros: o projeto nomeia o diretorio, nada de nome de pessoa', () => {
     const dir = tmp('meu-projeto-')
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref' }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref' }, dir)
     expect(c.age_key_file.startsWith(c.dir)).toBe(true)
     expect(path.basename(c.dir)).toBe(path.basename(dir))
     expect(path.basename(configDir({ project: dir, env: { TARS_SECRETS_DIR: dir } }))).toBe(path.basename(dir))
@@ -171,11 +180,11 @@ describe('referencia `op://` e redacao', () => {
 })
 
 describe('formato do template: `op://` só como valor inteiro de `KEY=`', () => {
-  /** Um cfg minimo: `confereTemplate` só lê `template` e `age_key_ref`. */
+  /** Um cfg minimo: `confereTemplate` só lê `template` e `cofre`. */
   const tplCfg = (txt, extra = {}) => {
     const p = path.join(tmp(), 'secrets.tpl')
     fs.writeFileSync(p, txt)
-    return { template: p, age_key_ref: null, ...extra }
+    return { template: p, cofre: null, ...extra }
   }
 
   it('aceita `KEY=op://...`, com ou sem aspas', () => {
@@ -232,12 +241,12 @@ describe('quem abre o cofre', () => {
   it('automation sem token_file falha alto nomeando o caminho', () => {
     const dir = tmp()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), '{}')
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref' }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref' }, dir)
     expect(() => refresh(c, { env: { ...process.env }, tty: true })).toThrow(/token da service account ausente/)
   })
 
   it('owner sem TTY falha alto', () => {
-    const c = cfgDe({ source: 'owner', age_key_ref: 'op://tars/age-key/ref' }, tmp())
+    const c = cfgDe({ source: 'owner', cofre: 'op://tars/age-key/ref' }, tmp())
     // Sem marcador de ator: aqui se testa o TTY, nao o ator — os dois marcadores do runner
     // (CLAUDECODE e TARS_ACTOR, que o harness exporta) batem ANTES e cobririam o TTY.
     const env = { ...process.env, CLAUDECODE: '0', TARS_ACTOR: '' }
@@ -245,7 +254,7 @@ describe('quem abre o cofre', () => {
   })
 
   it('owner com ator=agent falha alto (o agente nao abre o cofre)', () => {
-    const c = cfgDe({ source: 'owner', age_key_ref: 'op://tars/age-key/ref' }, tmp())
+    const c = cfgDe({ source: 'owner', cofre: 'op://tars/age-key/ref' }, tmp())
     expect(() => refresh(c, { env: { ...process.env, TARS_ACTOR: 'agent' }, tty: true })).toThrow(/ator=agent/)
   })
 })
@@ -256,7 +265,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
     const keySrc = chaveReal()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=op://v/i/f\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'segredo-de-teste' } })
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
 
     const r = refresh(c, { env: stub.env, tty: false })
@@ -275,12 +284,26 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
     if (process.platform !== 'win32') expect(fs.statSync(c.age_key_file).mode & 0o777).toBe(0o600)
   })
 
+  it('automation: o env do SPAWN do `op` carrega `OP_BIOMETRIC_UNLOCK_ENABLED=false`', () => {
+    const dir = tmp()
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=op://v/i/f\n')
+    const stub = stubOp({ keySrc: chaveReal(), valores: { TOKEN: 'x' } })
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
+    refresh(c, { env: { ...stub.env, OP_BIOMETRIC_UNLOCK_ENABLED: 'true' }, tty: false })
+    // O stub registra o VALOR da variavel a cada spawn: todas as chamadas (`read` e `run`)
+    // tem de ver `false` — o dono não a pode reativar por engano no ambiente de automation.
+    const vistas = fs.readFileSync(stub.envLog, 'utf8').trim().split('\n')
+    expect(vistas.length).toBeGreaterThan(0)
+    expect(vistas.every((v) => v === 'false')).toBe(true)
+  })
+
   it('project: a chave e RELIDA a cada refresh (troca no cofre muda o recipient do cache)', () => {
     const dir = tmp()
     const keySrc = chaveReal()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=op://v/i/f\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'x' } })
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false })
     const antes = recipientDoCache(c)
@@ -298,7 +321,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
     const keySrc = chaveReal()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'SIGN_KEY=op://v/i/f\n')
     const stub = stubOp({ keySrc, valores: { SIGN_KEY: 'linha1\nlinha2\nlinha3' } })
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false })
     expect(decifraMapa(c).SIGN_KEY.split('\n')).toEqual(['linha1', 'linha2', 'linha3'])
@@ -322,7 +345,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
     const dir = tmp()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), '# op://v/i/f\nTOKEN=x\n')
     const stub = stubOp({ valores: { TOKEN: 'x' } })
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     expect(() => refresh(c, { env: stub.env, tty: false })).toThrow(/template reprovado/)
     // Nenhuma chamada ao `op`: reprovou antes.
@@ -334,7 +357,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
     const keySrc = chaveReal()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'x' } })
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false }) // cache bom
     const antes = fs.readFileSync(c.cache_file, 'utf8')
@@ -361,7 +384,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('residuo em tmp (refresh morto no meio)',
     const dir = tmp()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
     const stub = stubOp({ keySrc: chaveReal(), valores: { TOKEN: 'x' } })
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     return { c, stub }
   }
@@ -410,7 +433,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('exec', () => {
     const keySrc = chaveReal()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=op://v/i/f\nOUTRO=op://v/i/g\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'segredo-de-teste', OUTRO: 'x' } })
-    c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false })
   })
@@ -449,7 +472,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
     const keySrc = chaveReal()
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'x' } })
-    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token'), ...extra }, dir)
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token'), ...extra }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false })
     return c
@@ -536,7 +559,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
   it('template que cita a ref da CHAVE age reprova (a chave vem so do manifesto)', () => {
     const c = pronto()
     // Formato VALIDO (`KEY=op://...`): reprova pela REF, nao pelo formato.
-    fs.writeFileSync(c.template, `TOKEN=op://v/i/f\nAGE_KEY=${c.age_key_ref}\n`)
+    fs.writeFileSync(c.template, `TOKEN=op://v/i/f\nAGE_KEY=${c.cofre}\n`)
     expect(confereTemplate(c).ok).toBe(false)
     expect(confereTemplate(c).detalhe).toMatch(/ref da CHAVE age/)
   })
@@ -544,5 +567,118 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
   it('check NAO abre o cofre: nenhuma referencia op:// e usada', () => {
     expect(() => check(pronto(), { env: { PATH: process.env.PATH } })).not.toThrow()
     expect(new ErroConfig('x')).toBeInstanceOf(Error)
+  })
+})
+
+describe('quem desbloqueia o `op` no spawn (biometria)', () => {
+  it('automation FORCA `OP_BIOMETRIC_UNLOCK_ENABLED=false` no env do spawn', () => {
+    const dir = tmp()
+    const c = cfgDe({ source: 'automation', cofre: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
+    // Mesmo com o ambiente de quem chama LIGADO, automation DESLIGA: nao ha' dedo na frente do
+    // leitor nesse caminho, e deixa-lo ligado faria o `op` pedir a mao humana longe da causa.
+    const env = envDoCofre(c, { ...process.env, OP_BIOMETRIC_UNLOCK_ENABLED: 'true' })
+    expect(env.OP_BIOMETRIC_UNLOCK_ENABLED).toBe('false')
+  })
+
+  it('owner NAO forca nada: a sessao (e a biometria) e escolha do dono', () => {
+    const c = { source: 'owner' }
+    expect(envDoCofre(c, {}).OP_BIOMETRIC_UNLOCK_ENABLED).toBeUndefined()
+    expect(envDoCofre(c, { OP_BIOMETRIC_UNLOCK_ENABLED: 'true' }).OP_BIOMETRIC_UNLOCK_ENABLED).toBe('true')
+  })
+})
+
+describe('camadas de config: embutido | perfil | projeto', () => {
+  /** Base fora do repo + projeto dentro dela (o perfil NAO e' por projeto). */
+  const cenario = () => {
+    const base = tmp('tars-base-')
+    const projDir = path.join(base, 'meu-projeto')
+    fs.mkdirSync(projDir)
+    const env = { ...process.env, TARS_SECRETS_DIR: base }
+    return {
+      base,
+      projDir,
+      env,
+      perfil: (txt) => fs.writeFileSync(path.join(base, 'profile.toml'), txt),
+      cfg: (tabela) => lerConfig(tabela, { project: projDir, env }),
+    }
+  }
+
+  it('a camada EMBUTIDA so tem estrutura e caminho LOCAL: nenhuma ref `op://`, nenhuma identidade', () => {
+    const c = cenario()
+    const deRef = Object.entries(CAMPOS).filter(([, d]) => d.ref)
+    expect(deRef.map(([n]) => n)).toEqual(['cofre', 'bot', 'allowed_signers'])
+    // Nenhum campo de ref tem padrao embutido (ref e' IDENTIDADE: nao viaja no catalogo).
+    expect(deRef.every(([, d]) => d.padrao === undefined)).toBe(true)
+    const cfg = c.cfg({ key_scope: 'machine', source: 'automation' })
+    expect(cfg.cofre).toBeUndefined()
+    expect(cfg._origem.age_key_file).toBe('embutido')
+    expect(cfg.age_key_file.startsWith(c.projDir)).toBe(true)
+    // A prova na FONTE: nenhum default do modulo carrega uma ref.
+    const fonte = fs.readFileSync(new URL('./tars-secrets.mjs', import.meta.url), 'utf8')
+    expect(fonte).not.toMatch(/=\s*['"]op:\/\//)
+  })
+
+  it('perfil ausente E projeto sem a ref: falha alta nomeando o campo e as tres camadas', () => {
+    const c = cenario()
+    expect(() => c.cfg({ source: 'automation' })).toThrow(/`cofre` nao declarado em nenhuma camada \(embutido \| perfil \| projeto\)/)
+    expect(() => c.cfg({ source: 'automation' })).toThrow(/profile\.toml/)
+  })
+
+  it('so perfil: a ref vem do perfil e a ORIGEM e o perfil', () => {
+    const c = cenario()
+    c.perfil('[secrets]\ncofre = "op://perfil/age/ref"\n')
+    const cfg = c.cfg({ source: 'automation' })
+    expect(cfg.cofre).toBe('op://perfil/age/ref')
+    expect(cfg._origem.cofre).toBe('perfil')
+  })
+
+  it('projeto sobrescreve o perfil CAMPO A CAMPO (o campo nao tocado segue do perfil)', () => {
+    const c = cenario()
+    c.perfil(`[secrets]\ncofre = "op://perfil/age/ref"\ncache_file = "${path.join('X', 'cache-do-perfil')}"\n`)
+    const cfg = c.cfg({ source: 'automation', cofre: 'op://projeto/age/ref' })
+    expect(cfg.cofre).toBe('op://projeto/age/ref')
+    expect(cfg._origem.cofre).toBe('projeto')
+    expect(cfg.cache_file).toBe(path.join('X', 'cache-do-perfil'))
+    expect(cfg._origem.cache_file).toBe('perfil')
+    expect(cfg._origem.token_file).toBe('embutido')
+  })
+
+  it('dois perfis diferentes -> refs diferentes (e o perfil que carrega a identidade)', () => {
+    const a = cenario()
+    const b = cenario()
+    a.perfil('[secrets]\ncofre = "op://perfil-a/age/ref"\n')
+    b.perfil('[secrets]\ncofre = "op://perfil-b/age/ref"\n')
+    expect(lerPerfil({ env: a.env }).cofre).toBe('op://perfil-a/age/ref')
+    expect(lerPerfil({ env: b.env }).cofre).toBe('op://perfil-b/age/ref')
+    expect(a.cfg({ source: 'automation' }).cofre).not.toBe(b.cfg({ source: 'automation' }).cofre)
+  })
+
+  it('ref malformada declarada em QUALQUER camada grita (sem ecoar o valor)', () => {
+    const c = cenario()
+    c.perfil('[secrets]\ncofre = "coisa-que-nao-e-ref"\n')
+    expect(() => c.cfg({ source: 'automation' })).toThrow(/`op:\/\/` invalida/)
+  })
+
+  it('o perfil mora FORA de repo: `profile.toml` na base de config do usuario', () => {
+    const c = cenario()
+    expect(perfilFile({ env: c.env })).toBe(path.join(c.base, 'profile.toml'))
+    expect(perfilFile({ env: { APPDATA: path.join('C:', 'Users', 'x', 'AppData', 'Roaming') } })).toBe(
+      path.join('C:', 'Users', 'x', 'AppData', 'Roaming', 'tars', 'profile.toml'),
+    )
+  })
+
+  it('check mostra a CAMADA de cada ref — nunca o valor', () => {
+    const c = cenario()
+    c.perfil('[secrets]\ncofre = "op://perfil/age/ref"\n')
+    const cfg = c.cfg({ source: 'automation' })
+    const linha = check(cfg, { env: { PATH: process.env.PATH } }).linhas.find((l) => l.nome === 'refs')
+    expect(linha.detalhe).toContain('cofre=perfil')
+    expect(linha.detalhe).toContain('bot=nenhum')
+    expect(linha.detalhe).not.toContain('op://')
+  })
+
+  it('as camadas sao as TRES, nessa ordem de forca', () => {
+    expect(CAMADAS).toEqual(['embutido', 'perfil', 'projeto'])
   })
 })
