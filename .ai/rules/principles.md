@@ -23,8 +23,9 @@ levantar hipótese, testar a hipótese e só então corrigir ou pedir algo a alg
   nada" vira uma investigação, não uma suposição.
 - **Regressão (funcionava, parou): a primeira pergunta é "o que mudou?".** Ache o
   caminho que funcionava, documentado no repo (docs, devcontainer, Taskfile, ADR,
-  docstrings e comentários do código, scripts, CHANGELOG, histórico do git e transcripts
-  de sessão), e
+  docstrings e comentários do código, scripts, CHANGELOG, histórico do git, transcripts
+  de sessão, o sistema de memória, o handoff e o backlog, onde às vezes o conserto já
+  está registrado como pendente), e
   **restaure-o**. Nunca invente um caminho paralelo para contornar a regressão.
 - **A skill é lida e seguida, não citada:** abra o arquivo da skill e execute os passos.
   Dizer que usou sem ter lido é o mesmo erro que chutar.
