@@ -510,12 +510,24 @@ export function preToolUseFor(manifest) {
  * ssh) bloqueia sem TTY ate' o timeout — foi o `git fetch` de 8 min em 07/10. `GIT_TERMINAL_PROMPT=0`
  * faz o git FALHAR ALTO em vez de perguntar; `BatchMode` corta a senha no ssh; `GCM_INTERACTIVE=never`
  * idem no credential manager. Um passo do sync fecha a CLASSE inteira para todo consumidor.
+ *
+ * Cuidado ao estender: a LISTA DE CHAVES daqui e' o contrato do `wiring/settings` do doctor
+ * (`tars-doctrines.mjs` cobra exatamente estas). Coisa que nao seja "nao travar esperando
+ * prompt" vai numa constante propria — e' o caso do `ACTOR_ENV`.
  */
 export const NONINTERACTIVE_ENV = {
   GIT_TERMINAL_PROMPT: '0',
   GCM_INTERACTIVE: 'never',
   GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=15',
 }
+
+/**
+ * QUEM escreve o commit. O harness do agente se declara ATOR ('agent'); o motor le' esse env
+ * (`tars-actor.mjs`) para decidir se cobra a licao do gate condicional `[gates.params.<g>].when`.
+ * Sem isso o gate nao distingue o commit do agente do commit humano — e o agente que nao se
+ * declara e' tratado como humano por omissao, que e' o lado errado do erro.
+ */
+export const ACTOR_ENV = { TARS_ACTOR: 'agent' }
 
 /**
  * Hooks que NAO dependem do manifesto: os da base. `guards` declara os do PROJETO e
@@ -595,7 +607,11 @@ export function claudeSettings(manifest, project = null, atual = null) {
   return {
     ...(atual ?? {}),
     $schema: 'https://json.schemastore.org/claude-code-settings.json',
-    env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}) },
+    // `ACTOR_ENV` por ULTIMO de proposito: o harness e' quem sabe que o comando vem de um
+    // agente. Um `[env]` de consumidor que declare `TARS_ACTOR='human'` isentaria o commit
+    // da licao — que e' exatamente o que o guard barra na linha de comando; aqui a mesma
+    // classe fecha no arquivo.
+    env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}), ...ACTOR_ENV },
     hooks: {
       ...(atual?.hooks ?? {}),
       PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest))],

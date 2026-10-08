@@ -358,14 +358,27 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     ]);
     // `env` NAO INTERATIVO (07/10): sem ele um `git fetch` sem credencial bloqueia esperando
     // senha que ninguem digita. As 3 chaves fecham a CLASSE para todo consumidor de uma vez.
+    // `TARS_ACTOR` (dev.8, fatia 2b) entra junto: o harness do agente declara o ator, e o
+    // motor (`tars-actor.mjs`) le' esse env para decidir se cobra a licao do gate.
     expect(s.env).toEqual({
       GIT_TERMINAL_PROMPT: "0",
       GCM_INTERACTIVE: "never",
       GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=15",
+      TARS_ACTOR: "agent",
     });
     // Guard do catalogo que NAO foi declarado nao entra no wiring: chamar guard inexistente
     // quebraria a sessao do consumidor.
     expect(JSON.stringify(s)).not.toContain("outro-guard.sh");
+  });
+
+  it("`[env]` do consumidor NAO rebaixa o ator: o harness segue declarando agent", async () => {
+    // `TARS_ACTOR = "human"` no manifesto teria o mesmo efeito que o guard barra na linha de
+    // comando (isentar o commit da licao). `ACTOR_ENV` entra por ultimo e fecha a classe aqui.
+    const { tars, project } = scaffold({ manifest: `${MANIFEST}\n[env]\nTARS_ACTOR = "human"\n` });
+    await sync({ tars, project, log: () => {} });
+
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(s.env.TARS_ACTOR).toBe("agent");
   });
 
   it("hook cujo arquivo NAO existe no consumidor e' OMITIDO (nao aponta para o vazio)", async () => {
