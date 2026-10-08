@@ -209,6 +209,23 @@ describe("gate commit-msg — licao condicional por ator (lesson=agent)", () => 
     expect(r.stderr).toMatch(/licao|Lesson/i);
   });
 
+  // O atalho do env so' vale para `agent` (o valor que AFROUXA o gate). Valor nenhum outro
+  // prova o ator: `TARS_ACTOR=human` no ambiente — do operador, herdado, esquecido — nao
+  // pode isentar o commit do agente, que o harness ja' denunciou por CLAUDECODE/trailer.
+  it("TARS_ACTOR=human NAO atalha: com CLAUDECODE=1 o agente ainda COBRA a Lesson", () => {
+    const r = valida(FEAT, AGENTE, { TARS_ACTOR: "human", CLAUDECODE: "1" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/licao|Lesson/i);
+  });
+
+  it("TARS_ACTOR=0 NAO atalha: trailer de IA ainda COBRA a Lesson", () => {
+    const r = valida(`${FEAT}\nCo-Authored-By: Claude <noreply@anthropic.com>\n`, AGENTE, {
+      TARS_ACTOR: "0",
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/licao|Lesson/i);
+  });
+
   it("SEM o param lesson (default always) COBRA de humano tambem", () => {
     expect(valida(FEAT).status).not.toBe(0);
     expect(valida(FEAT, JSON.stringify({})).status).not.toBe(0);

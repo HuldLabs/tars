@@ -232,9 +232,15 @@ function exigeTesteVermelho(msg, tr) {
  * ele nao existe (o sync copia os gates, nao o `tools/framework/`), e por isso o import e'
  * dinamico. Sem modulo nenhum o default e' 'human' — o lado que COBRA a licao: um fallback
  * que afrouxa seria o gate que passa calado.
+ *
+ * `TARS_ACTOR` so' ATALHA quando diz `agent` — o valor que AFROUXA o gate (o agente paga a
+ * licao) e' o unico que se pode acreditar sozinho. Qualquer outro valor (`human`, `0`,
+ * vazio) nao prova nada: cai no motor, que le' env E mensagem. Ate' dev.8 o valor do env
+ * era devolvido cru, e um `TARS_ACTOR=human` esquecido no ambiente do operador isentava o
+ * AGENTE da licao sem que ninguem tivesse declarado nada.
  */
 async function atorDaMensagem(msg) {
-  if (process.env.TARS_ACTOR) return process.env.TARS_ACTOR;
+  if (process.env.TARS_ACTOR === 'agent') return 'agent';
   const here = dirname(fileURLToPath(import.meta.url));
   const candidatos = [
     join(here, '..', '..', '..', 'tools', 'framework', 'tars-actor.mjs'),
