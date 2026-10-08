@@ -62,6 +62,13 @@ printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit[^;&|]*[[:s
 # `--no-verify` em commit/push: pula os hooks. Nunca.
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])(git[[:space:]]+(commit|push)|git[[:space:]]+-c[^;&|]*commit)[^;&|]*--no-verify([[:space:]]|$)' && block "'--no-verify' pula os hooks de commit/push — nunca use (o gate e' o ponto)."
 
+# --- ator: o agente NAO se declara humano --------------------------------------------
+# O gate condicional pode isentar a licao de quem escreve (`[gates.params.<g>].when`, o
+# `tars-actor.mjs`): `TARS_ACTOR=human` no comando zera a cobranca. O harness JA' declara
+# `agent` no `.claude/settings.json`; declarar `human` na mao e' pular a licao por dentro —
+# o mesmo buraco que o `--no-verify` abre, noutro lugar. Vale para `export` e para aspas.
+printf '%s' "$LC" | grep -Eq "(^|[;&|[:space:]])(export[[:space:]]+)?tars_actor[[:space:]]*=[[:space:]]*['\"]?human['\"]?([[:space:];&|)]|\$)" && block "'TARS_ACTOR=human' se declara humano para pular a licao — o agente nao decide isso sobre si; o harness ja' declara 'agent'."
+
 # git clean -fdx / reset --hard: avisa (nao bloqueia)
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+clean[[:space:]]+-[a-z]*f[a-z]*d[a-z]*x([[:space:]]|$)' && warn "'git clean -fdx' remove todo arquivo nao rastreado — verifique 'git status'."
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)' && warn "'git reset --hard' descarta mudancas nao commitadas — verifique 'git status'."

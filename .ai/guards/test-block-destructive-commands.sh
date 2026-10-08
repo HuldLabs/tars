@@ -40,4 +40,13 @@ check "git add PATH (sem --)"      "git add tools/framework/tars.mjs"           
 check "git commit pathspec"        "git commit -F /tmp/m -- tools/x.mjs"             allow
 check "git status"                 "git status --short"                              allow
 check "override git add -A"        "SEGTOOLS_ALLOW_DESTRUCTIVE=1 git add -A"         allow
+
+# --- ator: o agente nao se declara humano ---
+check "TARS_ACTOR=human"           "TARS_ACTOR=human git commit -F /tmp/m"           block
+check "TARS_ACTOR= human"          "TARS_ACTOR= human git commit -F /tmp/m"          block
+check "export TARS_ACTOR=human"    "export TARS_ACTOR=human"                          block
+check "TARS_ACTOR='human'"         "TARS_ACTOR='human' git commit -F /tmp/m"         block
+check "TARS_ACTOR=human encadeado" "echo x && TARS_ACTOR=human git commit"            block
+check "TARS_ACTOR=agent (o normal)" "TARS_ACTOR=agent git commit -F /tmp/m"           allow
+check "TARS_ACTOR=humano (outro valor)" "TARS_ACTOR=humano git commit"                allow
 exit $fail
