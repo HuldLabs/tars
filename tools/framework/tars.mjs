@@ -108,7 +108,7 @@ const USAGE = [
   '',
   '  secrets refresh            abre o cofre (1Password) e regrava o cache cifrado do projeto',
   '  secrets exec -- <cmd...>   roda <cmd> com o cache decifrado no env SO do filho (sem shell)',
-  '  secrets check              julga chave/cache/recipient/ambiente SEM abrir o cofre',
+  '  secrets check              julga chave/token/cache/recipient/ambiente SEM abrir o cofre',
   '',
   '  --help                     esta ajuda',
   '',

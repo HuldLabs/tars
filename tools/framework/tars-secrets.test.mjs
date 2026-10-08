@@ -5,7 +5,7 @@
 // O `op` e' SEMPRE stub (nunca o de verdade: ele abriria o cofre de igual); `sops` e `age`
 // sao REAIS quando existem no PATH — sem eles os casos de ponta a ponta sao `skip` explicito,
 // nunca um verde falso.
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -15,10 +15,13 @@ import {
   check,
   confereTemplate,
   configDir,
+  decifraMapa,
   envDoFilho,
   exec,
   format,
   lerConfig,
+  reapResiduo,
+  recipientDoCache,
   redige,
   refresh,
   registra,
@@ -46,9 +49,11 @@ const TEM_AGE = tem('age-keygen')
 /**
  * O stub do `op` no PATH. Um script Node (o `.cmd` do Windows so' o chama) que registra o
  * argv num log — e' o log que PROVA que foi o stub que rodou, nao o `op` de verdade.
- * `read --out-file <f> <ref>` copia uma chave age real; `inject` escreve o JSON resolvido.
+ * `read --out-file <f> <ref>` copia uma chave age real; `run --env-file=<tpl> -- <cmd...>`
+ * emula o `op run`: resolve os NOMES do template a partir de `TARS_STUB_VALORES` e executa o
+ * filho com eles no ambiente (e' assim que o helper ve o valor — intacto, multilinha incluso).
  */
-function stubOp({ keySrc, injeta }) {
+function stubOp({ keySrc, valores }) {
   const dir = tmp('tars-op-')
   const log = path.join(dir, 'argv.log')
   const js = path.join(dir, 'op.mjs')
@@ -57,19 +62,28 @@ function stubOp({ keySrc, injeta }) {
     js,
     [
       "import fs from 'node:fs'",
+      "import { spawnSync } from 'node:child_process'",
       'const argv = process.argv.slice(2)',
       "fs.appendFileSync(process.env.TARS_STUB_LOG, JSON.stringify(argv) + '\\n')",
       "if (process.env.TARS_STUB_MORTO) process.exit(1)",
       "const i = (n) => argv.indexOf(n)",
       "if (argv[0] === 'read' && i('--out-file') !== -1) fs.copyFileSync(process.env.TARS_STUB_KEY_SRC, argv[i('--out-file') + 1])",
-      "if (argv[0] === 'read' && i('--out-file') === -1) { process.stdout.write(fs.readFileSync(process.env.TARS_STUB_KEY_SRC)) }",
-      "if (argv[0] === 'inject') fs.writeFileSync(argv[i('--out-file') + 1], process.env.TARS_STUB_INJECT)",
+      "if (argv[0] === 'run') {",
+      "  const tpl = argv.find((a) => a.startsWith('--env-file=')).slice(11)",
+      "  const nomes = fs.readFileSync(tpl, 'utf8').split('\\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split('=')[0].trim())",
+      "  const val = JSON.parse(process.env.TARS_STUB_VALORES || '{}')",
+      "  const env = { ...process.env }",
+      "  for (const n of nomes) env[n] = val[n] !== undefined ? val[n] : 'stub-' + n",
+      "  const sep = argv.indexOf('--')",
+      "  const r = spawnSync(argv[sep + 1], argv.slice(sep + 2), { env, stdio: 'inherit' })",
+      '  process.exit(r.status ?? 1)',
+      '}',
       'process.exit(0)',
     ].join('\n'),
   )
   const env = { ...process.env, TARS_STUB_LOG: log }
   if (keySrc) env.TARS_STUB_KEY_SRC = keySrc
-  if (injeta) env.TARS_STUB_INJECT = injeta
+  if (valores) env.TARS_STUB_VALORES = JSON.stringify(valores)
   // O seam: trocar o PATH nao basta no Windows — o libuv acha o `op.exe` de verdade antes
   // de qualquer `.cmd` do stub, e o teste abriria o COFRE REAL. O caminho explicito nao.
   const launcher = path.join(dir, process.platform === 'win32' ? 'op.cmd' : 'op')
@@ -182,26 +196,60 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
   it('project: le a chave pelo --out-file (nunca stdout), grava 0600 e nao vaza nada', () => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), '{"TOKEN":"{{ op://v/i/f }}"}')
-    const stub = stubOp({ keySrc, injeta: '{"TOKEN":"segredo-de-teste"}' })
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN={{ op://v/i/f }}\n')
+    const stub = stubOp({ keySrc, valores: { TOKEN: 'segredo-de-teste' } })
     const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
 
     const r = refresh(c, { env: stub.env, tty: false })
     expect(r.chaves).toBe(1)
     expect(fs.existsSync(c.cache_file)).toBe(true)
-    // A chave veio por ARQUIVO: o argv prova o `--out-file` (stdout seria o vazamento).
+    // A chave veio por ARQUIVO: o argv prova o `--out-file` (stdout seria o vazamento) — e o
+    // destino e' um TEMPORARIO ao lado da chave, so' promovido a chave por rename.
     const chamadas = fs.readFileSync(stub.log, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
-    expect(chamadas[0].slice(0, 3)).toEqual(['read', '--out-file', c.age_key_file])
+    expect(chamadas[0].slice(0, 2)).toEqual(['read', '--out-file'])
+    expect(chamadas[0][2]).toBe(`${c.age_key_file}.novo`)
+    // O template so' e' resolvido pelo `op run`, nunca por `inject`.
+    expect(chamadas.some((a) => a[0] === 'inject')).toBe(false)
+    expect(chamadas.some((a) => a[0] === 'run' && a[1] === `--env-file=${c.template}`)).toBe(true)
     // A saida do refresh (o que o operador ve) nunca contem o valor do segredo.
     expect(JSON.stringify(r)).not.toContain('segredo-de-teste')
     if (process.platform !== 'win32') expect(fs.statSync(c.age_key_file).mode & 0o777).toBe(0o600)
   })
 
+  it('project: a chave e RELIDA a cada refresh (troca no cofre muda o recipient do cache)', () => {
+    const dir = tmp()
+    const keySrc = chaveReal()
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN={{ op://v/i/f }}\n')
+    const stub = stubOp({ keySrc, valores: { TOKEN: 'x' } })
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
+    refresh(c, { env: stub.env, tty: false })
+    const antes = recipientDoCache(c)
+    // O cofre "troca" a chave: o proximo refresh TEM de perceber — um existsSync antecipado
+    // manteria o cache cifrado para um recipient que nao existe mais.
+    const rotacionada = { ...stub.env, TARS_STUB_KEY_SRC: chaveReal() }
+    refresh(c, { env: rotacionada, tty: false })
+    const depois = recipientDoCache(c)
+    expect(depois).not.toEqual(antes)
+    expect(JSON.stringify(antes)).not.toBe(JSON.stringify(depois))
+  })
+
+  it('valor MULTILINHA sobrevive ao refresh (o motivo de ser `op run` + JSON)', () => {
+    const dir = tmp()
+    const keySrc = chaveReal()
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'SIGN_KEY={{ op://v/i/f }}\n')
+    const stub = stubOp({ keySrc, valores: { SIGN_KEY: 'linha1\nlinha2\nlinha3' } })
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
+    refresh(c, { env: stub.env, tty: false })
+    expect(decifraMapa(c).SIGN_KEY.split('\n')).toEqual(['linha1', 'linha2', 'linha3'])
+  })
+
   it('machine: gera a chave aqui (age-keygen) e nao toca o cofre para isso', () => {
     const dir = tmp()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), '{"TOKEN":"x"}')
-    const stub = stubOp({ injeta: '{"TOKEN":"x"}' })
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
+    const stub = stubOp({ valores: { TOKEN: 'x' } })
     const c = cfgDe({ key_scope: 'machine', source: 'automation', token_file: path.join(dir, 'op-token') }, dir)
     // O escopo machine gera a CHAVE aqui, mas os segredos ainda vem do template: o token da SA continua necessario.
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
@@ -214,8 +262,8 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
 
   it('template reprovado NAO abre o cofre (falha antes de gastar cota)', () => {
     const dir = tmp()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), '# op://v/i/f\n{"TOKEN":"x"}')
-    const stub = stubOp({ injeta: '{"TOKEN":"x"}' })
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), '# op://v/i/f\nTOKEN=x\n')
+    const stub = stubOp({ valores: { TOKEN: 'x' } })
     const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     expect(() => refresh(c, { env: stub.env, tty: false })).toThrow(/template reprovado/)
@@ -226,16 +274,74 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
   it('op morto falha alto — o cache anterior NAO e sobrescrito', () => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), '{"TOKEN":"x"}')
-    const stub = stubOp({ keySrc, injeta: '{"TOKEN":"x"}' })
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
+    const stub = stubOp({ keySrc, valores: { TOKEN: 'x' } })
     const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false }) // cache bom
     const antes = fs.readFileSync(c.cache_file, 'utf8')
 
     const morto = { ...stub.env, TARS_STUB_MORTO: '1' }
-    expect(() => refresh(c, { env: morto, tty: false })).toThrow(/1Password nao respondeu/)
+    // Com key_scope=project a chave e' RELIDA a cada refresh, entao um `op` fora do ar morre ja'
+    // na leitura da chave — antes de tocar o cache. Mais cedo que a mensagem do template, e
+    // igualmente sem sobrescrever nada.
+    expect(() => refresh(c, { env: morto, tty: false })).toThrow(/1Password nao (respondeu|entregou)/)
     expect(fs.readFileSync(c.cache_file, 'utf8')).toBe(antes)
+  })
+})
+
+describe.skipIf(!TEM_AGE || !TEM_SOPS)('residuo em tmp (refresh morto no meio)', () => {
+  /** PID de um processo que JA' EXISTIU e terminou — o dono de um dir que ficou orfao. */
+  const pidMorto = async () => {
+    const filho = spawn(process.execPath, ['-e', ''])
+    const pid = filho.pid
+    await new Promise((r) => filho.on('exit', r))
+    return pid
+  }
+
+  const cfgFresca = () => {
+    const dir = tmp()
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
+    const stub = stubOp({ keySrc: chaveReal(), valores: { TOKEN: 'x' } })
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
+    fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
+    return { c, stub }
+  }
+
+  it('reapa o dir de texto claro de um refresh que morreu (o `finally` nao roda em kill)', async () => {
+    const { c, stub } = cfgFresca()
+    const morto = fs.mkdtempSync(path.join(os.tmpdir(), `tars-secrets-${await pidMorto()}-`))
+    try {
+      fs.writeFileSync(path.join(morto, 'secrets.json'), 'conteudo de teste', { mode: 0o600 })
+      refresh(c, { env: stub.env, tty: false })
+      expect(fs.existsSync(morto), 'residuo de refresh morto sobreviveu ao refresh seguinte').toBe(false)
+    } finally {
+      fs.rmSync(morto, { recursive: true, force: true }) // nao deixar residuo do PROPRIO teste
+    }
+  })
+
+  it('NAO apaga o dir de um processo VIVO (refresh concorrente truncaria no meio)', () => {
+    const { c, stub } = cfgFresca()
+    // O PID do proprio processo de teste esta' vivo por definicao — e' o caso do dir de um
+    // refresh que roda AGORA. Apaga-lo seria pior que o residuo: corta o material no meio.
+    const vivo = fs.mkdtempSync(path.join(os.tmpdir(), `tars-secrets-${process.pid}-`))
+    try {
+      refresh(c, { env: stub.env, tty: false })
+      expect(fs.existsSync(vivo), 'dir de processo vivo foi apagado').toBe(true)
+    } finally {
+      fs.rmSync(vivo, { recursive: true, force: true })
+    }
+  })
+
+  it('nome de esquema ANTIGO (sem PID) nao e tocado: nao se sabe de quem e', () => {
+    const { c, stub } = cfgFresca()
+    const antigo = fs.mkdtempSync(path.join(os.tmpdir(), 'tars-secrets-'))
+    try {
+      refresh(c, { env: stub.env, tty: false })
+      expect(fs.existsSync(antigo), 'dir de esquema antigo foi apagado por engano').toBe(true)
+    } finally {
+      fs.rmSync(antigo, { recursive: true, force: true })
+    }
   })
 })
 
@@ -244,9 +350,8 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('exec', () => {
   beforeEach(() => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), '{"TOKEN":"{{ op://v/i/f }}"}')
-    const injeta = JSON.stringify({ TOKEN: 'segredo-de-teste', OUTRO: 'x' })
-    const stub = stubOp({ keySrc, injeta })
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN={{ op://v/i/f }}\nOUTRO={{ op://v/i/f }}\n')
+    const stub = stubOp({ keySrc, valores: { TOKEN: 'segredo-de-teste', OUTRO: 'x' } })
     c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false })
@@ -284,8 +389,8 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
   const pronto = (extra = {}) => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), '{"TOKEN":"x"}')
-    const stub = stubOp({ keySrc, injeta: '{"TOKEN":"x"}' })
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
+    const stub = stubOp({ keySrc, valores: { TOKEN: 'x' } })
     const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token'), ...extra }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
     refresh(c, { env: stub.env, tty: false })
@@ -297,6 +402,44 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
     expect(r.linhas.map((l) => l.nome)).toContain('decifra')
     expect(r.ok).toBe(true)
     expect(format(r)).toContain('OK')
+  })
+
+  it('token (source=automation): ausente, vazio e modo frouxo reprovam — o conteudo nunca sai', () => {
+    const c = pronto()
+    fs.rmSync(c.token_file)
+    const sem = check(c, { env: { PATH: process.env.PATH } })
+    expect(sem.linhas.find((l) => l.nome === 'token').ok).toBe(false)
+    expect(format(sem)).toContain('ausente')
+
+    fs.writeFileSync(c.token_file, '   \n', { mode: 0o600 }) // so' espaco = vazio
+    expect(check(c, { env: { PATH: process.env.PATH } }).linhas.find((l) => l.nome === 'token').ok).toBe(false)
+
+    fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
+    expect(check(c, { env: { PATH: process.env.PATH } }).linhas.find((l) => l.nome === 'token').ok).toBe(true)
+
+    if (process.platform !== 'win32') {
+      fs.chmodSync(c.token_file, 0o644)
+      const frouxo = check(c, { env: { PATH: process.env.PATH } })
+      expect(frouxo.linhas.find((l) => l.nome === 'token').ok).toBe(false)
+      expect(frouxo.linhas.find((l) => l.nome === 'token').detalhe).toMatch(/esperado 400 ou 600/)
+      // O detalhe NUNCA carrega o valor do token, so' o modo.
+      expect(format(frouxo)).not.toContain('token-falso')
+      fs.chmodSync(c.token_file, 0o400)
+      expect(check(c, { env: { PATH: process.env.PATH } }).linhas.find((l) => l.nome === 'token').ok).toBe(true)
+    }
+  })
+
+  it('ambiente: so acusa o que aponta para a FONTE (OP_* generico e ruido)', () => {
+    const c = pronto()
+    const env = { PATH: process.env.PATH, OP_BILLING: 'x', OP_CACHE_DIR: 'y' }
+    expect(check(c, { env }).linhas.find((l) => l.nome === 'ambiente').ok).toBe(true)
+    for (const k of ['OP_SERVICE_ACCOUNT_TOKEN', 'OP_CONNECT_TOKEN', 'OP_CONNECT_HOST', 'OP_SESSION_meu', 'SOPS_AGE_KEY']) {
+      const r = check(c, { env: { ...env, [k]: 'valor-secreto-do-teste' } })
+      const linha = r.linhas.find((l) => l.nome === 'ambiente')
+      expect(linha.ok, `${k} deveria acusar`).toBe(false)
+      expect(linha.detalhe).toContain(k)
+      expect(linha.detalhe).not.toContain('valor-secreto-do-teste')
+    }
   })
 
   it('ambiente sujo reprova imprimindo SO os NOMES', () => {

@@ -31,7 +31,14 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { actor } from './tars-actor.mjs'
+
+/**
+ * O helper que materializa o env RESOLVIDO pelo `op run` como JSON (porte do
+ * `secrets-inject.mjs` do segtools). NAO e' ponto de entrada: quem o roda e' o `op run`.
+ */
+const INJECT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'tars-secrets-inject.mjs')
 
 /** Os dois escopos da chave age: a do projeto (vem do cofre) ou a da MAQUINA (gerada aqui). */
 export const ESCOPOS = ['project', 'machine']
@@ -235,11 +242,20 @@ export function recipient(keyFile) {
   return r.stdout.trim()
 }
 
-/** A chave do escopo: `project` vem do cofre (`op read` em arquivo), `machine` e' gerada aqui. */
+/**
+ * A chave do escopo. `machine`: gerada AQUI e, se ja' existe, nao se refaz (a chave local e' a
+ * fonte — reabrir o cofre por ela seria a segunda fonte de verdade). `project`: vem do cofre e
+ * e' lida EM TODA execucao do refresh — o `existsSync` NAO vale aqui: a chave no 1Password pode
+ * ter trocado (rotacao, outra maquina), e um return antecipado manteria o cache cifrado para um
+ * recipient que nao existe mais — falha longe da causa, na proxima decifra.
+ *
+ * O `op read` escreve num TEMPORARIO 0600 ao lado da chave e so' o rename (se ok) a substitui:
+ * a chave atual nunca some nem fica meio-escrita se o `op` falhar.
+ */
 function garanteChave(cfg, env = process.env) {
-  if (fs.existsSync(cfg.age_key_file)) return
-  fs.mkdirSync(path.dirname(cfg.age_key_file), { recursive: true, mode: 0o700 })
   if (cfg.key_scope === 'machine') {
+    if (fs.existsSync(cfg.age_key_file)) return
+    fs.mkdirSync(path.dirname(cfg.age_key_file), { recursive: true, mode: 0o700 })
     // `age-keygen` herda o umask: o 0600 e' explicito logo depois.
     const r = roda('age-keygen', ['-o', cfg.age_key_file])
     if (r.status !== 0) {
@@ -248,16 +264,25 @@ function garanteChave(cfg, env = process.env) {
     protegeArquivo(cfg.age_key_file)
     return
   }
+  fs.mkdirSync(path.dirname(cfg.age_key_file), { recursive: true, mode: 0o700 })
   // `--out-file`, NUNCA stdout (ADR-013 do segtools): material de chave em pipe vaza para o
   // log de quem chamou o `op`. A ref vem do MANIFESTO — `validaRef` ja' a conferiu.
   validaRef(cfg.age_key_ref)
-  const r = spawnOp(['read', '--out-file', cfg.age_key_file, cfg.age_key_ref], envDoCofre(cfg, env))
-  if (r.status !== 0 || !fs.existsSync(cfg.age_key_file)) {
-    throw new ErroConfig(
-      `[secrets] o 1Password nao entregou a chave age (${cfg.age_key_ref}) em ${cfg.age_key_file}: ${(r.stderr || r.error?.message || '').trim()}`,
-    )
+  const tmp = `${cfg.age_key_file}.novo`
+  fs.rmSync(tmp, { force: true }) // sobra de um refresh morto no meio nao contamina o leitor
+  try {
+    const r = spawnOp(['read', '--out-file', tmp, cfg.age_key_ref], envDoCofre(cfg, env))
+    if (r.status !== 0 || !fs.existsSync(tmp)) {
+      throw new ErroConfig(
+        `[secrets] o 1Password nao entregou a chave age (${cfg.age_key_ref}) em ${cfg.age_key_file}: ${(r.stderr || r.error?.message || '').trim()}`,
+      )
+    }
+    protegeArquivo(tmp)
+    fs.renameSync(tmp, cfg.age_key_file) // troca ATOMICA: a chave atual so' sai com a nova em maos
+  } catch (e) {
+    fs.rmSync(tmp, { force: true })
+    throw e
   }
-  protegeArquivo(cfg.age_key_file)
 }
 
 /**
@@ -288,13 +313,51 @@ function gravaCache(destino, conteudo) {
   fs.renameSync(tmp, destino)
 }
 
+// O PID no nome do dir de texto claro e' o que permite ao refresh SEGUINTE decidir se um dir
+// sobrou de um processo que ja' morreu — sem chutar idade e sem apagar o dir de um refresh
+// concorrente (que estaria vivo, e cujo material seria truncado no meio).
+const TMP_PREFIX = (pid) => `tars-secrets-${pid}-`
+const TMP_NOME = /^tars-secrets-(\d+)-/
+
+/**
+ * Reapa o texto claro que um refresh ANTERIOR deixou para tras (porte do `reapResiduo` do
+ * segtools). Existe porque o `finally` do refresh NAO roda quando o processo e' morto no meio
+ * (`kill -9`, OOM, reboot do container): o material ficaria em tmp ALEM da vida do dono.
+ * A decisao e' por PID, nao por idade: um dir cujo PID ainda existe pode estar sendo escrito
+ * AGORA. Nome fora do padrao (esquema antigo, sem PID) NAO e' tocado — nao se sabe de quem e',
+ * e apagar o dir de outro processo e' pior do que deixar um arquivo a mais.
+ */
+export function reapResiduo(dir, { fs: fsm = fs } = {}) {
+  let nomes
+  try {
+    nomes = fsm.readdirSync(dir)
+  } catch {
+    return // dir indisponivel: nao ha' residuo a limpar
+  }
+  for (const n of nomes) {
+    const m = TMP_NOME.exec(n)
+    if (!m || Number(m[1]) === process.pid) continue
+    let vivo = true
+    try {
+      process.kill(Number(m[1]), 0) // sinal 0 = so' checa se existe
+    } catch (e) {
+      vivo = e.code === 'EPERM' // EPERM = existe, mas nao e' nosso
+    }
+    if (vivo) continue
+    fsm.rmSync(path.join(dir, n), { recursive: true, force: true })
+  }
+}
+
 /**
  * `refresh` — o unico que abre o cofre. Ordem: quem pode abrir (owner/automation) -> template
- * -> chave -> `op inject` do template -> sops -e para o recipient -> cache. Erros do `op`/`sops`
+ * -> chave -> `op run` do template -> sops -e para o recipient -> cache. Erros do `op`/`sops`
  * APARECEM redigidos (nada de `>/dev/null 2>&1` escondendo a causa).
  */
 export function refresh(cfg, { env = process.env, tty = process.stdin.isTTY } = {}) {
   podeAbrirCofre(cfg, { env, tty })
+  // Residuo de refresh MORTO sai antes de criar o proximo: o tmp nao sobrevive a reboot, mas
+  // sobrevive a um `kill` — e o `finally` nao roda nesse caminho.
+  reapResiduo(os.tmpdir())
   // O template e' conferido ANTES de abrir o cofre: um `op://` solto la' dentro so' apareceria
   // como material a mais no cache (inclusive a chave age), depois de ja' ter gasto cota do 1P.
   const t = confereTemplate(cfg)
@@ -302,12 +365,15 @@ export function refresh(cfg, { env = process.env, tty = process.stdin.isTTY } = 
   garanteChave(cfg, env)
   const rec = recipient(cfg.age_key_file)
 
-  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `tars-secrets-${process.pid}-`)), 'secrets.json')
+  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), TMP_PREFIX(process.pid))), 'secrets.json')
   fs.writeFileSync(tmp, '', { mode: 0o600 })
   try {
-    // `op inject` resolve as referencias do template direto no ARQUIVO de saida (o texto
-    // claro nunca passa por stdout).
-    const inj = spawnOp(['inject', '--in-file', cfg.template, '--out-file', tmp], envDoCofre(cfg, env))
+    // `op run` (e NAO `op inject`): o `inject` resolve a referencia DENTRO do texto, e um valor
+    // MULTILINHA quebra o formato — num template dotenv o parser de `KEY=VALUE` trunca no
+    // primeiro \n EM SILENCIO (chave de assinatura quebrada, longe da causa). O `op run` entrega
+    // o valor INTACTO no ambiente do filho, e o helper serializa o env resolvido em JSON — que
+    // e' o unico jeito de a quebra de linha sobreviver ao cache.
+    const inj = spawnOp(['run', `--env-file=${cfg.template}`, '--', process.execPath, INJECT, cfg.template, tmp], envDoCofre(cfg, env))
     if (inj.status !== 0) {
       throw new ErroConfig(
         `[secrets] o 1Password nao respondeu (ou uma referencia nao resolveu) — cache NAO atualizado.\n` +
@@ -378,9 +444,16 @@ export function exec(cfg, argv, { env = process.env, spawn = spawnSync } = {}) {
   return { status: r.status ?? 1 }
 }
 
-/** Le SO os NOMES de `OP_*`/`SOPS_AGE_KEY` do ambiente atual — o valor nunca e' tocado. */
+/**
+ * O que o `check` acusa no ambiente de quem chama: SO' o que APONTA para a fonte — um token de
+ * sessao/SA, um Connect, a identidade age. Um `OP_*` qualquer (ex.: `OP_BILLING`, preferencias
+ * do app) nao abre cofre nenhum, e acusa-lo seria ruido que ensina a ignorar a linha.
+ */
+export const AMBIENTE_ACUSADO = ['OP_SERVICE_ACCOUNT_TOKEN', 'OP_CONNECT_TOKEN', 'OP_CONNECT_HOST', 'SOPS_AGE_KEY']
+
+/** Le SO os NOMES que apontam para a fonte — o valor nunca e' tocado. */
 export const envSujoNomes = (env = process.env) =>
-  Object.keys(env).filter((k) => k.startsWith('OP_') || k === 'SOPS_AGE_KEY')
+  Object.keys(env).filter((k) => k.startsWith('OP_SESSION_') || AMBIENTE_ACUSADO.includes(k))
 
 /** Os recipients age declarados num `.sops.yaml` versionado (`creation_rules: age: ...`). */
 export function recipientsDe(cfg, { fs: fsm = fs } = {}) {
@@ -414,6 +487,19 @@ export function check(cfg, { env = process.env, fs: fsm = fs, decifra = decifraM
   else {
     const modo = fsm.statSync(cfg.age_key_file).mode & 0o777
     add('chave', modo === 0o600, modo === 0o600 ? '0600' : `modo ${modo.toString(8)} (esperado 600)`)
+  }
+
+  // `source=automation` depende do token em arquivo: sem ele nao ha' refresh, e o unico sintoma
+  // seria um `op` recusando longe da causa. Le SO' para saber se esta' VAZIO (nada de conteudo).
+  if (cfg.source === 'automation') {
+    if (!fsm.existsSync(cfg.token_file)) add('token', false, `ausente: ${cfg.token_file}`)
+    else if (!fsm.readFileSync(cfg.token_file, 'utf8').trim()) add('token', false, `VAZIO: ${cfg.token_file}`)
+    else if (process.platform === 'win32') add('token', true, `ACL do usuario (${cfg.token_file})`)
+    else {
+      const modo = fsm.statSync(cfg.token_file).mode & 0o777
+      const ok = modo === 0o400 || modo === 0o600
+      add('token', ok, ok ? modo.toString(8).padStart(3, '0') : `modo ${modo.toString(8)} (esperado 400 ou 600)`)
+    }
   }
 
   const t = confereTemplate(cfg, { fs: fsm })

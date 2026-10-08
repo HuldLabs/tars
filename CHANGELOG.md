@@ -17,10 +17,31 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 - **Um wrapper único para `op`/`sops`**: toda ref é conferida como `^op://` antes do spawn
   (inválida = erro que **não** ecoa o valor) e o stderr volta **redigido** (valor de segredo
   conhecido vira `***`) — nunca `>/dev/null`.
-- `check` reprova o **template** com `op://` fora de `{{ }}` (comentário incluso: o `op inject`
+- `check` reprova o **template** com `op://` fora de `{{ }}` (comentário incluso: o `op run`
   resolve qualquer um) e o template que cita a ref da **chave age** — a chave vem só do manifesto.
 - `exec` roda por **argv, sem shell**: `;`/`|`/`$()` são dado, não sintaxe; o filho não herda
   `OP_*`/`SOPS_AGE_KEY` e recebe só `SOPS_AGE_KEY_FILE`.
+
+**Correções da revisão (S1-fix), ainda dentro de dev.9:**
+- `key_scope="project"` **relê a chave a cada `refresh`** (`op read --out-file` para um temporário
+  0600 ao lado da chave, promovido por rename só se vier inteiro). O `existsSync` antecipado vale
+  só para `machine`: com a chave do cofre, ele manteria o cache cifrado para um recipient que
+  já não existe quando a chave roda — falha longe da causa.
+- O template passa a ser resolvido por **`op run --env-file=<template>`** com o helper
+  `tars-secrets-inject.mjs` (porte do segtools), e não por `op inject`: valor **multilinha**
+  (chave de assinatura) sobrevive ao cache, que é JSON — nos dois formatos do `inject` ele
+  quebra, um com JSON inválido e o outro truncado em silêncio.
+- **`reapResiduo`** (porte do segtools): o `refresh` apaga o texto claro que um refresh **morto**
+  deixou em `os.tmpdir()` (o `finally` não roda em `kill -9`/OOM). A decisão é por **PID** — dir
+  de processo vivo é preservado; nome sem PID (esquema antigo) não é tocado.
+- `check` ganha a linha **`token`** (`source="automation"`): existe, não vazio e modo `0400`/`0600`
+  (ACL no win32) — lê o arquivo só para saber se está vazio, nunca o conteúdo.
+- A linha **`ambiente`** do `check` acusa só o que aponta para a fonte
+  (`OP_SERVICE_ACCOUNT_TOKEN`, `OP_CONNECT_TOKEN`, `OP_CONNECT_HOST`, `OP_SESSION_*`,
+  `SOPS_AGE_KEY`); um `OP_*` qualquer do app era ruído.
+
+> **Antes do release de dev.9**: entram ainda **S2**, **S2b** e **S3** (cofre do projeto nos
+> consumidores). O dev.9 não fecha sem elas.
 
 ### Por que
 Cada projeto consumidor vinha reinventando o próprio cofre (caminho fixo, variável de ambiente,
