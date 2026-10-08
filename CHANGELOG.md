@@ -38,6 +38,10 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   resolve qualquer um) e o template que cita a ref da **chave age** — a chave vem só do manifesto.
 - `exec` roda por **argv, sem shell**: `;`/`|`/`$()` são dado, não sintaxe; o filho não herda
   `OP_*`/`SOPS_AGE_KEY` e recebe só `SOPS_AGE_KEY_FILE`.
+- **`.ai/governance/segredos-e-identidade.md`** (novo, distribuído pelo `tars sync`): a seção
+  **segredos e identidade** com 11 lições, cada uma com a regra, o incidente que a produziu e o
+  gate — o dia 08/10 (o `op` ecoando a chave age; a `{{ op://… }}` inerte no `op run`) vira
+  régua, não anedota.
 
 **Correções da revisão (S1-fix), ainda dentro de dev.9:**
 - `key_scope="project"` **relê a chave a cada `refresh`** (`op read --out-file` para um temporário
