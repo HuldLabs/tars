@@ -29,18 +29,29 @@ export function secretRegexes() {
 }
 
 /**
- * Procura segredo em QUALQUER linha do texto. Retorna a lista de rotulos casados
- * (vazia = limpo). O `generic` respeita o `ignoreRe` (sem valor literal = nao e' segredo).
+ * Os `id` dos padroes casados — a chave ESTAVEL. Existe porque quem reporta achado (o
+ * `tars secrets scan`) precisa de um nome que nao mude quando o rotulo for reescrito para
+ * humano; `findSecrets` e' a projecao dele em rotulos, e as duas saem da MESMA varredura
+ * (a lista de padroes e' uma so'; o que muda e' so o que se devolve).
  */
-export function findSecrets(text) {
+export function findSecretsIds(text) {
   const hits = [];
   for (const line of String(text).split(/\r?\n/)) {
     for (const p of SECRET_PATTERNS) {
       const re = new RegExp(p.re, "i");
       if (!re.test(line)) continue;
       if (p.ignoreRe && new RegExp(p.ignoreRe, "i").test(line)) continue;
-      hits.push(p.label);
+      hits.push(p.id);
     }
   }
   return [...new Set(hits)];
+}
+
+/**
+ * Procura segredo em QUALQUER linha do texto. Retorna a lista de rotulos casados
+ * (vazia = limpo). O `generic` respeita o `ignoreRe` (sem valor literal = nao e' segredo).
+ */
+export function findSecrets(text) {
+  const ids = new Set(findSecretsIds(text));
+  return SECRET_PATTERNS.filter((p) => ids.has(p.id)).map((p) => p.label);
 }

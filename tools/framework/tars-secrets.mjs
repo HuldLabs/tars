@@ -125,7 +125,7 @@ export function roda(bin, args, { env = process.env, cwd } = {}) {
  * executavel por CreateProcess: precisa do `cmd.exe`. O binario de verdade roda direto — so'
  * o shim paga o shell.
  */
-function spawnOp(args, env) {
+export function spawnOp(args, env) {
   const bin = opBin()
   const viaCmd = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin)
   return viaCmd ? roda(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', bin, ...args], { env }) : roda(bin, args, { env })
@@ -857,7 +857,7 @@ export function leOculto(msg) {
 }
 
 /** Um arquivo 0600 dentro de um tmp que morre no `finally`: o material nunca fica para tras. */
-function comTmp(nome, conteudo, fn) {
+export function comTmp(nome, conteudo, fn) {
   reapResiduo(os.tmpdir())
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), TMP_PREFIX(process.pid)))
   try {
@@ -883,13 +883,23 @@ function itemDoCofre(cfg, item, env) {
   }
 }
 
-/** O campo do item, gritando quando a ref aponta para um campo que nao existe. */
-function campoDoItem(doc, item, campo) {
+/**
+ * O campo do item, gritando quando a ref aponta para um campo que nao existe.
+ *
+ * `criar` existe por UM caso: o `import` de um `.env` — ali o campo novo E' o trabalho, e
+ * recusar um nome que ainda nao esta' no item tornaria o comando inutil. No caminho da
+ * rotacao nada muda: sem `criar`, campo ausente continua falhando alto (uma ref que aponta
+ * para o nada nao pode virar escrita silenciosa).
+ */
+function campoDoItem(doc, item, campo, { criar = false } = {}) {
   const alvo = (doc.fields || []).find((f) => f.id === campo || f.label === campo)
-  if (!alvo) {
+  if (alvo) return alvo
+  if (!criar) {
     throw new ErroConfig(`[secrets] o item ${item} nao tem o campo '${campo}' — confira a ref \`age_key_ref\``)
   }
-  return alvo
+  const novo = { id: campo, label: campo, type: 'CONCEALED', value: '' }
+  doc.fields = [...(doc.fields || []), novo]
+  return novo
 }
 
 /**
@@ -899,10 +909,10 @@ function campoDoItem(doc, item, campo) {
  *
  * `template` (DEFAULT): o JSON do item INTEIRO com o campo trocado — o caminho de hoje.
  */
-function escreveItem(cfg, ref, identidade, env) {
+function escreveItem(cfg, ref, identidade, env, opts) {
   const { item, campo } = partesRef(ref)
   const doc = itemDoCofre(cfg, item, env)
-  campoDoItem(doc, item, campo).value = identidade
+  campoDoItem(doc, item, campo, opts).value = identidade
   comTmp('item.json', JSON.stringify(doc), (tpl) => {
     const e = spawnOp(['item', 'edit', item, `--template=${tpl}`], envDoCofre(cfg, env))
     if (e.status !== 0) {
@@ -916,9 +926,9 @@ function escreveItem(cfg, ref, identidade, env) {
  * que o campo existe (falha alta igual a` de cima), mas o que VOLTA ao cofre e' o minimo: o
  * resto do item nao sai daqui nem volta pela rede.
  */
-function escreveItemParcial(cfg, ref, identidade, env) {
+function escreveItemParcial(cfg, ref, identidade, env, opts) {
   const { item, campo } = partesRef(ref)
-  const alvo = campoDoItem(itemDoCofre(cfg, item, env), item, campo)
+  const alvo = campoDoItem(itemDoCofre(cfg, item, env), item, campo, opts)
   comTmp('item.json', JSON.stringify({ fields: [{ id: alvo.id, value: identidade }] }), (tpl) => {
     const e = spawnOp(['item', 'edit', item, `--template=${tpl}`], envDoCofre(cfg, env))
     if (e.status !== 0) {
@@ -959,9 +969,12 @@ export const ESTRATEGIAS_COFRE = {
   documento: escreveDocumento,
 }
 
-/** Passo 3 — grava a identidade no cofre pela estrategia declarada (`age_key_write`). */
-export function editaItemNoCofre(cfg, ref, identidade, env) {
-  return ESTRATEGIAS_COFRE[cfg.age_key_write ?? 'template'](cfg, ref, identidade, env)
+/**
+ * Grava um valor num campo do cofre pela estrategia declarada (`age_key_write`). `opts.criar`
+ * so' vale para o `import` (campo novo e' o trabalho la'); o resto do modulo chama sem ele.
+ */
+export function editaItemNoCofre(cfg, ref, identidade, env, opts) {
+  return ESTRATEGIAS_COFRE[cfg.age_key_write ?? 'template'](cfg, ref, identidade, env, opts)
 }
 
 /** Le a chave do cofre e devolve o recipient — `null` quando o cofre NAO entregou nada. */

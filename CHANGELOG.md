@@ -98,8 +98,60 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 - Testes: **morte simulada depois da ação de cada passo 2..7** (`hooks.aposPasso`) e a retomada
   tem de terminar no **mesmo estado final** do caminho feliz — mais as três estratégias com stub.
 
-> **Antes do release de dev.9**: entram ainda **S2b** e **S3** (cofre do projeto nos
-> consumidores). O dev.9 não fecha sem elas.
+**Manipulação segura de segredos (S2b) — `tars-secrets-ops.mjs` (novo), ainda dentro de dev.9:**
+- **Um parser de endereço só** (`parseEndereco`), e o **tipo** que ele decide é o que o resto do
+  módulo consulta: `op://cofre/item/campo`, `file:<caminho>`, `env:<NOME>` e `cache:<NOME>`.
+  Endereço malformado **não é ecoado** — o argumento pode ser o segredo no lugar errado.
+- `compare <a> <b>`: **tempo constante** (`crypto.timingSafeEqual` sobre os dois lados
+  preenchidos até o maior deles; o comprimento entra no veredito **depois** do compare, nunca
+  como atalho antes). Imprime só `igual`/`diferente`; exit 0/1.
+- `fingerprint <a>`: só **identidade pública** — `age-keygen -y` para uma chave age,
+  `ssh-keygen -lf` da pública derivada para uma SSH; qualquer outra coisa recusa com
+  `sem identidade publica; use compare` (não existe impressão de senha). Origem no cofre passa
+  por `op read --out-file` num tmp 0600 — **nunca stdout**.
+- `set <op://...>` é **do dono** (`source=owner`, TTY, ator humano): o valor vem do **stdin
+  oculto**, de `--from-file <arq 600>` ou de `--from <endereco>` — **nunca por argv**. A escrita
+  reusa a estratégia `age_key_write` da S2 (`template` completo por default) e o comando **relê e
+  compara em memória** antes do ok.
+- `copy`/`move`: leem, gravam e **confirmam com `compare`**; o `move` só apaga a origem **depois**
+  da confirmação — compare falho preserva a origem, que é o único lugar onde o valor existe.
+- `rm <a>` com `[s/N]` mostrando só o endereço: cofre **arquiva** (`op item delete --archive`,
+  nunca apaga de vez); `file:` apaga; `env:` remove a **linha** persistente do rc/profile
+  indicado (`--em <arquivo>`, mostrando `arquivo:linha`) ou `reg delete HKCU\Environment` no
+  Windows, com cópia de segurança 0600 ao lado que some no fim.
+- **Destino `env:` e `cache:` são RECUSADOS** em copy/move/set, cada um com a saída certa na
+  mensagem: ambiente persistente (rc/profile/HKCU/runtime.env) vira segunda fonte de verdade que
+  ninguém revoga, e o cache é **derivado** — o caminho é gravar no cofre e rodar `refresh`.
+  Os dois valem como **origem**, e `env:` como origem de `rm` e de `scan`.
+- `scan [--onde ...]`: procura segredo no ambiente do processo (`AMBIENTE_ACUSADO` + nomes do
+  template), em rc/profile, em `HKCU\Environment`, no histórico de shell, nos transcripts de IA
+  (`~/.claude/projects/**/*.jsonl`, sessões do opencode — **em streaming**, um `.jsonl` passa de
+  100MB), no histórico do git via **`gitleaks git`** (com relatório JSON num tmp 0600: a saída
+  verbosa do gitleaks imprime o segredo) e nos templates (`op://` fora do valor inteiro de
+  `KEY=`, `{{ }}` em `*_REF`/`*_FILE`). Detecção = `secrets-patterns.mjs` (a MESMA lista do
+  pre-commit) + os **valores do cache decifrados uma vez** e comparados em memória. Reporta só
+  `arquivo:linha` (ou `local`) + o **id** do padrão; **o trecho achado nunca aparece, nem
+  truncado**; exit ≠ 0 quando acha.
+- `import <arquivo .env>` é **do dono**: cada `NOME=VALOR` vira **campo** do `--item
+  op://cofre/item` (`partesRef` + `criar`, porque ali o campo novo **é** o trabalho), conferido
+  um a um com `compare`, e imprime `NOME=op://cofre/item/NOME`. Comentário e linha de **template**
+  (`op://`, `{{ }}`) ficam de fora — gravar `op://x/y/z` como valor faria do cofre um eco do
+  template. A origem **não é tocada**.
+- **Redação no `exec`**: fora de TTY, ou com `--redact`, a saída do filho passa por um **pipe com
+  buffer rolante** do tamanho do maior valor, e todo valor do cache com ≥ 8 caracteres vira
+  `***`. TTY sem `--redact` herda como sempre. O corte é sobre o **fluxo**, não sobre o pedaço:
+  um valor partido entre dois `data` continua inteiro na concatenação do que o dono vê, então o
+  redator só emite o que **não começa** um valor — e, quando o valor inteiro está em mãos,
+  mascara e **consome** o trecho (senão o buffer ficaria preso nele, crescendo sem emitir).
+- **Auditoria**: `<dir>/audit.log` JSONL **0600** com `ts`, `ator`, `comando`, endereços/nomes e
+  resultado — **sem valor nem fingerprint** (um fingerprint seria um oráculo de conferência do
+  segredo em cima de um arquivo que pode ir para o git por engano).
+- `secrets-patterns.mjs` ganha **`findSecretsIds`** (o `id` estável, para máquina) e
+  `findSecrets` passa a ser a projeção dele em rótulos: uma varredura, duas projeções — a lista
+  de padrões continua sendo uma só para o hook e para o `--doctor`.
+
+> **Antes do release de dev.9**: entram ainda **S3** (cofre do projeto nos consumidores). O dev.9
+> não fecha sem ela.
 
 ### Por que
 Cada projeto consumidor vinha reinventando o próprio cofre (caminho fixo, variável de ambiente,
