@@ -149,6 +149,14 @@ O gate recebe os argumentos do hook como estão (ex.: o arquivo da mensagem no `
 mais `TARS_PROJECT` no ambiente, `TARS_GATE` com o nome e `TARS_GATE_PARAMS` com o JSON de
 `[gates.params.<nome>]`.
 
+Um gate pode ser **condicional ao ator** (`when = { actor = "agent" }`): roda só quando quem
+escreve é o agente. O `commit-msg` traz `lesson = "agent"` — o `Lesson:` passa a ser cobrado só
+do agente; commit humano não paga a lição. **Para isentar o commit humano**, declare
+`[gates.params.commit-msg] lesson = "agent"`. O ator é decidido pelo motor (`tars-actor.mjs`):
+`TARS_ACTOR` no env do harness (o `tars sync` já declara `agent` no `.claude/settings.json`) ou
+o trailer `Co-Authored-By:` nomeando modelo. `when` com nome errado **falha alto** — nunca
+pula o gate calado.
+
 #### `tars-doctrines.mjs` — o `doctor`
 
 ```sh
