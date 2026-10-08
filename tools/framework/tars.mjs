@@ -37,6 +37,9 @@ import * as upgradeMod from './tars-upgrade.mjs'
 // `tars incident` (TARS-INCIDENTE-AUTO): o ledger deixa de ser escrito a mao. O modulo DONO
 // mora em tars-incident.mjs; aqui so' o despacho fino (R3).
 import * as incidentMod from './tars-incident.mjs'
+// `tars secrets` (dev.9): o cofre do PROJETO, declarado em `[secrets]` do `.ai/tars.toml`.
+// Como o doctor, o dono mora no modulo `tars-secrets.mjs`; aqui so' o despacho fino (R3).
+import * as secretsMod from './tars-secrets.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -102,6 +105,10 @@ const USAGE = [
   '    --o-que X --causa C        gerados; recusa campo vazio nomeando-o). Marca `recorrencia` e',
   '    --correcao R               imprime RECORRENTE: <ids> quando ja repetiu (>= 2 -> lembrete',
   '    [--tags a,b] [--fonte F]   de harness-postmortem). Tudo em uma linha so.',
+  '',
+  '  secrets refresh            abre o cofre (1Password) e regrava o cache cifrado do projeto',
+  '  secrets exec -- <cmd...>   roda <cmd> com o cache decifrado no env SO do filho (sem shell)',
+  '  secrets check              julga chave/cache/recipient/ambiente SEM abrir o cofre',
   '',
   '  --help                     esta ajuda',
   '',
@@ -278,6 +285,21 @@ async function handoffCommand(rest, project) {
   if (!r.ok) process.exit(1)
 }
 
+/**
+ * `tars secrets <refresh|exec|check>` — despacho fino: o julgamento mora no modulo dono. A
+ * tabela `[secrets]` e' lida do `.ai/tars.toml` do PROJETO pelo parser do sync (R3: um
+ * parser so'); a config resolvida e' que vai para o modulo.
+ */
+async function secretsCommand(rest, project) {
+  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  const file = join(raiz, '.ai', 'tars.toml')
+  const tabela = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')).secrets ?? {} : {}
+  const cfg = secretsMod.lerConfig(tabela, { project: raiz })
+  const r = secretsMod.run({ sub: rest[0], rest: rest.slice(1), cfg })
+  if (r.saida) console.log(r.saida)
+  process.exit(r.status ?? 0)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -321,6 +343,7 @@ const COMMANDS = {
   verify: verifyCommand,
   memory: memoryCommand,
   incident: incidentCommand,
+  secrets: secretsCommand,
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,

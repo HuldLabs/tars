@@ -4,6 +4,41 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.9
+
+### O que mudou
+- **`tars secrets`** (`refresh | exec | check`): o cofre do PROJETO deixa de ser reinvenção de
+  cada consumidor. O módulo novo (`tars-secrets.mjs`) porta a lógica do `secrets.mjs` do
+  segtools e a parametriza pela tabela `[secrets]` do `.ai/tars.toml` — o Tars é o catálogo,
+  quem declara é o consumidor.
+- `key_scope` (`project` | `machine`) e `source` (`automation` | `owner`) **obrigatórios**, sem
+  fallback entre fontes. `project` exige `age_key_ref`; `machine` proíbe `age_key_ref` e
+  `sops_config` versionado — cada violação grita com a lista de valores válidos.
+- **Um wrapper único para `op`/`sops`**: toda ref é conferida como `^op://` antes do spawn
+  (inválida = erro que **não** ecoa o valor) e o stderr volta **redigido** (valor de segredo
+  conhecido vira `***`) — nunca `>/dev/null`.
+- `check` reprova o **template** com `op://` fora de `{{ }}` (comentário incluso: o `op inject`
+  resolve qualquer um) e o template que cita a ref da **chave age** — a chave vem só do manifesto.
+- `exec` roda por **argv, sem shell**: `;`/`|`/`$()` são dado, não sintaxe; o filho não herda
+  `OP_*`/`SOPS_AGE_KEY` e recebe só `SOPS_AGE_KEY_FILE`.
+
+### Por que
+Cada projeto consumidor vinha reinventando o próprio cofre (caminho fixo, variável de ambiente,
+token no `.env`), e as variantes divergiam nas partes que importam: onde mora a chave, quem pode
+abrir o cofre, e o que o filho herda do ambiente. Regra que existe em N lugares não é regra —
+é onde o furo mora.
+
+### Arquivos impactados no consumidor
+- `tools/framework/tars-secrets.mjs` (novo) e `tars.mjs` (despacho fino do subcomando).
+- Nada é criado no consumidor que não declare `[secrets]` no `.ai/tars.toml`: sem a tabela, o
+  `lerConfig` recebe `{}` e o comando falha alto nomeando o `source` obrigatório.
+
+### O que o consumidor faz
+Declara `[secrets]` no `.ai/tars.toml` (`source` obrigatório; `age_key_ref` com
+`key_scope="project"`), roda `tars secrets refresh` uma vez para gravar a chave e o cache, e
+usa `tars secrets exec -- <cmd>` como entrypoint dos processos que precisam dos segredos.
+`tars secrets check` julga o estado sem abrir o cofre.
+
 ## 0.0.1-dev.8
 
 ### O que mudou
