@@ -128,3 +128,46 @@ aqui.
   revogar.
 - **Gate.** Regra de revisão (`check`/revisão imprimem só **nome** e **caminho**);
   sem gate automático — `n/a` enquanto é disciplina de escrita.
+
+### 12. `op item get --format json` devolve o campo como ele está — inclusive a chave privada
+
+- **Regra.** Ler um item SSH_KEY por `op item get --format json` traz a chave **privada**
+  no campo; para a pública use `op read` do **campo público** ou derive-a (`ssh-keygen -y`).
+- **Porquê (incidente).** `04/09/2026`, fabber2-ecommerce
+  (`infra/pyinfra/_op_secure_write.py`): o helper lia o item inteiro para conferir um
+  campo e a chave privada veio junto, no JSON, para dentro do processo — o item "de
+  leitura" entregou a identidade que ele não precisava.
+- **Gate.** Regra de revisão (scan/revisão: `item get --format json` só onde o item
+  inteiro é o que se quer; campo a campo, `op read`).
+
+### 13. Escrita no cofre: JSON por STDIN, nunca em argv nem em arquivo temporário
+
+- **Regra.** `op item edit <item> -` com o JSON pelo **stdin**. Nada de `--template=<arq>`
+  (o arquivo fica no disco) nem de valor/payload em argv (`ps` o lê).
+- **Porquê (incidente).** `04/09/2026`, fabber2-ecommerce
+  (`infra/pyinfra/_op_secure_write.py`): o payload passava por arquivo temporário, uma
+  cópia do segredo no disco por escrita, sem dono nem prazo.
+- **Gate.** Revisão da estratégia de escrita — **avaliação pendente**: trocar o default
+  de `age_key_write` para stdin se o `op` aceitar (teste com stub registrando o stdin,
+  na linha do que o stub do `op` já prova para o argv).
+
+### 14. Automação escreve no cofre com SA de escrita própria; o dono só aprova o que ele roda
+
+- **Regra.** Dois tokens: um de **leitura** (uso geral) e um de **escrita**, usado **só**
+  no env do `op` que escreve. Nunca pela sessão do dono.
+- **Porquê (incidente).** `04/09/2026`, fabber2-ecommerce: escrever pela sessão do dono
+  faz toda a automação depender da mão dele e mistura, no mesmo rastro, o que o humano
+  aprovou e o que o robô decidiu. O dono aprova o que **ele** roda.
+- **Gate.** `source=owner` obrigatório nos comandos de escrita (`set`/`import` recusam
+  sem ele) + `envDoCofre` forçando `OP_BIOMETRIC_UNLOCK_ENABLED=false` na automação.
+
+### 15. Rótulo de campo nativo do 1Password é traduzido; ref por rótulo quebra
+
+- **Regra.** Referência só para **campo próprio** de Secure Note, no padrão
+  `op://<cofre-do-contexto>/<item>/<secao-do-provedor>/<segredo>`. Chave SSH em campo de
+  texto vale-se derivando a pública (`ssh-keygen -y`).
+- **Porquê (incidente).** `04/09/2026`, fabber2-ecommerce: o rótulo de campo NATIVO
+  (`private key`, `credential`) é traduzido pelo idioma do app — a ref que funcionava em
+  inglês passou a não resolver numa máquina em português, e o erro apareceu longe da causa.
+- **Gate.** `tars secrets check` (linha `template`) + `fingerprint` derivando a pública,
+  em vez de ler a privada do item.

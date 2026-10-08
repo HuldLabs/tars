@@ -84,9 +84,18 @@ export function validaItem(ref) {
   return `op://${m[1]}/${m[2]}`
 }
 
-/** O rotulo do endereco para mensagem e auditoria: o ENDERECO, nunca o valor. */
+/**
+ * O rotulo do endereco para mensagem e auditoria: o ENDERECO, nunca o valor. O cofre sem campo
+ * (o endereco de ITEM que o `rm` aceita) sai sem a barra final — `op://v/i/null` mentiria.
+ */
 export const rotula = (end) =>
-  end.tipo === 'cofre' ? `${end.item}/${end.campo}` : end.tipo === 'file' ? end.caminho : `${end.tipo}:${end.nome}`
+  end.tipo === 'cofre'
+    ? end.campo
+      ? `${end.item}/${end.campo}`
+      : end.item
+    : end.tipo === 'file'
+      ? end.caminho
+      : `${end.tipo}:${end.nome}`
 
 // --- LEITURA DE ARQUIVO: 0600/0400, ou a ACL do win32 ---------------------------------
 //
@@ -205,7 +214,7 @@ export function cmdCompare(rest, ctx) {
   const endA = parseEndereco(a)
   const endB = parseEndereco(b)
   const igual = comparaValores(leEndereco(endA, ctx.cfg, ctx), leEndereco(endB, ctx.cfg, ctx))
-  audit(ctx.cfg, { comando: 'compare', enderecos: [rotula(endA), rotula(endB)], resultado: igual ? 'igual' : 'diferente' })
+  audit(ctx, { comando: 'compare', enderecos: [rotula(endA), rotula(endB)], resultado: igual ? 'igual' : 'diferente' })
   return { saida: igual ? 'igual' : 'diferente', status: igual ? 0 : 1 }
 }
 
@@ -241,7 +250,7 @@ export function cmdFingerprint(rest, ctx) {
   if (!a) throw new ErroConfig('uso: tars secrets fingerprint <endereco>')
   const end = parseEndereco(a)
   const fp = fingerprintDe(leEndereco(end, ctx.cfg, ctx))
-  audit(ctx.cfg, { comando: 'fingerprint', enderecos: [rotula(end)], resultado: fp.tipo })
+  audit(ctx, { comando: 'fingerprint', enderecos: [rotula(end)], resultado: fp.tipo })
   return { saida: fp.identidade, status: 0 }
 }
 
@@ -270,7 +279,7 @@ export function cmdSet(rest, ctx) {
   if (!comparaValores(volta, valor)) {
     throw new ErroConfig(`[secrets] o cofre nao devolveu o valor gravado em ${end.item} (campo ${end.campo}) — confira o item`)
   }
-  audit(ctx.cfg, { comando: 'set', enderecos: [rotula(end)], resultado: 'ok' })
+  audit(ctx, { comando: 'set', enderecos: [rotula(end)], resultado: 'ok' })
   return { saida: `tars secrets set: ${end.item}/${end.campo} atualizado`, status: 0 }
 }
 
@@ -291,7 +300,7 @@ export function cmdMove(rest, ctx) {
   const r = copia(a, b, ctx, 'move')
   const end = parseEndereco(a)
   apaga(end, ctx, { confirmado: true })
-  audit(ctx.cfg, { comando: 'move', enderecos: [rotula(end), rotula(parseEndereco(b))], resultado: 'ok' })
+  audit(ctx, { comando: 'move', enderecos: [rotula(end), rotula(parseEndereco(b))], resultado: 'ok' })
   return r
 }
 
@@ -308,15 +317,34 @@ function copia(a, b, ctx, comando) {
   if (!comparaValores(volta, valor)) {
     throw new ErroConfig(`[secrets] o destino ${rotula(d)} nao confirma o que foi gravado — a origem NAO foi tocada`)
   }
-  audit(ctx.cfg, { comando, enderecos: [rotula(o), rotula(d)], resultado: 'ok' })
+  audit(ctx, { comando, enderecos: [rotula(o), rotula(d)], resultado: 'ok' })
   return { saida: `tars secrets ${comando}: ${rotula(o)} -> ${rotula(d)} (confirmado)`, status: 0 }
 }
 
 // --- RM -------------------------------------------------------------------------------
 /** `rm <endereco>` — [s/N] mostrando SO' o endereco; nunca o valor. */
 export function cmdRm(rest, ctx) {
-  const end = parseEndereco(rest.filter((x) => !x.startsWith('--'))[0])
-  return apaga(end, ctx, {})
+  const bruto = rest.filter((x) => !x.startsWith('--'))[0]
+  // `rm` no cofre e' por ITEM: `op item delete --archive` arquiva o item INTEIRO, entao um
+  // endereco COM campo prometeria apagar so' o campo e arquivaria o item todo. O parser das
+  // quatro formas exige o campo (as demais operacoes sao POR CAMPO); aqui o ITEM e' lido por
+  // `enderecoDoItem`, que reusa `validaItem` — o mesmo validador do `import` (R3). Todo o resto
+  // (`file:`, `env:`, `cache:`) segue o parser normal.
+  return apaga(String(bruto ?? '').startsWith('op://') ? enderecoDoItem(bruto) : parseEndereco(bruto), ctx, {})
+}
+
+/**
+ * O endereco de ITEM (`op://cofre/item`) — a unica forma de cofre que o `rm` aceita. Com campo
+ * atras, RECUSA: arquivar o item inteiro por causa de um campo e' mais do que se pediu, e a
+ * mensagem diz o endereco certo. O valor nunca e' ecoado.
+ */
+export function enderecoDoItem(bruto) {
+  const s = String(bruto ?? '')
+  const m = /^op:\/\/([^/]+)\/([^/]+)(?:\/(.+))?$/.exec(s)
+  if (!m) throw new ErroConfig('[secrets] endereco `op://` invalido (use `op://cofre/item`; valor deliberadamente NAO ecoado)')
+  if (m[3]) throw new ErroConfig('[secrets] rm do cofre arquiva o item INTEIRO; use `op://cofre/item` (sem o campo)')
+  const item = validaItem(s)
+  return { tipo: 'cofre', bruto: s, ref: item, item, campo: null }
 }
 
 function apaga(end, ctx, { confirmado }) {
@@ -330,13 +358,13 @@ function apaga(end, ctx, { confirmado }) {
     if (r.status !== 0) {
       throw new ErroConfig(`[secrets] o 1Password nao arquivou ${end.item}: ${(r.stderr || r.error?.message || '').trim()}`)
     }
-    audit(ctx.cfg, { comando: 'rm', enderecos: [rotula(end)], resultado: 'arquivado' })
+    audit(ctx, { comando: 'rm', enderecos: [rotula(end)], resultado: 'arquivado' })
     return { saida: `tars secrets rm: ${end.item} ARQUIVADO no 1Password (nada foi apagado de vez)`, status: 0 }
   }
   if (end.tipo === 'file') {
     if (!confirmado && !ctx.confirma(`tars secrets rm: apagar o arquivo ${end.caminho}?\n`)) return cancelado('rm')
     fs.rmSync(end.caminho, { force: true })
-    audit(ctx.cfg, { comando: 'rm', enderecos: [rotula(end)], resultado: 'apagado' })
+    audit(ctx, { comando: 'rm', enderecos: [rotula(end)], resultado: 'apagado' })
     return { saida: `tars secrets rm: ${end.caminho} apagado`, status: 0 }
   }
   // `env:` — o processo nao se limpa daqui (nao da' para mutar o ambiente do pai); o que se
@@ -347,7 +375,7 @@ function apaga(end, ctx, { confirmado }) {
     if (!confirmado && !ctx.confirma(`tars secrets rm: remover ${end.nome} de HKCU\\Environment?\n`)) return cancelado('rm')
     const r = spawnSync('reg', ['delete', 'HKCU\\Environment', '/v', end.nome, '/f'], { encoding: 'utf8' })
     if (r.status !== 0) throw new ErroConfig(`[secrets] nao consegui remover ${end.nome} de HKCU\\Environment`)
-    audit(ctx.cfg, { comando: 'rm', nomes: [end.nome], resultado: 'registro' })
+    audit(ctx, { comando: 'rm', nomes: [end.nome], resultado: 'registro' })
     return { saida: `tars secrets rm: ${end.nome} removido de HKCU\\Environment`, status: 0 }
   }
   throw new ErroConfig(`[secrets] remover \`env:${end.nome}\` exige \`--em <arquivo>\` (rc/profile): nao ha' ambiente persistente padrao aqui`)
@@ -356,28 +384,32 @@ function apaga(end, ctx, { confirmado }) {
 const cancelado = (comando) => ({ saida: `tars secrets ${comando}: cancelado (nada foi tocado)`, status: 0 })
 
 /**
- * Remove a LINHA de atribuicao do rc/profile. A copia 0600 ao lado existe por um caso so':
- * a escrita nao ser atomica (o arquivo e' do dono e pode ter conteudo que nao e' nosso) — se
- * algo falhar no meio, o original esta' inteiro e some junto com a copia no fim.
+ * Remove a LINHA de atribuicao do rc/profile. A escrita e' ATOMICA (tmp no MESMO diretorio +
+ * rename): o arquivo do dono vale ate' o rename, sem janela em que esteja pela metade — e sem
+ * a copia `.tars-bak` que so' existia para cobrir essa janela. O MODO do original e' o do tmp:
+ * um rc 0644 reescrito 0600 seria uma mudanca de permissao que ninguem pediu.
  */
 export function removeLinhaDeEnv(arquivo, nome, ctx, { confirmado } = {}) {
+  // O nome vai INTERPOLADO na RegExp logo abaixo: sem esta conferencia, um `.*` casaria a
+  // primeira linha do arquivo e o `rm` apagaria o que ninguem pediu. `NOME` e' o MESMO
+  // validador do `parseEndereco` (R3) — e o valor e' deliberadamente NAO ecoado.
+  if (!NOME.ok.test(nome)) throw new ErroConfig('[secrets] nome invalido para `rm env:` (valor deliberadamente NAO ecoado)')
   const caminho = path.resolve(arquivo)
   if (!fs.existsSync(caminho)) throw new ErroConfig(`[secrets] arquivo ausente: ${caminho}`)
   const txt = fs.readFileSync(caminho, 'utf8')
+  // O separador e' DETECTADO e preservado: reescrever um perfil CRLF em LF mexeria no arquivo
+  // inteiro (diff sujo) por causa de uma linha removida.
+  const crlf = txt.includes('\r\n')
   const linhas = txt.split(/\r?\n/)
   const re = new RegExp(`^\\s*(?:export\\s+)?${nome}\\s*=`)
   const alvo = linhas.findIndex((l) => re.test(l))
   if (alvo === -1) throw new ErroConfig(`[secrets] '${nome}' nao esta' declarado em ${caminho}`)
   if (!confirmado && !ctx.confirma(`tars secrets rm: remover ${nome} de ${caminho}:${alvo + 1}?\n`)) return cancelado('rm')
-  const bak = `${caminho}.tars-bak`
-  fs.writeFileSync(bak, txt, { mode: 0o600 })
-  protegeArquivo(bak)
-  try {
-    fs.writeFileSync(caminho, linhas.filter((_, i) => i !== alvo).join('\n'))
-  } finally {
-    fs.rmSync(bak, { force: true })
-  }
-  audit(ctx.cfg, { comando: 'rm', nomes: [nome], resultado: `linha ${alvo + 1} em ${caminho}` })
+  const tmp = `${caminho}.tars-rm`
+  fs.rmSync(tmp, { force: true }) // sobra de um rm morto no meio nao dita o modo do proximo
+  fs.writeFileSync(tmp, linhas.filter((_, i) => i !== alvo).join(crlf ? '\r\n' : '\n'), { mode: fs.statSync(caminho).mode & 0o777 })
+  fs.renameSync(tmp, caminho)
+  audit(ctx, { comando: 'rm', nomes: [nome], resultado: `linha ${alvo + 1} em ${caminho}` })
   return { saida: `tars secrets rm: ${nome} removido de ${caminho}:${alvo + 1}`, status: 0 }
 }
 
@@ -426,7 +458,7 @@ export function cmdImport(rest, ctx) {
       throw new ErroConfig(`[secrets] o cofre nao devolveu o valor gravado em ${endItem.item} (campo ${nome})`)
     }
   }
-  audit(ctx.cfg, { comando: 'import', enderecos: [endItem.item], nomes, resultado: 'ok' })
+  audit(ctx, { comando: 'import', enderecos: [endItem.item], nomes, resultado: 'ok' })
   return { saida: pares.map(([n]) => `${n}=${endItem.item}/${n}`).join('\n'), status: 0 }
 }
 
@@ -488,6 +520,10 @@ export async function cmdScan(rest, ctx) {
   const quer = (n) => alvos.length === 0 || alvos.includes(n)
   const achados = []
   const marca = (local, id) => achados.push({ local, id })
+  // Um passo do scan que NAO rodou (gitleaks ausente/relatorio ilegivel) nao pode virar
+  // silencio: vira aviso na saida — e, com `--onde git` explicito, reprova o comando.
+  const avisos = []
+  const avisa = (motivo) => avisos.push(motivo)
 
   let mapa = {}
   if (fs.existsSync(ctx.cfg.cache_file)) {
@@ -548,23 +584,25 @@ export async function cmdScan(rest, ctx) {
   }
 
   if (quer('git')) {
-    // `gitleaks git` (nao reimplementado): o relatorio vai para um JSON 0600 em tmp — a saida
-    // VERBOSA dele imprime o segredo achado, e ler de la' seria o vazamento.
-    const rel = path.join(os.tmpdir(), `tars-scan-${process.pid}-${Date.now()}.json`)
-    try {
-      const r = roda('gitleaks', ['git', '--no-banner', '--report-format', 'json', '--report-path', rel], { cwd: ctx.cwd })
-      if (fs.existsSync(rel)) {
-        for (const f of JSON.parse(fs.readFileSync(rel, 'utf8')) || []) {
-          marca(`${f.File}:${f.StartLine}`, f.RuleID)
-        }
-      } else if (r.error?.code === 'ENOENT') {
-        /* sem gitleaks instalado: nao ha' o que varrer aqui (nem o que inventar) */
+    // `gitleaks git` (nao reimplementado) com `--redact`: o JSON do relatorio e' o unico lugar
+    // onde o achado aparece com o valor, e o `--redact` troca o valor por `REDACTED` ja' na
+    // saida do proprio gitleaks — sem isso o relatorio seria uma copia do segredo em claro no
+    // disco. Ele nasce no MESMO tmp 0700 com `TMP_PREFIX` do refresh (`comTmp`), entao um scan
+    // morto no meio cai no `reapResiduo` como qualquer outro residuo de texto claro.
+    comTmp('gitleaks.json', '', (rel) => {
+      const r = roda('gitleaks', ['git', '--no-banner', '--redact', '--report-format', 'json', '--report-path', rel], { cwd: ctx.cwd, env: ctx.env })
+      if (r.error?.code === 'ENOENT') return avisa('git: PULADO (gitleaks ausente)')
+      // Vazio = o gitleaks nao chegou a gerar o relatorio (cwd sem repo, erro de execucao).
+      if (!fs.existsSync(rel) || !fs.statSync(rel).size) return avisa('git: PULADO (relatorio ilegivel)')
+      let achadosGitleaks
+      try {
+        achadosGitleaks = JSON.parse(fs.readFileSync(rel, 'utf8'))
+      } catch {
+        // Nunca `catch {}` mudo: um relatorio que nao le' e' um passo que NAO rodou (R4).
+        return avisa('git: PULADO (relatorio ilegivel)')
       }
-    } catch {
-      /* relatorio ilegivel: o resto do scan ja' rodou */
-    } finally {
-      fs.rmSync(rel, { force: true })
-    }
+      for (const f of achadosGitleaks || []) marca(`${f.File}:${f.StartLine}`, f.RuleID)
+    })
   }
 
   if (quer('templates')) {
@@ -577,15 +615,16 @@ export async function cmdScan(rest, ctx) {
     }
   }
 
-  audit(ctx.cfg, { comando: 'scan', resultado: achados.length ? `${achados.length} achado(s)` : 'limpo' })
-  if (!achados.length) return { saida: 'tars secrets scan: limpo', status: 0 }
-  return {
-    saida: [
-      `tars secrets scan: ${achados.length} achado(s) (o valor NAO e' exibido)`,
-      ...achados.map((a) => `  ${a.local}  ${a.id}`),
-    ].join('\n'),
-    status: 1,
+  audit(ctx, { comando: 'scan', resultado: achados.length ? `${achados.length} achado(s)` : avisos.length ? `${avisos.length} aviso(s)` : 'limpo' })
+  const linhas = []
+  if (achados.length) {
+    linhas.push(`tars secrets scan: ${achados.length} achado(s) (o valor NAO e' exibido)`)
+    linhas.push(...achados.map((a) => `  ${a.local}  ${a.id}`))
+  } else {
+    linhas.push(avisos.length ? `tars secrets scan: limpo (com ${avisos.length} aviso(s))` : 'tars secrets scan: limpo')
   }
+  linhas.push(...avisos.map((a) => `  ${a}`))
+  return { saida: linhas.join('\n'), status: achados.length || (avisos.length && alvos.includes('git')) ? 1 : 0 }
 }
 
 /** Marca UM achado numa linha de arquivo — e a unica forma de citar arquivo:linha. */
@@ -727,11 +766,14 @@ function cmdExec(rest, ctx) {
  * fingerprint, que seria um oraculo de conferencia do segredo em cima de um arquivo que o
  * usuario talvez commite por engano.
  */
-export function audit(cfg, { comando, enderecos = [], nomes = [], resultado }) {
-  const f = path.join(cfg.dir, 'audit.log')
+export function audit(ctx, { comando, enderecos = [], nomes = [], resultado }) {
+  const f = path.join(ctx.cfg.dir, 'audit.log')
   const novo = !fs.existsSync(f)
   fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 })
-  fs.appendFileSync(f, `${JSON.stringify({ ts: new Date().toISOString(), ator: actor({}), comando, enderecos, nomes, resultado })}\n`, { mode: 0o600 })
+  // O ator vem do ENV de quem chama (`ctx.env`). `actor({})` responderia 'human' sempre — e a
+  // trilha diria que o dono fez o que o agente fez, mentindo justamente onde ela existe para
+  // dizer quem agiu.
+  fs.appendFileSync(f, `${JSON.stringify({ ts: new Date().toISOString(), ator: actor({ env: ctx.env }), comando, enderecos, nomes, resultado })}\n`, { mode: 0o600 })
   if (novo) protegeArquivo(f)
 }
 

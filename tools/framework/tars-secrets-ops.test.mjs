@@ -28,6 +28,7 @@ afterEach(() => {
 const tem = (bin) => spawnSync(bin, ['--version'], { encoding: 'utf8' }).error === undefined
 const TEM_SOPS = tem('sops')
 const TEM_AGE = tem('age-keygen')
+const TEM_GITLEAKS = tem('gitleaks')
 
 /** Uma chave age REAL (o `sops` so' cifra para um recipient de verdade). */
 function chaveReal() {
@@ -272,9 +273,9 @@ describe('escrita no cofre (op stub)', () => {
     expect(JSON.parse(fs.readFileSync(stub.estado, 'utf8')).item.fields[0].value).toBe('valor-de-outro-lugar')
   })
 
-  it('`rm` ARQUIVA o item — nunca apaga de vez', () => {
+  it('`rm` ARQUIVA o ITEM (`op://cofre/item`) — nunca apaga de vez', () => {
     const { stub, ctx } = cenario()
-    const r = run({ sub: 'rm', rest: ['op://tars/conta/ref'], ...ctx })
+    const r = run({ sub: 'rm', rest: ['op://tars/conta'], ...ctx })
     expect(r.status).toBe(0)
     const argv = fs.readFileSync(stub.log, 'utf8')
     expect(argv).toContain('op://tars/conta')
@@ -282,9 +283,16 @@ describe('escrita no cofre (op stub)', () => {
     expect(r.saida).toMatch(/ARQUIVADO/)
   })
 
+  it('`rm op://cofre/item/campo` RECUSA: arquivar e` do item inteiro, e a mensagem diz o endereco certo', () => {
+    const { stub, ctx } = cenario()
+    expect(() => run({ sub: 'rm', rest: ['op://tars/conta/ref'], ...ctx })).toThrow(/arquiva o item INTEIRO.*op:\/\/cofre\/item/)
+    // Nada foi tocado: o `op` nem foi chamado.
+    expect(fs.readFileSync(stub.log, 'utf8')).not.toContain('delete')
+  })
+
   it('`rm` com [s/N] negado nao toca em nada', () => {
     const { stub, ctx } = cenario()
-    const r = run({ sub: 'rm', rest: ['op://tars/conta/ref'], ...ctx, confirma: () => false })
+    const r = run({ sub: 'rm', rest: ['op://tars/conta'], ...ctx, confirma: () => false })
     expect(r.saida).toMatch(/cancelado/)
     expect(fs.readFileSync(stub.log, 'utf8')).not.toContain('delete')
   })
@@ -339,6 +347,43 @@ describe('rm de `env:` persistente', () => {
     expect(r.status).toBe(0)
     expect(visto.join('')).toMatch(/\.bashrc:1/)
     expect(visto.join('')).not.toContain('segredo-na-linha')
+  })
+
+  it('escrita ATOMICA: sem `.tars-bak`, sem `.tars-rm` e o MODO do original fica', () => {
+    const dir = tmp()
+    const rc = path.join(dir, '.bashrc')
+    fs.writeFileSync(rc, 'export TOKEN=segredo\n', { mode: 0o640 })
+    fs.chmodSync(rc, 0o640)
+    const r = removeLinhaDeEnv(rc, 'TOKEN', ctxDe(cfgDe({ source: 'owner' }, dir)), { confirmado: true })
+    expect(r.status).toBe(0)
+    expect(fs.existsSync(`${rc}.tars-bak`)).toBe(false)
+    expect(fs.existsSync(`${rc}.tars-rm`), 'o tmp do rename nao pode sobreviver').toBe(false)
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(rc).mode & 0o777, 'um rc 0640 nao vira 0600 por causa de uma linha').toBe(0o640)
+    }
+  })
+
+  it('preserva o separador DETECTADO (CRLF continua CRLF; LF continua LF)', () => {
+    const dir = tmp()
+    const crlf = path.join(dir, '.bashrc')
+    fs.writeFileSync(crlf, '# rc\r\nexport OUTRA=1\r\nexport TOKEN=segredo\r\nNOME=2\r\n')
+    removeLinhaDeEnv(crlf, 'TOKEN', ctxDe(cfgDe({ source: 'owner' }, dir)), { confirmado: true })
+    const txt = fs.readFileSync(crlf, 'utf8')
+    expect(txt).toBe('# rc\r\nexport OUTRA=1\r\nNOME=2\r\n')
+    expect(txt, 'nenhum \\n solto: o perfil nao vira um arquivo misto').not.toMatch(/[^\r]\n/)
+    const lf = path.join(dir, '.zshrc')
+    fs.writeFileSync(lf, 'export TOKEN=segredo\nexport OUTRA=1\n')
+    removeLinhaDeEnv(lf, 'TOKEN', ctxDe(cfgDe({ source: 'owner' }, dir)), { confirmado: true })
+    expect(fs.readFileSync(lf, 'utf8')).toBe('export OUTRA=1\n')
+  })
+
+  it('nome INVAlido recusa ANTES da RegExp: `.*` nao pode casar a primeira linha', () => {
+    const dir = tmp()
+    const rc = path.join(dir, '.bashrc')
+    const original = '# rc\nexport OUTRA=1\nexport TOKEN=segredo\n'
+    fs.writeFileSync(rc, original)
+    expect(() => removeLinhaDeEnv(rc, '.*', ctxDe(cfgDe({ source: 'owner' }, dir)), { confirmado: true })).toThrow(/nome invalido/)
+    expect(fs.readFileSync(rc, 'utf8'), 'nada foi tocado').toBe(original)
   })
 
   it('`rm env:NOME` sem `--em` (fora do win32) grita pedindo o arquivo', () => {
@@ -449,5 +494,69 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('scan, import, redacao e auditoria (sops/
     for (const v of Object.values(decifraMapa(cfg))) {
       expect(log, 'um valor do cache vazou para a auditoria').not.toContain(v)
     }
+  })
+})
+
+/**
+ * O scan de `git` nao tem stub: ou o gitleaks de verdade roda, ou o caso e' `skip` explicito.
+ * O valor plantado entra montado em runtime pelo mesmo motivo do teste la' de cima (o guard de
+ * conteudo do pre-commit barraria um `AKIA...` literal no proprio fonte).
+ */
+const AWS_PLANTADO = ['AKIA', 'IOSFODNN7EXAMPLX'].join('')
+
+describe('scan --onde git: relatorio redigido e passo PULADO nunca silencioso', () => {
+  const ctxScan = (cfg, cwd, env) => ({ cfg, env, tty: false, confirma: () => true, cwd, home: tmp('tars-home-') })
+
+  it.skipIf(!TEM_GITLEAKS)('gitleaks acha um segredo COMMITADO; o valor plantado NAO sai na saida', async () => {
+    const repo = tmp('tars-scan-git-')
+    spawnSync('git', ['init', '-q'], { cwd: repo })
+    spawnSync('git', ['config', 'user.email', 'teste@exemplo.invalid'], { cwd: repo })
+    spawnSync('git', ['config', 'user.name', 'teste'], { cwd: repo })
+    fs.writeFileSync(path.join(repo, 'vazamento.txt'), `AWS_ACCESS_KEY_ID=${AWS_PLANTADO}\n`)
+    spawnSync('git', ['add', 'vazamento.txt'], { cwd: repo })
+    spawnSync('git', ['commit', '-q', '-m', 'vaza'], { cwd: repo })
+    const cfg = cfgDe({ source: 'owner' }, tmp())
+    const r = await run({ sub: 'scan', rest: ['--onde', 'git'], ...ctxScan(cfg, repo, { ...process.env }) })
+    expect(r.saida).toMatch(/vazamento\.txt:1/)
+    expect(r.saida, 'relatorio redigido (`--redact`): do achado sai so` arquivo:linha + a regra').not.toContain(AWS_PLANTADO)
+    expect(r.status, '`--onde git` explicito com achado reprova').toBe(1)
+  })
+
+  it('sem gitleaks: PULADO visivel (nunca silencio) — e `--onde git` explicito reprova', async () => {
+    // PATH sem nada: o `gitleaks` nao existe para o processo-filho, e e' esse o caso de um
+    // scanner que nao pode rodar. Um `catch {}` mudo faria o scan sair "limpo" mentindo.
+    const cfg = cfgDe({ source: 'owner' }, tmp())
+    const ctx = ctxScan(cfg, cfg.projeto, { PATH: '' })
+    const padrao = await run({ sub: 'scan', rest: [], ...ctx })
+    expect(padrao.saida).toMatch(/git: PULADO \(gitleaks ausente\)/)
+    expect(padrao.saida, 'o aviso nao pode sumir atras de um "limpo" seco').toMatch(/limpo \(com 1 aviso/)
+    expect(padrao.status, 'no scan padrao o passo pulado e` aviso, nao reprovacao').toBe(0)
+    const explicito = await run({ sub: 'scan', rest: ['--onde', 'git'], ...ctx })
+    expect(explicito.status, 'pedir `--onde git` e nao ter gitleaks e` falha, nao aviso').toBe(1)
+    expect(explicito.saida).toMatch(/git: PULADO \(gitleaks ausente\)/)
+  })
+})
+
+describe('auditoria: o ator vem do AMBIENTE de quem chama', () => {
+  const logDe = (cfg) => JSON.parse(fs.readFileSync(path.join(cfg.dir, 'audit.log'), 'utf8').trim().split('\n').pop())
+
+  /** `compare` de dois enderecos de ambiente nao abre o cofre: exercita a trilha sozinha. */
+  const audita = (env) => {
+    const dir = tmp()
+    const cfg = cfgDe({ source: 'owner' }, dir)
+    run({ sub: 'compare', rest: ['env:A', 'env:A'], cfg, env: { ...env, A: 'valor-de-teste' }, tty: false, confirma: () => true, cwd: dir, home: tmp('tars-home-') })
+    return logDe(cfg)
+  }
+
+  it('agente (TARS_ACTOR=agent) e` registrado como `agent` — nao o `human` de `actor({})`', () => {
+    expect(audita({ ...envDono(), TARS_ACTOR: 'agent' }).ator).toBe('agent')
+  })
+
+  it('CLAUDECODE=1 tambem denuncia o agente', () => {
+    expect(audita({ TARS_ACTOR: undefined, CLAUDECODE: '1' }).ator).toBe('agent')
+  })
+
+  it('sem marcador nenhum, o silencio e` `human`', () => {
+    expect(audita({ TARS_ACTOR: undefined, CLAUDECODE: undefined }).ator).toBe('human')
   })
 })
