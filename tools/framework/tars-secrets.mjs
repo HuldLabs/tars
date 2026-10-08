@@ -40,6 +40,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { actor } from './tars-actor.mjs'
 import { parseToml } from './tars-sync.mjs'
+// O scan RAPIDO do doctor (so' env e rc) reusa os MESMOS padroes do `secrets scan` — um lugar
+// so' decide o que e' segredo (R3).
+import { findSecretsIds } from './secrets-patterns.mjs'
 
 /**
  * O helper que materializa o env RESOLVIDO pelo `op run` como JSON (porte do
@@ -150,6 +153,9 @@ export const CAMPOS = {
   // COMO a identidade entra no cofre (`ESTRATEGIAS_COFRE`): nem ref nem caminho — a escolha da
   // estrategia de escrita. Ausente = `template`, o caminho de hoje.
   age_key_write: {},
+  // Quantos dias o cache pode envelhecer antes do `doctor` avisar (S3/dev.9). Ausente = 30:
+  // um cache que ninguem recifra ha' um mes carrega a chave que o cofre ja' pode ter trocado.
+  cache_max_dias: {},
 }
 
 /** As camadas, da mais fraca para a mais forte. A ordem E' o merge (campo a campo). */
@@ -752,6 +758,144 @@ export function format(r) {
     `tars secrets check: ${r.ok ? 'ok' : 'FALHA'}`,
     ...r.linhas.map((l) => `  ${(l.ok ? 'OK    ' : 'FALHA ')}${l.nome.padEnd(largura)}  ${l.detalhe}`),
   ].join('\n')
+}
+
+// --- DOCTOR (S3, dev.9) -------------------------------------------------------------
+// O `tars doctor` de um projeto que declara `[secrets]`/`[identity]` inclui TUDO do `check` e
+// acrescenta so' o que o ATOR e o TEMPO explicam: a idade do cache, o transporte de quem
+// commita (licao 7), o push de quem commita (licao 9) e um scan RAPIDO (env e rc; transcripts
+// e git ficam no `scan` explicito). Tudo aqui e' PURO ou injetavel — o `op` nunca e' aberto.
+
+/** Quantos dias o cache pode envelhecer antes do AVISO (o projeto pode declarar outro). */
+export const CACHE_MAX_DIAS = 30
+
+/** Dias desde a ultima escrita do cache; `null` quando nao ha' cache (o `check` ja' reprova). */
+export function idadeCache(cfg, { fs: fsm = fs, agora = new Date() } = {}) {
+  if (!fsm.existsSync(cfg.cache_file)) return null
+  return Math.floor((agora.getTime() - fsm.statSync(cfg.cache_file).mtimeMs) / 86400000)
+}
+
+/** O socket do agente SSH do 1Password — o do DONO. Automacao nunca usa este caminho. */
+export const ehAgente1Password = (sock) => /(^|[\\/])\.1password[\\/]/i.test(String(sock ?? ''))
+
+/** O `oauth_token:` em texto no `hosts.yml` do `gh`: so' a PRESENCA da chave, nunca o valor. */
+export function ghTokenEmTexto({ env = process.env, fs: fsm = fs } = {}) {
+  // No win32 o `gh` usa o keyring (wincred); o caminho de texto e' o WSL/Linux sem keyring.
+  if (process.platform === 'win32') return false
+  const f = path.join(env.HOME || os.homedir(), '.config', 'gh', 'hosts.yml')
+  if (!fsm.existsSync(f)) return false
+  return fsm.readFileSync(f, 'utf8').split(/\r?\n/).some((l) => /^\s*oauth_token:\s*\S/.test(l))
+}
+
+/** O remote que o doctor julga (default: `origin`); `null` quando o repo nao tem um. */
+export function remoteDoProjeto({ cwd = process.cwd(), nome = 'origin', git = spawnSync } = {}) {
+  const r = git('git', ['remote', 'get-url', nome], { cwd, encoding: 'utf8' })
+  return r.status === 0 ? String(r.stdout ?? '').trim() : null
+}
+
+/** `git rev-list @{u}..HEAD` — quantos commits locais ainda nao foram empurrados. */
+export function commitsNaoEmpurrados({ cwd = process.cwd(), git = spawnSync } = {}) {
+  const up = git('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], { cwd, encoding: 'utf8' })
+  if (up.status !== 0) return { semUpstream: true, n: null }
+  const r = git('git', ['rev-list', '--count', '@{u}..HEAD'], { cwd, encoding: 'utf8' })
+  return { semUpstream: false, n: Number(String(r.stdout ?? '').trim() || 0) }
+}
+
+/** Licao 7: o TRANSPORTE de quem commita. Ator humano nao e' julgado (o transporte e' dele). */
+export function transportePorAtor({ ator, env = process.env, remote = null, ghTexto = false } = {}) {
+  if (ator !== 'agent') return { nome: 'transporte', ok: true, detalhe: `ator ${ator} — transporte e' acao do dono` }
+  if (/^(ssh:\/\/|git@)/.test(String(remote ?? ''))) {
+    return { nome: 'transporte', ok: false, detalhe: `ator agente com remote SSH (${remote}) — use HTTPS com o token do bot (licao 7)` }
+  }
+  if (ehAgente1Password(env.SSH_AUTH_SOCK)) {
+    return { nome: 'transporte', ok: false, detalhe: 'ator agente com SSH_AUTH_SOCK do agente do 1Password — esse agente SSH pertence ao dono (licao 7)' }
+  }
+  if (ghTexto) {
+    return { nome: 'transporte', ok: false, detalhe: "gh com `oauth_token:` em texto no ~/.config/gh/hosts.yml (sem keyring) — use o credential helper do bot (licao 7)" }
+  }
+  return { nome: 'transporte', ok: true, detalhe: `HTTPS/sem agente do dono${remote ? ` (${remote})` : ''}` }
+}
+
+/** Licao 9: ator agente com commit local nao empurrado (ou sem upstream) = FALHA. */
+export function pushPorAtor({ ator, commits } = {}) {
+  if (ator !== 'agent') return { nome: 'push', ok: true, detalhe: `ator ${ator} — push so' com o dono presente (licao 9)` }
+  if (!commits || commits.semUpstream) return { nome: 'push', ok: false, detalhe: 'branch sem upstream — o commit do agente nao foi empurrado (licao 9)' }
+  if (commits.n > 0) return { nome: 'push', ok: false, detalhe: `${commits.n} commit(s) local(is) sem push (licao 9)` }
+  return { nome: 'push', ok: true, detalhe: 'sem commit local pendente' }
+}
+
+/** Os rc que o scan rapido olha — so' arquivos de shell, nunca transcripts nem git. */
+export const RC_FILES = ['.bashrc', '.zshrc', '.profile', '.bash_profile']
+
+/** Licao 5/11: scan RAPIDO — so' env e rc; reporta NOMES, jamais o valor. */
+export function scanRapido({ env = process.env, fs: fsm = fs } = {}) {
+  const alvos = Object.entries(env)
+    .filter(([, v]) => findSecretsIds(String(v ?? '')).length)
+    .map(([k]) => k)
+  const home = env.HOME || os.homedir()
+  for (const rc of RC_FILES) {
+    const f = path.join(home, rc)
+    if (fsm.existsSync(f) && findSecretsIds(fsm.readFileSync(f, 'utf8')).length) alvos.push(rc)
+  }
+  return { nome: 'scan', ok: alvos.length === 0, detalhe: alvos.length ? `segredo em: ${alvos.join(', ')}` : 'env e rc limpos' }
+}
+
+/**
+ * O doctor de SEGREDOS: tudo do `check` + idade do cache + transporte/push por ator + scan
+ * rapido. Mesma forma do `check` (`{ ok, linhas }`), entao quem ja' consome uma consome a outra.
+ */
+export function doctor(cfg, {
+  env = process.env,
+  fs: fsm = fs,
+  decifra = decifraMapa,
+  ator = actor({ env }),
+  cwd = process.cwd(),
+  remoteNome = 'origin',
+  git = spawnSync,
+  remote,
+  commits,
+  gh,
+  agora,
+} = {}) {
+  const base = check(cfg, { env, fs: fsm, decifra })
+  const linhas = [...base.linhas]
+
+  const max = Number(cfg.cache_max_dias ?? CACHE_MAX_DIAS)
+  const dias = idadeCache(cfg, { fs: fsm, agora })
+  if (dias !== null) {
+    linhas.push(
+      dias > max
+        ? { nome: 'cache_idade', ok: true, detalhe: `AVISO: cache com ${dias} dia(s) (max ${max}) — rode \`tars secrets refresh\`` }
+        : { nome: 'cache_idade', ok: true, detalhe: `${dias} dia(s) (max ${max})` },
+    )
+  }
+
+  const rem = remote ?? remoteDoProjeto({ cwd, nome: remoteNome, git })
+  const ghTexto = gh ?? ghTokenEmTexto({ env, fs: fsm })
+  linhas.push(transportePorAtor({ ator, env, remote: rem, ghTexto }))
+  linhas.push(pushPorAtor({ ator, commits: commits ?? commitsNaoEmpurrados({ cwd, git }) }))
+  linhas.push(scanRapido({ env, fs: fsm }))
+
+  return { ok: linhas.every((l) => l.ok), linhas }
+}
+
+/**
+ * Le a tabela do PROJETO e roda o doctor de segredos. `null` quando o projeto nao declara
+ * `[secrets]` nem `[identity]` — sem opt-in, o doctor nao inventa checagem nenhuma. Config
+ * invalida vira FALHA (nao excecao): o doctor e' onde o erro precisa APARECER, nao derrubar.
+ */
+export function doctorDoProjeto(root, { env = process.env, fs: fsm = fs, ...rest } = {}) {
+  const file = path.join(root, '.ai', 'tars.toml')
+  if (!fsm.existsSync(file)) return null
+  const tabs = parseToml(fsm.readFileSync(file, 'utf8'))
+  if (!tabs.secrets && !tabs.identity) return null
+  try {
+    const cfg = lerConfig(tabs.secrets ?? {}, { project: root, env })
+    return doctor(cfg, { env, fs: fsm, cwd: root, remoteNome: tabs.identity?.remote ?? 'origin', ...rest })
+  } catch (e) {
+    if (e instanceof ErroConfig) return { ok: false, linhas: [{ nome: 'secrets', ok: false, detalhe: e.message }] }
+    throw e
+  }
 }
 
 // --- ROTACAO DA CHAVE (rotate) E TROCA DO TOKEN (token set) ---------------------------

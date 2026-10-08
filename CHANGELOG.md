@@ -150,8 +150,26 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   `findSecrets` passa a ser a projeção dele em rótulos: uma varredura, duas projeções — a lista
   de padrões continua sendo uma só para o hook e para o `--doctor`.
 
-> **Antes do release de dev.9**: entram ainda **S3** (cofre do projeto nos consumidores). O dev.9
-> não fecha sem ela.
+**`tars doctor` de segredos (S3), ainda dentro de dev.9:**
+- O `doctor` de um projeto que declara `[secrets]` **ou** `[identity]` no `.ai/tars.toml` passa a
+  incluir: (1) **tudo do `tars secrets check`** (chave, token, template, recipient, decifra,
+  ambiente, refs com a camada de origem, vencimento) — o julgamento continua em **um** lugar
+  (R3), o `doctor` só anexa; (2) a **idade do cache**: acima de `cache_max_dias` (default 30, novo
+  campo da tabela) é **aviso** "rode `tars secrets refresh`", não falha; (3) o **transporte por
+  ator** (lição 7): ator agente com remote `ssh://`/`git@`, ou `SSH_AUTH_SOCK` apontando para o
+  agente do 1Password, ou `oauth_token:` em texto no `~/.config/gh/hosts.yml` (WSL/Linux sem
+  keyring — só a **presença** da chave é lida, nunca o valor) **reprova**; (4) o **push por ator**
+  (lição 9): ator agente com commit local não empurrado (`git rev-list @{u}..HEAD` > 0) ou **sem
+  upstream** reprova; ator humano **não** é acusado; (5) um **scan rápido** (só `env` e rc —
+  transcripts e git continuam no `scan` explícito). A lição 8 (identidade do bot) fica para dev.10.
+- Cada linha reprovada vira uma FALHA nomeada (`segredos/<nome>`) na mesma lista de `faltando` das
+  doutrinas — o exit code e o `--json` do `doctor` não precisaram de um caminho novo. Config
+  inválida (ex.: `source` ausente com `[secrets]` declarado) vira **linha** de falha, não exceção:
+  o `doctor` é onde o erro precisa aparecer.
+- `cache_max_dias` entra na tabela `CAMPOS` (merge campo a campo, como `token_expires`).
+- Testes: `tars-doctor-secrets.test.mjs` (novo) — um caso **verde** e um **vermelho** por item.
+
+> **Antes do release de dev.9**: o dev.9 não fecha sem esta fatia (S3).
 
 ### Por que
 Cada projeto consumidor vinha reinventando o próprio cofre (caminho fixo, variável de ambiente,
