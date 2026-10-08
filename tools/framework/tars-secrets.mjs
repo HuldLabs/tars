@@ -209,8 +209,13 @@ export function expandePadrao(campo, padrao, nomeProjeto) {
  * (`<campo>_pattern`, tipicamente no perfil): a ref e' gerada com o `{projeto}` do `dir`, e
  * a origem gravada e' `perfil(padrao)` (ou `projeto(padrao)`). A ref pronta SEMPRE vence o
  * padrao; o projeto SEMPRE vence o perfil.
+ *
+ * EXCECAO: `key_scope=machine` IGNORA o padrao de `age_key_ref` (de QUALQUER camada). A chave
+ * da maquina e' GERADA aqui — nao ha' ref a expandir, e um padrao que so' existe para nomear
+ * uma ref no cofre nao pode virar "declaracao" que o proprio `check` reprova depois. So' uma
+ * ref PRONTA (projeto ou perfil) e' declaracao em machine — e o `lerConfig` a recusa.
  */
-function resolve(projeto, perfil, dir, nomeProjeto) {
+function resolve(projeto, perfil, dir, nomeProjeto, key_scope) {
   const cfg = { _origem: {} }
   const camadas = [['projeto', projeto], ['perfil', perfil]]
   for (const [campo, def] of Object.entries(CAMPOS)) {
@@ -220,6 +225,10 @@ function resolve(projeto, perfil, dir, nomeProjeto) {
         cfg._origem[campo] = camada
         break
       }
+    }
+    if (def.ref && campo === 'age_key_ref' && key_scope === 'machine' && cfg[campo] === undefined) {
+      cfg._origem[campo] = 'n/a (machine)'
+      continue
     }
     if (def.ref && cfg[campo] === undefined) {
       for (const [camada, tabela] of camadas) {
@@ -268,11 +277,13 @@ export function lerConfig(secrets = {}, { project = process.cwd(), env = process
   if (!FONTES.includes(secrets.source)) {
     throw new ErroConfig(`[secrets] source invalido: '${secrets.source}' (use ${FONTES.join(' | ')})`)
   }
-  const cfg = resolve(secrets, emPerfil, dir, path.basename(dir))
+  const cfg = resolve(secrets, emPerfil, dir, path.basename(dir), key_scope)
   const sops_config = secrets.sops_config ?? null
   // A ref da chave vem de QUALQUER camada (ref pronta OU padrao por projeto), mas nunca do
   // template (ver `confereTemplate`).
   if (key_scope === 'project') exigeRef(cfg, 'age_key_ref', env)
+  // Em machine o PADRAO e' ignorado no merge (ver `resolve`): o que sobra aqui e' declaracao
+  // EXPLICITA de ref (projeto ou perfil) — essa sim e' erro, porque a chave e' gerada na maquina.
   if (key_scope === 'machine' && cfg.age_key_ref) {
     throw new ErroConfig('[secrets] key_scope=machine PROIBE age_key_ref: a chave e\' gerada NA MAQUINA, nunca lida do cofre')
   }

@@ -707,6 +707,24 @@ describe('camadas de config: embutido | perfil | projeto', () => {
     expect(cfg._origem.age_key_ref).toBe('projeto')
   })
 
+  it('key_scope=machine IGNORA o padrao do perfil: nenhuma ref, nenhum erro', () => {
+    const c = cenario()
+    c.perfil('[secrets]\nage_key_ref_pattern = "op://secrets/{projeto}/age/age.key"\n')
+    const cfg = c.cfg({ key_scope: 'machine', source: 'automation' })
+    expect(cfg.age_key_ref).toBeUndefined()
+    // A origem nao e' uma camada: em machine nao ha' ref — a chave e' gerada aqui.
+    expect(cfg._origem.age_key_ref).toBe('n/a (machine)')
+    const linha = check(cfg, { env: { PATH: process.env.PATH } }).linhas.find((l) => l.nome === 'refs')
+    expect(linha.detalhe).toContain('age_key_ref=n/a (machine)')
+    expect(linha.detalhe).not.toContain('op://')
+  })
+
+  it('key_scope=machine: ref PRONTA no perfil continua sendo erro (so o padrao e ignorado)', () => {
+    const c = cenario()
+    c.perfil('[secrets]\nage_key_ref = "op://perfil/age/ref"\n')
+    expect(() => c.cfg({ key_scope: 'machine', source: 'automation' })).toThrow(/machine PROIBE age_key_ref/)
+  })
+
   it('check mostra a ORIGEM `perfil(padrao)` quando a ref vem do padrao', () => {
     const c = cenario()
     c.perfil('[secrets]\nage_key_ref_pattern = "op://secrets/{projeto}/age/age.key"\n')
