@@ -103,23 +103,33 @@ repo.
 | camada | onde | o que carrega |
 | --- | --- | --- |
 | **embutido** | no Tars | só estrutura, nomes de campo e **caminhos locais** `~/.config/tars/<projeto>/` (Windows `%APPDATA%\tars\<projeto>\`). **Nenhuma ref `op://` e nenhuma identidade** — identidade não viaja no catálogo. |
-| **perfil** | `~/.config/tars/profile.toml` (Windows `%APPDATA%\tars\profile.toml`), **fora do repo** | as refs **pessoais**: `cofre` (a chave age), `bot`, `allowed_signers` — dentro de `[secrets]`. Um perfil por máquina. |
+| **perfil** | `~/.config/tars/profile.toml` (Windows `%APPDATA%\tars\profile.toml`), **fora do repo** | as refs **pessoais**: `age_key_ref` (a chave age — ref pronta ou `age_key_ref_pattern`), `bot`, `allowed_signers` — dentro de `[secrets]`. Um perfil por máquina. |
 | **projeto** | `.ai/tars.toml` `[secrets]` | sobrescreve o perfil **campo a campo** (o que o projeto não declara segue vindo do perfil). |
 
 Comando que precisa de uma ref que **nenhuma** camada declarou falha alto **nomeando o campo** —
 nada de fallback mudo. `tars secrets check` mostra a **camada de origem** de cada ref
-(`refs  cofre=perfil bot=nenhum allowed_signers=projeto`), nunca o valor.
+(`refs  age_key_ref=perfil(padrao) bot=nenhum allowed_signers=projeto`), nunca o valor.
+
+**Ref por projeto (o padrão).** A chave age é **de cada projeto**, então o perfil declara um
+**padrão** com o único placeholder `{projeto}` — resolvido pelo nome do diretório do projeto —
+em vez de uma ref fixa por máquina:
 
 ```toml
 # ~/.config/tars/profile.toml — refs do usuário (fora de repo; o projeto nunca o versiona)
 [secrets]
-cofre = "op://tars/age-key/ref"
+age_key_ref_pattern = "op://secrets/{projeto}/age/age.key"  # `{projeto}` OBRIGATÓRIO: sem ele todos dividem a chave
+# bot / allowed_signers são POR PESSOA: seguem como ref pronta
+```
 
+O padrão **sem `{projeto}`** falha alto (senão todos os projetos dividem a mesma chave). Um
+`age_key_ref` **pronto** — no perfil ou no `.ai/tars.toml` — vence o padrão.
+
+```toml
 # .ai/tars.toml — o projeto sobrescreve campo a campo
 [secrets]
 key_scope = "project"                  # "project" (chave vem do cofre) | "machine" (gerada aqui)
 source    = "automation"               # OBRIGATÓRIO: "automation" (token em arquivo) | "owner" (sessão do app 1Password)
-# cofre = "op://tars/age-key/ref"      # ref `op://` da chave age; obrigatório com key_scope="project", proibido com "machine"
+# age_key_ref = "op://tars/age-key/ref"  # ref `op://` PRONTA da chave age — vence o padrão do perfil; obrigatório com key_scope="project", proibido com "machine"
 # sops_config = ".sops.yaml"           # versionado: o `check` exige o recipient da chave nele
 # age_key_file / cache_file / template / token_file — defaults em <dir do projeto>
 ```

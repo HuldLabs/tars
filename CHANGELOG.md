@@ -15,15 +15,21 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   campo e caminhos **locais** (`~/.config/tars/<projeto>/`); **nenhuma ref `op://` e nenhuma
   identidade** no catálogo. (2) **perfil do usuário**, fora do repo
   (`~/.config/tars/profile.toml`; Windows `%APPDATA%\tars\profile.toml`) — as refs pessoais
-  (`cofre`, `bot`, `allowed_signers`). (3) **projeto** (`.ai/tars.toml [secrets]`), que
+  (`age_key_ref`, `bot`, `allowed_signers`). (3) **projeto** (`.ai/tars.toml [secrets]`), que
   sobrescreve o perfil campo a campo. Ref que nenhuma camada declara **falha alta nomeando o
-  campo** (o campo da chave age, `cofre`, substitui o antigo `age_key_ref`).
+  campo**. O campo da chave age chama-se `age_key_ref` em toda camada (o antigo nome interno
+  `cofre` saiu: o mesmo nome nos tres lugares).
+- **Ref da chave age por PROJETO (o padrão)**: o perfil declara `age_key_ref_pattern` com o
+  placeholder único `{projeto}` (resolvido pelo nome do diretório), e não uma ref fixa por
+  máquina — assim cada projeto tem a sua chave. Padrão sem `{projeto}` **falha alto**. Um
+  `age_key_ref` pronto (perfil ou projeto) vence o padrão; `bot`/`allowed_signers` são por
+  PESSOA e seguem ref pronta. `check` mostra a origem `perfil(padrao)` ou `projeto`.
 - `tars secrets check` ganha a linha **`refs`**: a **camada de origem** de cada ref
   (`embutido | perfil | projeto`), nunca o valor.
 - `source="automation"` força **`OP_BIOMETRIC_UNLOCK_ENABLED=false`** no env do spawn do `op`
   (não há dono nem leitor biométrico nesse caminho); com `owner` nada é forçado.
 - `key_scope` (`project` | `machine`) e `source` (`automation` | `owner`) **obrigatórios**, sem
-  fallback entre fontes. `project` exige a ref `cofre`; `machine` proíbe `cofre` e `sops_config`
+  fallback entre fontes. `project` exige a ref `age_key_ref`; `machine` proíbe `age_key_ref` e `sops_config`
   versionado — cada violação grita com a lista de valores válidos.
 - **Um wrapper único para `op`/`sops`**: toda ref é conferida como `^op://` antes do spawn
   (inválida = erro que **não** ecoa o valor) e o stderr volta **redigido** (valor de segredo
@@ -66,8 +72,8 @@ abrir o cofre, e o que o filho herda do ambiente. Regra que existe em N lugares 
   `lerConfig` recebe `{}` e o comando falha alto nomeando o `source` obrigatório.
 
 ### O que o consumidor faz
-Põe a ref `cofre` no perfil (`~/.config/tars/profile.toml`) uma vez por máquina, declara
-`[secrets]` no `.ai/tars.toml` (`source` obrigatório; `cofre` com `key_scope="project"`), roda
+Põe o `age_key_ref_pattern` no perfil (`~/.config/tars/profile.toml`) uma vez por máquina, declara
+`[secrets]` no `.ai/tars.toml` (`source` obrigatório; `key_scope="project"`), roda
 `tars secrets refresh` uma vez para gravar a chave e o cache, e usa
 `tars secrets exec -- <cmd>` como entrypoint dos processos que precisam dos segredos.
 `tars secrets check` julga o estado sem abrir o cofre.

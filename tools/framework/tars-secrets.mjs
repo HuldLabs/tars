@@ -135,7 +135,7 @@ function spawnOp(args, env) {
  * embutido. A tabela e' a SSOT do merge: acrescentar campo e' acrescentar linha aqui (R3).
  */
 export const CAMPOS = {
-  cofre: { ref: true }, // a chave age do projeto no cofre
+  age_key_ref: { ref: true }, // a chave age do projeto no cofre
   bot: { ref: true }, // a identidade de automacao no cofre
   allowed_signers: { ref: true }, // o allowed_signers da assinatura de commit no cofre
   age_key_file: { padrao: (dir) => path.join(dir, 'age.key') },
@@ -186,17 +186,47 @@ export function lerPerfil({ env = process.env, fs: fsm = fs } = {}) {
 }
 
 /**
+ * Um PADRAO de ref por PROJETO (`<campo>_pattern`): o unico placeholder e' `{projeto}`,
+ * resolvido pelo nome do diretorio do projeto. Sem o placeholder o padrao nao distingue
+ * projeto nenhum — todos dividiriam a MESMA chave, e o erro so' apareceria longe (uma
+ * chave compartilhada que ninguem percebe). Por isso aqui e' falha ALTA (R4).
+ */
+export function expandePadrao(campo, padrao, nomeProjeto) {
+  if (!String(padrao).includes('{projeto}')) {
+    throw new ErroConfig(
+      `[secrets] o padrao do perfil precisa de {projeto}, senao todos os projetos dividem a chave (\`${campo}_pattern\`)`,
+    )
+  }
+  return String(padrao).split('{projeto}').join(nomeProjeto)
+}
+
+/**
  * O MERGE, campo a campo, num lugar so'. Para cada campo vale a camada mais forte que o
  * declara (projeto > perfil > embutido) e fica gravada a ORIGEM (`_origem`) — e' o que o
  * `check` mostra e o que permite a mensagem de ref ausente nomear as tres camadas.
+ *
+ * Um campo de REF que nenhuma camada declara PRONTO pode vir de um padrao por projeto
+ * (`<campo>_pattern`, tipicamente no perfil): a ref e' gerada com o `{projeto}` do `dir`, e
+ * a origem gravada e' `perfil(padrao)` (ou `projeto(padrao)`). A ref pronta SEMPRE vence o
+ * padrao; o projeto SEMPRE vence o perfil.
  */
-function resolve(projeto, perfil, dir) {
+function resolve(projeto, perfil, dir, nomeProjeto) {
   const cfg = { _origem: {} }
+  const camadas = [['projeto', projeto], ['perfil', perfil]]
   for (const [campo, def] of Object.entries(CAMPOS)) {
-    for (const [camada, tabela] of [['projeto', projeto], ['perfil', perfil]]) {
+    for (const [camada, tabela] of camadas) {
       if (tabela[campo] !== undefined && tabela[campo] !== null) {
         cfg[campo] = tabela[campo]
         cfg._origem[campo] = camada
+        break
+      }
+    }
+    if (def.ref && cfg[campo] === undefined) {
+      for (const [camada, tabela] of camadas) {
+        const padrao = tabela[`${campo}_pattern`]
+        if (padrao === undefined || padrao === null) continue
+        cfg[campo] = expandePadrao(campo, padrao, nomeProjeto)
+        cfg._origem[campo] = `${camada}(padrao)`
         break
       }
     }
@@ -212,7 +242,7 @@ function resolve(projeto, perfil, dir) {
 function exigeRef(cfg, campo, env = process.env) {
   if (!cfg[campo]) {
     throw new ErroConfig(
-      `[secrets] \`${campo}\` nao declarado em nenhuma camada (${CAMADAS.join(' | ')}): declare a ref \`op://\` no perfil (${perfilFile({ env })}) ou no \`.ai/tars.toml [secrets]\` do projeto`,
+      `[secrets] \`${campo}\` nao declarado em nenhuma camada (${CAMADAS.join(' | ')}): declare a ref \`op://\` (ou \`${campo}_pattern\` com \`{projeto}\`) no perfil (${perfilFile({ env })}) ou no \`.ai/tars.toml [secrets]\` do projeto`,
     )
   }
   return validaRef(cfg[campo])
@@ -238,12 +268,13 @@ export function lerConfig(secrets = {}, { project = process.cwd(), env = process
   if (!FONTES.includes(secrets.source)) {
     throw new ErroConfig(`[secrets] source invalido: '${secrets.source}' (use ${FONTES.join(' | ')})`)
   }
-  const cfg = resolve(secrets, emPerfil, dir)
+  const cfg = resolve(secrets, emPerfil, dir, path.basename(dir))
   const sops_config = secrets.sops_config ?? null
-  // A ref da chave vem de QUALQUER camada, mas nunca do template (ver `confereTemplate`).
-  if (key_scope === 'project') exigeRef(cfg, 'cofre', env)
-  if (key_scope === 'machine' && cfg.cofre) {
-    throw new ErroConfig('[secrets] key_scope=machine PROIBE cofre: a chave e\' gerada NA MAQUINA, nunca lida do cofre')
+  // A ref da chave vem de QUALQUER camada (ref pronta OU padrao por projeto), mas nunca do
+  // template (ver `confereTemplate`).
+  if (key_scope === 'project') exigeRef(cfg, 'age_key_ref', env)
+  if (key_scope === 'machine' && cfg.age_key_ref) {
+    throw new ErroConfig('[secrets] key_scope=machine PROIBE age_key_ref: a chave e\' gerada NA MAQUINA, nunca lida do cofre')
   }
   // Um `.sops.yaml` VERSIONADO com escopo de maquina seria uma segunda fonte de verdade: a
   // receita de cifra viajaria no git e a chave local nao a explicaria. Recusa alta.
@@ -349,14 +380,14 @@ function garanteChave(cfg, env = process.env) {
   fs.mkdirSync(path.dirname(cfg.age_key_file), { recursive: true, mode: 0o700 })
   // `--out-file`, NUNCA stdout (ADR-013 do segtools): material de chave em pipe vaza para o
   // log de quem chamou o `op`. A ref vem de uma das CAMADAS — `validaRef` ja' a conferiu.
-  validaRef(cfg.cofre)
+  validaRef(cfg.age_key_ref)
   const tmp = `${cfg.age_key_file}.novo`
   fs.rmSync(tmp, { force: true }) // sobra de um refresh morto no meio nao contamina o leitor
   try {
-    const r = spawnOp(['read', '--out-file', tmp, cfg.cofre], envDoCofre(cfg, env))
+    const r = spawnOp(['read', '--out-file', tmp, cfg.age_key_ref], envDoCofre(cfg, env))
     if (r.status !== 0 || !fs.existsSync(tmp)) {
       throw new ErroConfig(
-        `[secrets] o 1Password nao entregou a chave age (${cfg.cofre}) em ${cfg.age_key_file}: ${(r.stderr || r.error?.message || '').trim()}`,
+        `[secrets] o 1Password nao entregou a chave age (${cfg.age_key_ref}) em ${cfg.age_key_file}: ${(r.stderr || r.error?.message || '').trim()}`,
       )
     }
     protegeArquivo(tmp)
@@ -403,7 +434,7 @@ export function confereTemplate(cfg, { fs: fsm = fs } = {}) {
     }
     if (refs > 1) return { ok: false, detalhe: `linha ${i + 1}: mais de uma \`op://\` — cada linha e' uma chave` }
   }
-  if (cfg.cofre && txt.includes(cfg.cofre)) {
+  if (cfg.age_key_ref && txt.includes(cfg.age_key_ref)) {
     return { ok: false, detalhe: 'o template cita a ref da CHAVE age — ela vem so\' do manifesto' }
   }
   return { ok: true, detalhe: `${achadas} referencia(s) \`op://\` no formato \`KEY=op://...\`` }
