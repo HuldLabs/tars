@@ -4,6 +4,23 @@ Regra de boot de **todo** projeto que consome o Tars: o catálogo a leva ao cons
 (`tars sync`) e o adaptador a põe no topo do arquivo de boot gerado. Vale para qualquer
 sessão de agente, em qualquer projeto.
 
+## Regra zero: todo problema passa pela skill `root-cause-debugging`
+
+Todo problema, bug, bloqueio, erro, falha de teste ou condição inesperada é tratado
+**pela skill `root-cause-debugging`**, antes de qualquer outra ação: reproduzir, medir,
+levantar hipótese, testar a hipótese e só então corrigir ou pedir algo a alguém.
+
+- **Nunca chutar:** sem afirmar causa, estado ou "como era antes" sem conferir.
+  Hipótese não testada se apresenta como hipótese.
+- **Conferir antes de pedir:** antes de pedir ao dono uma ação, uma credencial ou uma
+  decisão, verifique o que você mesmo pode verificar (só leitura, sem efeito colateral).
+- **Falha silenciosa é falha:** saída vazia, `cat` que não leu ou comando que "não fez
+  nada" vira uma investigação, não uma suposição.
+
+Porquê (incidente de 08/10/2026): o agente afirmou de memória como o push funcionava antes
+do crash e errou; acionou a biometria do dono antes de procurar o token de automação que
+existia; e pediu ao dono ações que ele mesmo podia testar.
+
 ## Mantras (a régua de todo desenho)
 
 Toda decisão de arquitetura — e todo ADR — é julgada por estas bases, e o desenho **diz
