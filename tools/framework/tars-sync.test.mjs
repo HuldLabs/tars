@@ -4,7 +4,24 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { declare, hashSource, init, parseToml, readManifest, sync } from "./tars-sync.mjs";
+import {
+  deadHooks,
+  declare,
+  destOf,
+  GIT_HOOKS,
+  hashSource,
+  hookBody,
+  hookVivo,
+  init,
+  parseToml,
+  readManifest,
+  sync,
+} from "./tars-sync.mjs";
+import { joinPosix, posix } from "./tars-paths.mjs";
+
+// O `path` do win32, usado de proposito: e' ele que monta `gates\commit-msg` e quebrou a
+// chave do lock. Forcar aqui prova a normalizacao mesmo quando o teste roda no Linux.
+const w32 = path.win32;
 
 // AI-TARS fatia 3 (docs/TARS.md §Fatias): `tars sync` puxa do catalogo so' o
 // DECLARADO no `.ai/tars.toml` do projeto consumidor, trava sha256 em
@@ -39,9 +56,12 @@ function scaffold({ manifest = MANIFEST } = {}) {
 }
 
 const readLock = (lock) => JSON.parse(fs.readFileSync(lock, "utf8"));
+// A arvore e' um conjunto de CHAVES do catalogo, nao caminho de disco: no win32 o
+// `readdirSync` devolve `gates\commit-msg` e a comparacao com o esperado (sempre `/`)
+// reprovaria um sync correto. Mesma regua do `tars-paths.mjs`.
 const treeOf = (dir) =>
   fs.existsSync(dir)
-    ? fs.readdirSync(dir, { recursive: true }).map(String).sort()
+    ? fs.readdirSync(dir, { recursive: true }).map(String).map((p) => p.replace(/\\/g, "/")).sort()
     : [];
 
 describe("tars-sync — so' o declarado e' copiado", () => {
@@ -237,7 +257,9 @@ describe("tars-sync — guards e governance (fatia 2b)", () => {
     expect(fs.existsSync(path.join(base, "governance", "outro.md"))).toBe(false);
   });
 
-  it("guarda o BIT EXECUTAVEL do guard na copia", async () => {
+  // No win32 o NTFS nao guarda bit de execucao (chmod so' mexe no read-only): a testemunha
+  // la' e' o shebang, coberta pelos testes de `hookVivo`. Aqui a prova e' POSIX.
+  it.skipIf(process.platform === "win32")("guarda o BIT EXECUTAVEL do guard na copia", async () => {
     const { tars, project, base } = scaffold();
 
     await sync({ tars, project, log: () => {} });
@@ -480,7 +502,11 @@ describe("tars-sync — hooks do git (fatia 3b)", () => {
     const f = path.join(project, ".githooks", "pre-commit");
     const body = fs.readFileSync(f, "utf8");
     expect(body).toContain("tars hooks pre-commit");
-    expect(fs.statSync(f).mode & 0o111).toBeGreaterThan(0);
+    // A testemunha de "hook vivo" e' a da plataforma (bit no POSIX, shebang no win32) — a
+    // MESMA que o `deadHooks` usa: assert aqui com `mode & 0o111` reprovava no Windows um
+    // hook que o proprio sync considera vivo.
+    expect(hookVivo(f)).toBe(true);
+    expect(body.startsWith("#!")).toBe(true);
     expect(fs.existsSync(path.join(project, ".githooks", "commit-msg"))).toBe(false);
   });
 
@@ -521,7 +547,7 @@ describe("tars-sync — hooks do git (fatia 3b)", () => {
     const r = await sync({ tars, project, log: () => {}, adopt: ["pre-commit"] });
 
     expect(r.hooks).toContain(".githooks/pre-commit");
-    expect(fs.statSync(f).mode & 0o111).toBeGreaterThan(0);
+    expect(hookVivo(f)).toBe(true);
     expect(fs.readFileSync(f, "utf8")).toContain("# Gerado por `tars sync`");
     expect(fs.readFileSync(f + ".bak", "utf8")).toBe(meu);
   });
@@ -745,5 +771,103 @@ describe("tars-sync — init", () => {
 
     await expect(init({ tars, project, log: () => {} })).rejects.toThrow(/ja' existe .*tars\.toml/);
     expect(fs.readFileSync(path.join(project, ".ai", "tars.toml"), "utf8")).toBe(antes);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Paridade Windows (0.0.1-dev.8): chave de catalogo e' IDENTIFICADOR (sempre `/`), e o
+// "hook vivo" tem testemunha por plataforma. No Linux estas provas nao mudam nada; no
+// win32 elas sao a diferenca entre um lock que casa e um drift falso.
+// ---------------------------------------------------------------------------
+describe("tars-sync — paridade Windows", () => {
+  it("a chave do item e' posix em QUALQUER plataforma (join do win32 normalizado)", () => {
+    expect(destOf({ area: "gates", item: "commit-msg" })).toBe("gates/commit-msg");
+    expect(destOf({ area: "memory", item: "git" })).toBe("memory/agent/git.md");
+    expect(destOf({ area: "guards", item: "block-secret-dump" })).toBe("guards/block-secret-dump.sh");
+    // A prova do caso real: o que o `join` do win32 produziria tem de sair com `/`.
+    expect(joinPosix(w32.join("gates", "commit-msg"))).toBe("gates/commit-msg");
+    expect(posix(w32.join("memory", "agent", "git.md"))).toBe("memory/agent/git.md");
+  });
+
+  it("o lock sai identico ao do Linux (nenhuma chave com `\`)", async () => {
+    const { tars, project, lock, base } = scaffold();
+    await sync({ tars, project, log: () => {} });
+
+    const keys = Object.keys(readLock(lock).files);
+    expect(keys).toContain("gates/commit-msg");
+    expect(keys.filter((k) => k.includes("\\"))).toEqual([]);
+    // Drift falso: base intocada, segunda rodada nao acusa nada.
+    const r = await sync({ tars, project, log: () => {} });
+    expect(r.stale).toEqual([]);
+    expect(r.wrote).toEqual([]);
+    expect(treeOf(path.join(base, "gates"))).toEqual(["commit-msg", "commit-msg/GATE.md", "commit-msg/gate.mjs"]);
+  });
+
+  it("hookVivo: no win32 a testemunha e' o shebang (nao ha' bit no NTFS)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-hook-"));
+    const com = path.join(dir, "com-shebang");
+    const sem = path.join(dir, "sem-shebang");
+    fs.writeFileSync(com, "#!/usr/bin/env sh\nexit 0\n", { mode: 0o644 });
+    fs.writeFileSync(sem, "exit 0\n", { mode: 0o644 });
+
+    expect(hookVivo(com, { win32: true })).toBe(true);
+    expect(hookVivo(sem, { win32: true })).toBe(false);
+    expect(hookVivo(path.join(dir, "nao-existe"), { win32: true })).toBe(false);
+    // No POSIX a mesma testemunha e' o bit: 0644 nao executa.
+    expect(hookVivo(sem, { win32: false })).toBe(false);
+  });
+
+  it("sync fecha com o hook do git no disco: `deadHooks` nao acusa hook morto por bit", async () => {
+    const { tars, project } = scaffold();
+    // O consumidor JA' usa hooks proprios (`.githooks/` existe) — condicao do sync escrever.
+    fs.mkdirSync(path.join(project, ".githooks"), { recursive: true });
+    const r = await sync({ tars, project, log: () => {} });
+
+    const f = path.join(project, ".githooks", "pre-commit");
+    expect(r.hooks).toContain(".githooks/pre-commit");
+    expect(hookVivo(f)).toBe(true);
+    expect(deadHooks(project, await readManifest(project))).toBeNull();
+  });
+
+  it("o corpo do hook procura nesta ordem: $TARS_HOME/dist/tars, `tars` no PATH, node do repo", () => {
+    const b = hookBody("pre-commit");
+    const home = b.indexOf("$TARS_HOME/dist/tars");
+    const path = b.indexOf("command -v tars");
+    const node = b.indexOf("node \"$root/tools/framework/tars.mjs\"");
+    expect(home).toBeGreaterThan(-1);
+    expect(path).toBeGreaterThan(home);
+    expect(node).toBeGreaterThan(path);
+    expect(b.startsWith("#!/usr/bin/env sh")).toBe(true);
+  });
+
+  it("o hook sem motor FALHA ALTO nomeando os tres caminhos procurados", () => {
+    const b = hookBody("pre-commit");
+    const erro = b.split("\n").find((l) => l.startsWith("echo \"hook pre-commit"));
+    expect(erro).toContain("$TARS_HOME/dist/tars");
+    expect(erro).toContain("'tars' no PATH");
+    expect(erro).toContain("$root/tools/framework/tars.mjs");
+    expect(b).toContain("exit 1");
+  });
+
+  it("a mensagem do hook NAO tem crase dentro de aspas duplas (o sh executaria `tars`)", () => {
+    // Incident: crase dentro de `"..."` e' SUBSTITUICAO DE COMANDO — ao so' montar o texto
+    // de erro, o `sh` rodava `tars`/`tars sync` e a mensagem saia errada (ou o hook, mudo).
+    // A prova e' por hook, no corpo GERADO, e cobre tambem os 3 `.githooks/` versionados.
+    for (const h of GIT_HOOKS) {
+      const erro = hookBody(h)
+        .split("\n")
+        .find((l) => l.startsWith(`echo "hook ${h}`));
+      expect(erro).toBeTruthy();
+      const dentro = erro.slice(erro.indexOf('"') + 1, erro.lastIndexOf('"'));
+      expect(dentro).not.toContain("`");
+    }
+    // Os arquivos versionados que EXISTEM sao o MESMO texto do gerador (senao o
+    // `tars sync` os reescreveria a cada rodada): a raiz sai de `here`, nao do cwd.
+    const githooks = path.join(here, "..", "..", ".githooks");
+    for (const h of GIT_HOOKS) {
+      const f = path.join(githooks, h);
+      if (!fs.existsSync(f)) continue; // `pre-push` so' existe se declarado
+      expect(fs.readFileSync(f, "utf8")).toBe(hookBody(h));
+    }
   });
 });

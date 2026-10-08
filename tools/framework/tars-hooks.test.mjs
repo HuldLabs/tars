@@ -3,14 +3,20 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseToml, sync } from "./tars-sync.mjs";
 import { planGates, runHooks } from "./tars-hooks.mjs";
+// O alvo do gate e' caminho de DISCO (`\` no win32): normaliza antes de casar/partir o
+// nome, senao o mock do teste nunca casa com o gate e o teste so' passa no Linux.
+import { posix } from "./tars-paths.mjs";
 
 // AI-TARS fatia 4 (docs/TARS.md §Modelo): o MOTOR roda os gates da base e os locais na
 // mesma ordem, para no primeiro que falhar e trata gate ausente como falha ruidosa. O
 // projeto e' temporario de verdade (base sincronizada da fixture + gates locais escritos
 // na hora); nada toca o Tars real.
-const TARS_FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "tars-sync-fixtures", "tars");
+// `new URL(...).pathname` no win32 devolve `/C:/...` e o `path.join` daqui saia `C:\C:\...`
+// (o teste so' rodava no Linux). `fileURLToPath` e' o caminho de disco certo nas duas.
+const TARS_FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), "tars-sync-fixtures", "tars");
 
 const MANIFEST = `[tars]
 version = "v0.4"
@@ -79,7 +85,7 @@ describe("tars-hooks — ordem e parada", () => {
     expect(r.rodados).toEqual(["g1", "g2", "tools/gates/meu.sh"]);
     // O 1o argumento de cada chamada e' o executavel (node p/ a base, sh p/ o local: a
     // pasta do catalogo entrega o `gate.mjs` dela); o 2o e' o alvo.
-    expect(trilha.map(([c, g]) => [c, g.split("/").slice(-1)[0]])).toEqual([
+    expect(trilha.map(([c, g]) => [c, posix(g).split("/").slice(-1)[0]])).toEqual([
       [process.execPath, "gate.mjs"],
       [process.execPath, "gate.mjs"],
       ["sh", "meu.sh"],
@@ -99,7 +105,7 @@ describe("tars-hooks — ordem e parada", () => {
       hook: "pre-commit", manifest, project,
       log: () => {},
       err: (m) => erros.push(m),
-      spawn: (c, a) => (rodados.push(a[0]), { status: a[0].includes("/g2/") ? 3 : 0 }),
+      spawn: (c, a) => (rodados.push(a[0]), { status: posix(a[0]).includes("/g2/") ? 3 : 0 }),
     });
     expect(r.ok).toBe(false);
     expect(r.falhou).toEqual({ nome: "g2", motivo: "rc", rc: 3 });
@@ -164,7 +170,7 @@ describe("tars-hooks — local", () => {
 });
 
 describe("tars-hooks — CLI", () => {
-  const CLI = path.join(path.dirname(new URL(import.meta.url).pathname), "tars-hooks.mjs");
+  const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "tars-hooks.mjs");
   const roda = (project, hook) =>
     spawnSync(process.execPath, [CLI, hook], { encoding: "utf8", env: { ...process.env, TARS_PROJECT: project } });
 

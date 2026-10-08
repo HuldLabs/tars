@@ -3,13 +3,16 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Testes dos GATES do catalogo (fatia 4) e da ponta CLI do motor. Cada gate e' um
 // programa: prova-se pelo exit code e pela mensagem, com o payload/arquivo real — nao
 // pela leitura do codigo. O gate `commit-msg` e' o unico que depende do app (mensagem de
 // commit); `gitleaks` sai 0 avisando quando o binario falta; `no-add-all` julga o payload
 // do PreToolUse.
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+// `new URL(...).pathname` no win32 devolve `/C:/...` — `fileURLToPath` e' o disco certo
+// nas duas plataformas (mesma classe do incident de paridade).
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GATE = (nome, arquivo) => path.join(HERE, "..", "..", ".ai", "gates", nome, arquivo);
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "tars-gate-"));
