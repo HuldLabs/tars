@@ -22,7 +22,9 @@ levantar hipótese, testar a hipótese e só então corrigir ou pedir algo a alg
 - **Falha silenciosa é falha:** saída vazia, `cat` que não leu ou comando que "não fez
   nada" vira uma investigação, não uma suposição.
 - **Regressão (funcionava, parou): a primeira pergunta é "o que mudou?".** Ache o
-  caminho que funcionava, documentado no repo (docs, devcontainer, Taskfile, ADR), e
+  caminho que funcionava, documentado no repo (docs, devcontainer, Taskfile, ADR,
+  docstrings e comentários do código, scripts, CHANGELOG, histórico do git e transcripts
+  de sessão), e
   **restaure-o**. Nunca invente um caminho paralelo para contornar a regressão.
 - **A skill é lida e seguida, não citada:** abra o arquivo da skill e execute os passos.
   Dizer que usou sem ter lido é o mesmo erro que chutar.
