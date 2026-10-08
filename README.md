@@ -87,7 +87,39 @@ tars hooks <pre-commit|commit-msg|pre-push|local> [args]   # roda os gates do ho
 tars promote --area <memory|skill|gate> --item <nome>      # sobe item do projeto ao catálogo
 tars doctor [--json]                                       # confere doutrina × gate × prova
 tars verify <arquivo>                                      # roda os `verify` de um bloco de claims
+tars secrets refresh                                       # abre o cofre (1Password) e regrava o cache cifrado
+tars secrets exec -- <cmd...>                              # roda <cmd> com o cache decifrado no env SO do filho
+tars secrets check                                         # julga chave/template/cache/ambiente SEM abrir o cofre
 ```
+
+#### `tars secrets` — o cofre do projeto
+
+O que antes era reinventado por consumidor (caminho fixo, token no `.env`) mora aqui, uma vez.
+O **1Password é a fonte canônica**; o dia a dia lê um **cache local cifrado** (sops+age) fora do
+repo. Quem declara é o **`.ai/tars.toml` do projeto**, na tabela `[secrets]` — sem defaults com
+nome de pessoa: o diretório do projeto nomeia `~/.config/tars/<projeto>/` (Windows:
+`%APPDATA%\tars\<projeto>\`), e todo caminho é sobrescrevível.
+
+```toml
+[secrets]
+key_scope = "project"                  # "project" (chave vem do cofre) | "machine" (gerada aqui)
+source    = "automation"               # OBRIGATÓRIO: "automation" (token em arquivo) | "owner" (sessão do app 1Password)
+age_key_ref = "op://tars/age-key/ref"  # obrigatório com key_scope="project"; proibido com "machine"
+# sops_config = ".sops.yaml"           # versionado: o `check` exige o recipient da chave nele
+# age_key_file / cache_file / template / token_file — defaults em <dir do projeto>
+```
+
+- `refresh` é o **único** que abre o cofre: `op read --out-file` (nunca pelo stdout) para a chave,
+  `op inject` do template, `sops` para o recipient → cache. Erros do `op`/`sops` **aparecem**
+  (redigidos: valor de segredo conhecido vira `***`), nunca `>/dev/null`.
+- `exec -- <cmd>` decifra **em memória** e roda o filho por **argv, sem shell** — um `;` no
+  argumento é dado, não sintaxe. Remove `OP_*`/`SOPS_AGE_KEY` do env do filho e exporta só
+  `SOPS_AGE_KEY_FILE` (o caminho).
+- `check` **não** abre o cofre: julga chave (0600/ACL) × recipient do cache × `.sops.yaml`, o
+  template (nenhum `op://` fora de `{{ }}` — o `op inject` resolve até comentário), se o cache
+  decifra e se o ambiente já está sujo (imprime só **nomes**).
+- A ref da chave age vem **só do manifesto** — nunca do template; `check` reprova se o template
+  a citar. Nenhuma saída carrega valor de segredo, nem em erro.
 
 ### Sem Node — o binário `tars`
 
