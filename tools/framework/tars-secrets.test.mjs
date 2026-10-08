@@ -469,7 +469,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
 
   it('template com `op://` fora de `{{ }}` (comentario incluso) reprova', () => {
     const c = pronto()
-    // O `op inject` resolve QUALQUER `op://` — inclusive este, que so' queria ser comentario.
+    // O `op run` resolve QUALQUER `op://` — inclusive este, que so' queria ser comentario.
     fs.writeFileSync(c.template, '# nao usar {{ op://v/i/f }}\n{"TOKEN":"x","OUTRO":"op://v/i/g"}\n')
     const r = check(c, { env: { PATH: process.env.PATH } })
     expect(r.linhas.find((l) => l.nome === 'template').ok).toBe(false)

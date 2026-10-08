@@ -286,7 +286,7 @@ function garanteChave(cfg, env = process.env) {
 }
 
 /**
- * O template so' tem UM lugar de segredo: `{{ op://... }}` dentro de um valor. O `op inject`
+ * O template so' tem UM lugar de segredo: `{{ op://... }}` dentro de um valor. O `op run`
  * resolve QUALQUER `op://` do arquivo — inclusive num comentario e SEM as chaves duplas: um
  * `# nao usar op://cofre/item` viraria segredo resolvido no material cifrado. Pior: se o
  * template citar a ref da CHAVE age, a chave entra no cache. Os dois casos REPROVAM.
@@ -296,7 +296,7 @@ export function confereTemplate(cfg, { fs: fsm = fs } = {}) {
   const txt = fsm.readFileSync(cfg.template, 'utf8')
   const foraDeBloco = txt.replace(/\{\{[^}]*\}\}/g, '')
   if (/op:\/\//.test(foraDeBloco)) {
-    return { ok: false, detalhe: 'ha\' `op://` fora de `{{ }}` (comentario ou valor cru) — o `op inject` resolve qualquer um' }
+    return { ok: false, detalhe: 'ha\' `op://` fora de `{{ }}` (comentario ou valor cru) — o `op run` resolve qualquer um' }
   }
   if (cfg.age_key_ref && txt.includes(cfg.age_key_ref)) {
     return { ok: false, detalhe: 'o template cita a ref da CHAVE age — ela vem so\' do manifesto' }
