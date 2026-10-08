@@ -85,24 +85,30 @@ aqui.
 - **Gate.** `tars doctor` acusa agente usando agente SSH/biometria e `gh` sem keyring
   no WSL.
 
-### 8. Commit de automação autorado e assinado pela conta própria do bot
+### 8. Commit de IA é do bot; o dono entra pelo merge
 
-- **Regra.** Commit de automação é autorado e assinado pela conta GitHub **do bot**
-  (Daneel) — login/email no `profile.toml` **do dono**, nunca no catálogo —, com o
-  modelo como **co-autor**.
-- **Porquê (incidente).** Assinar com uma chave registrada na conta do **dono**
-  reprova o `Verified`: o GitHub exige a chave na conta dona do e-mail do commit.
-- **Gate.** Identidade do bot no perfil (não versionada); `tars doctor` confere o
+- **Regra.** Código escrito por agente é autorado e assinado pela conta GitHub
+  **própria do bot** (Daneel), com o modelo como **co-autor**; login/e-mail no
+  `profile.toml` **do dono**, nunca no catálogo. O dono é PO: entra no histórico pelo
+  **merge do PR**, assinado por ele. Nunca assinar commit de IA com chave registrada
+  na conta do dono.
+- **Porquê (incidente).** Uma chave do bot na conta do dono faria todo vazamento dessa
+  chave virar commit `Verified` **do dono** em qualquer repo dele; a conta própria
+  limita o estrago às permissões do bot e permite revogá-lo sem tocar no dono. O
+  GitHub só marca `Verified` com a chave na conta dona do e-mail do commit.
+- **Gate.** Identidade do bot no perfil (não versionada); `tars doctor` confere
   e-mail/assinatura contra a conta declarada.
 
-### 9. Push imediato por ator
+### 9. Push por ator
 
-- **Regra.** Commit de agente/bot faz **push na hora** com a credencial do bot, sem
-  aprovação; commit do dono também faz push na hora, pela credencial dele. O hook
-  `post-commit` **escolhe a credencial pelo ator**.
-- **Porquê (incidente).** Push adiado acumula trabalho local invisível e mistura os
-  atores; escolher a credencial a mão vaza a identidade errada no remote.
-- **Gate.** Hook `post-commit` (escolhe a credencial pelo ator) + `tars doctor`.
+- **Regra.** Commit de agente/bot: **push na hora** do commit, com a credencial do
+  bot, sem aprovação do dono — toda branch vai para o GitHub na hora. Commit do dono
+  (ator humano, ex.: `df sync` com ajustes dele): push **só com ele presente e como
+  ação dele**, pela credencial dele. O hook `post-commit` age só no ator agente.
+- **Porquê (incidente).** Push adiado de agente acumula trabalho local invisível
+  (risco de perda com disco degradando); push automático em nome do dono agiria sem
+  ele.
+- **Gate.** Hook `post-commit` (só ator agente) + `tars doctor`.
 
 ### 10. Backup sincroniza dump, nunca dado vivo, e cifra antes de sair da máquina
 
