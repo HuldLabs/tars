@@ -66,9 +66,10 @@ abrir o cofre, e o que o filho herda do ambiente. Regra que existe em N lugares 
   `lerConfig` recebe `{}` e o comando falha alto nomeando o `source` obrigatório.
 
 ### O que o consumidor faz
-Declara `[secrets]` no `.ai/tars.toml` (`source` obrigatório; `age_key_ref` com
-`key_scope="project"`), roda `tars secrets refresh` uma vez para gravar a chave e o cache, e
-usa `tars secrets exec -- <cmd>` como entrypoint dos processos que precisam dos segredos.
+Põe a ref `cofre` no perfil (`~/.config/tars/profile.toml`) uma vez por máquina, declara
+`[secrets]` no `.ai/tars.toml` (`source` obrigatório; `cofre` com `key_scope="project"`), roda
+`tars secrets refresh` uma vez para gravar a chave e o cache, e usa
+`tars secrets exec -- <cmd>` como entrypoint dos processos que precisam dos segredos.
 `tars secrets check` julga o estado sem abrir o cofre.
 
 ## 0.0.1-dev.8
