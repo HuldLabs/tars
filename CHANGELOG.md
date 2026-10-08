@@ -79,6 +79,25 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   `check` **falha** quando vencido, **avisa** a menos de 14 dias e diz `sem data` quando o campo
   não existe. Data malformada grita.
 
+**Correções da revisão (S2-fix), ainda dentro de dev.9:**
+- `rotate` (escopo `project`) passa a ser **retomável POR PASSO** — morrer logo **depois da ação**
+  de qualquer passo (2..7) não deixa mais a rotação presa. O caso que travava era o **passo 6**:
+  morte entre o `rename` da chave e o fim do `refresh` deixava o `.rotate` já renomeado, e a
+  retomada tentava renomear de novo (**`renameSync` ENOENT**). Agora, sem o `.rotate`, ele confere
+  que a chave local **é** a nova e segue para o `refresh`.
+- Cada passo pergunta antes de refazer: o `.rotate` que já existe é **reaproveitado** em vez de
+  gerar uma chave nova (gerar outra depois de o cofre já citar a primeira não teria volta); o
+  cofre que **já tem** a identidade nova não é reescrito (passo 3, e a leitura de volta virou um
+  helper que também serve ao passo 4); o versionado **já recifrado** é pulado no passo 5, o que
+  deixa um `updatekeys` abortado no meio do lote retomar só pelo que falta.
+- **Escrita no cofre atrás de uma interface** (`ESTRATEGIAS_COFRE`, campo `age_key_write`),
+  **nunca por argv**: `template` (**default**, o de hoje — JSON do item inteiro com o campo
+  trocado), `template_parcial` (só o campo alterado volta ao cofre) e `documento`
+  (`op document edit <doc> <arquivo>`, com a ref apontando para um documento). O default só muda
+  quando a prova real com o cofre decidir.
+- Testes: **morte simulada depois da ação de cada passo 2..7** (`hooks.aposPasso`) e a retomada
+  tem de terminar no **mesmo estado final** do caminho feliz — mais as três estratégias com stub.
+
 > **Antes do release de dev.9**: entram ainda **S2b** e **S3** (cofre do projeto nos
 > consumidores). O dev.9 não fecha sem elas.
 

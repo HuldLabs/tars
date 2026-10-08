@@ -20,7 +20,9 @@ import {
   configDir,
   decifraMapa,
   diasAte,
+  editaItemNoCofre,
   estadoRotate,
+  ESTRATEGIAS_COFRE,
   expandeArquivos,
   envDoCofre,
   envDoFilho,
@@ -32,6 +34,7 @@ import {
   reapResiduo,
   recipient,
   recipientDoCache,
+  refDocumento,
   redige,
   refresh,
   registra,
@@ -65,7 +68,7 @@ const TEM_AGE = tem('age-keygen')
  * emula o `op run`: resolve os NOMES do template a partir de `TARS_STUB_VALORES` e executa o
  * filho com eles no ambiente (e' assim que o helper ve o valor — intacto, multilinha incluso).
  */
-function stubOp({ keySrc, valores, item, editIgnora, whoami }) {
+function stubOp({ keySrc, valores, item, editIgnora, whoami, doc }) {
   const dir = tmp('tars-op-')
   const log = path.join(dir, 'argv.log')
   const js = path.join(dir, 'op.mjs')
@@ -98,6 +101,11 @@ function stubOp({ keySrc, valores, item, editIgnora, whoami }) {
       "  if (!process.env.TARS_STUB_EDIT_IGNORA) fs.copyFileSync(t, process.env.TARS_STUB_ITEM)",
       "  process.exit(Number(process.env.TARS_STUB_EDIT_STATUS || 0))",
       '}',
+      "if (argv[0] === 'document' && argv[1] === 'edit') {",
+      "  fs.appendFileSync(process.env.TARS_STUB_DOC_LOG, JSON.stringify(argv) + '\\n')",
+      "  if (!process.env.TARS_STUB_EDIT_IGNORA) fs.copyFileSync(argv[3], process.env.TARS_STUB_DOC)",
+      "  process.exit(Number(process.env.TARS_STUB_EDIT_STATUS || 0))",
+      '}',
       "if (argv[0] === 'whoami') process.exit(Number(process.env.TARS_STUB_WHOAMI || 0))",
       "if (argv[0] === 'run') {",
       "  const tpl = argv.find((a) => a.startsWith('--env-file=')).slice(11)",
@@ -116,7 +124,10 @@ function stubOp({ keySrc, valores, item, editIgnora, whoami }) {
   fs.writeFileSync(envLog, '')
   const tplLog = path.join(dir, 'template.log')
   fs.writeFileSync(tplLog, '')
-  const env = { ...process.env, TARS_STUB_LOG: log, TARS_STUB_ENV: envLog, TARS_STUB_TEMPLATE_LOG: tplLog }
+  const docLog = path.join(dir, 'doc.log')
+  fs.writeFileSync(docLog, '')
+  const env = { ...process.env, TARS_STUB_LOG: log, TARS_STUB_ENV: envLog, TARS_STUB_TEMPLATE_LOG: tplLog, TARS_STUB_DOC_LOG: docLog }
+  if (doc) env.TARS_STUB_DOC = doc
   if (keySrc) env.TARS_STUB_KEY_SRC = keySrc
   if (valores) env.TARS_STUB_VALORES = JSON.stringify(valores)
   if (item) env.TARS_STUB_ITEM = item
@@ -131,7 +142,7 @@ function stubOp({ keySrc, valores, item, editIgnora, whoami }) {
     fs.writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`, { mode: 0o755 })
   }
   process.env.TARS_SECRETS_OP = launcher
-  return { env, log, envLog, tplLog, launcher, antes }
+  return { env, log, envLog, tplLog, docLog, launcher, antes }
 }
 
 /** Uma chave age REAL (o `sops` so' cifra para um recipient de verdade). */
@@ -802,7 +813,7 @@ function versionado(dir, rec, nome) {
 
 describe.skipIf(!TEM_AGE || !TEM_SOPS)('rotate', () => {
   /** Um projeto pronto para rotacionar: chave velha em disco, item no stub, versionado cifrado. */
-  const cenario = ({ editIgnora, extra = [] } = {}) => {
+  const cenario = ({ editIgnora, extra = [], secrets = {} } = {}) => {
     const dir = tmp('tars-rot-')
     fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
     const keyAlvo = path.join(dir, 'age.key')
@@ -822,6 +833,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('rotate', () => {
         age_key_ref: 'op://tars/agekey/age.key',
         sops_config,
         sops_files: arquivos.map((a) => path.basename(a)),
+        ...secrets,
       },
       dir,
     )
@@ -953,6 +965,93 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('rotate', () => {
     expect(r.saida).toMatch(/cancelado/)
     expect(fs.readFileSync(keyAlvo, 'utf8')).toBe(antes)
     expect(fs.existsSync(estadoRotate(c))).toBe(false)
+  })
+
+  /**
+   * O estado FINAL da rotacao, sem a identidade (que e' aleatoria a cada geracao): e' o que
+   * PRECISA bater entre o caminho feliz e cada retomada. Um campo diferente aqui e' a prova de
+   * que a retomada nao chegou onde a rotacao de uma vez so' chega.
+   */
+  const estadoFinal = (c, { dir, item, recVelho }) => {
+    const versionadoFinal = path.join(dir, 'segredos.yaml')
+    const d = spawnSync('sops', ['--decrypt', '--input-type', 'yaml', '--output-type', 'json', versionadoFinal], {
+      encoding: 'utf8',
+      env: { ...process.env, SOPS_AGE_KEY_FILE: c.age_key_file },
+    })
+    return {
+      cofreIgualAoLocal: JSON.parse(fs.readFileSync(item, 'utf8')).fields[0].value === fs.readFileSync(c.age_key_file, 'utf8').trim(),
+      manifesto: fs.readFileSync(c.sops_config, 'utf8').includes(recVelho) ? 'velho' : 'novo',
+      versionado: fs.readFileSync(versionadoFinal, 'utf8').includes(recVelho) ? 'velho' : 'novo',
+      decifra: d.status === 0 && d.stdout.includes('valor-de-teste'),
+      cache: recipientDoCache(c).length,
+      estado: fs.existsSync(estadoRotate(c)),
+      rotate: fs.existsSync(`${c.age_key_file}.rotate`),
+    }
+  }
+
+  it('retomada POR PASSO: morrer logo apos a acao de cada passo (2..7) e rodar de novo chega ao MESMO fim', () => {
+    const feliz = cenario()
+    rotate(feliz.c, { env: envDono(feliz.stub), tty: true, confirma: () => true })
+    const esperado = estadoFinal(feliz.c, feliz)
+    expect(esperado).toMatchObject({ cofreIgualAoLocal: true, manifesto: 'novo', versionado: 'novo', decifra: true, cache: 1, estado: false, rotate: false })
+
+    for (const n of [2, 3, 4, 5, 6, 7]) {
+      const { c, stub, dir, item, recVelho } = cenario()
+      const morre = (m) => {
+        if (m === n) throw new Error(`morto apos o passo ${m}`)
+      }
+      expect(() => rotate(c, { env: envDono(stub), tty: true, confirma: () => true, hooks: { aposPasso: morre } })).toThrow(`morto apos o passo ${n}`)
+      // O estado ficou em disco: a rotacao esta' no meio e a retomada tem de saber de onde seguir.
+      expect(fs.existsSync(estadoRotate(c))).toBe(true)
+      if (n === 6) {
+        // O caso que TRAVAVA a retomada: morreu entre o rename e o fim do refresh — o `.rotate`
+        // ja' sumiu e a chave local JA' e' a nova. Renomear de novo daria ENOENT.
+        expect(fs.existsSync(`${c.age_key_file}.rotate`)).toBe(false)
+        expect(recipient(c.age_key_file)).toBe(JSON.parse(fs.readFileSync(estadoRotate(c), 'utf8')).recipient_novo)
+      }
+
+      const stub2 = stubOp({ item })
+      const r = rotate(c, { env: envDono(stub2), tty: true, confirma: () => true })
+      expect(r.status).toBe(0)
+      expect(estadoFinal(c, { dir, item, recVelho })).toEqual(esperado)
+    }
+  }, 120_000)
+
+  it('estrategia `template_parcial`: so o campo alterado volta ao cofre, e a rotacao fecha igual', () => {
+    const { c, item, stub, recVelho } = cenario({ secrets: { age_key_write: 'template_parcial' } })
+    expect(rotate(c, { env: envDono(stub), tty: true, confirma: () => true }).status).toBe(0)
+
+    const identidade = fs.readFileSync(c.age_key_file, 'utf8').trim()
+    expect(JSON.parse(fs.readFileSync(item, 'utf8')).fields[0].value).toBe(identidade)
+    // O template que o `op` recebeu tem SO' o campo — o resto do item nao sai do cofre.
+    expect(JSON.parse(fs.readFileSync(stub.tplLog, 'utf8').trim())).toEqual({ fields: [{ id: 'age.key', value: identidade }] })
+    expect(recipient(c.age_key_file)).not.toBe(recVelho)
+  })
+
+  it('estrategia `documento`: `op document edit <doc> <arquivo>` — o valor vai por arquivo, nunca argv', () => {
+    const dir = tmp('tars-rot-doc-')
+    const doc = path.join(dir, 'age-doc.key')
+    fs.writeFileSync(doc, 'identidade-velha\n')
+    const stub = stubOp({ doc })
+    const c = cfgDe({ source: 'owner', age_key_ref: 'op://tars/agedoc/age.key', age_key_write: 'documento' }, dir)
+    const identidade = 'AGE-SECRET-KEY-1EXEMPLO\nsegunda linha da identidade'
+    editaItemNoCofre(c, c.age_key_ref, identidade, envDono(stub))
+
+    expect(fs.readFileSync(doc, 'utf8').trim()).toBe(identidade)
+    const argv = JSON.parse(fs.readFileSync(stub.docLog, 'utf8').trim())
+    expect(argv.slice(0, 2)).toEqual(['document', 'edit'])
+    // A ref do DOCUMENTO (sem o campo) e o CAMINHO do arquivo — e o arquivo nao sobrevive.
+    expect(argv[2]).toBe('op://tars/agedoc')
+    expect(fs.existsSync(argv[3])).toBe(false)
+    expect(JSON.stringify(argv)).not.toContain('AGE-SECRET-KEY')
+    expect(refDocumento('op://tars/agedoc/age.key')).toBe('op://tars/agedoc')
+  })
+
+  it('`age_key_write` fora da lista GRITA com as tres, no lerConfig (nao no meio da rotacao)', () => {
+    expect(Object.keys(ESTRATEGIAS_COFRE)).toEqual(['template', 'template_parcial', 'documento'])
+    expect(() => cfgDe({ source: 'owner', age_key_ref: 'op://tars/agekey/age.key', age_key_write: 'inventado' }, tmp())).toThrow(
+      /age_key_write invalido: 'inventado' \(use template \| template_parcial \| documento\)/,
+    )
   })
 })
 
