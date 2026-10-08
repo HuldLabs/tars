@@ -47,6 +47,28 @@ check "TARS_ACTOR= human"          "TARS_ACTOR= human git commit -F /tmp/m"     
 check "export TARS_ACTOR=human"    "export TARS_ACTOR=human"                          block
 check "TARS_ACTOR='human'"         "TARS_ACTOR='human' git commit -F /tmp/m"         block
 check "TARS_ACTOR=human encadeado" "echo x && TARS_ACTOR=human git commit"            block
+check "TARS_ACTOR=humano (outro valor)" "TARS_ACTOR=humano git commit"                block
+# qualquer valor diferente de 'agent' zera a cobranca — inclusive o vazio.
+check "TARS_ACTOR= vazio"          "TARS_ACTOR= git commit -F /tmp/m"                 block
+check "TARS_ACTOR='' vazio"        "TARS_ACTOR='' git commit -F /tmp/m"               block
+check "TARS_ACTOR=\"\" vazio"      'TARS_ACTOR="" git commit -F /tmp/m'               block
+check "TARS_ACTOR=0"               "TARS_ACTOR=0 git commit -F /tmp/m"                block
+check "export TARS_ACTOR=human"    "export TARS_ACTOR=human && git commit"            block
+# CLAUDECODE: o harness declara 1; outro valor (ou vazio) e' o mesmo buraco.
+check "CLAUDECODE=0"               "CLAUDECODE=0 git commit -F /tmp/m"                block
+check "CLAUDECODE= vazio"          "CLAUDECODE= git commit -F /tmp/m"                 block
+check "CLAUDECODE=human"           "CLAUDECODE=human git commit -F /tmp/m"            block
+# `unset`/`env -u`: apagar o marcador no meio do comando (o gate le o env VIVO).
+check "unset TARS_ACTOR"           "unset TARS_ACTOR; git commit -F /tmp/m"           block
+check "unset -v TARS_ACTOR"        "unset -v TARS_ACTOR"                              block
+check "unset CLAUDECODE"           "unset CLAUDECODE && git commit"                   block
+check "env -u TARS_ACTOR"          "env -u TARS_ACTOR git commit -F /tmp/m"           block
+check "env --unset TARS_ACTOR"     "env --unset TARS_ACTOR git commit"                block
+check "env -i -u CLAUDECODE"       "env -i -u CLAUDECODE bun test"                    block
+# os valores do harness continuam passando.
 check "TARS_ACTOR=agent (o normal)" "TARS_ACTOR=agent git commit -F /tmp/m"           allow
-check "TARS_ACTOR=humano (outro valor)" "TARS_ACTOR=humano git commit"                allow
+check "CLAUDECODE=1 (o normal)"    "CLAUDECODE=1 bun test"                            allow
+check "export TARS_ACTOR=agent"    "export TARS_ACTOR=agent"                          allow
+check "unset PATH (nao e' marcador)" "unset PATH"                                     allow
+check "env -u HOME (nao e' marcador)" "env -u HOME git commit -F /tmp/m"              allow
 exit $fail
