@@ -170,6 +170,64 @@ describe('referencia `op://` e redacao', () => {
   })
 })
 
+describe('formato do template: `op://` só como valor inteiro de `KEY=`', () => {
+  /** Um cfg minimo: `confereTemplate` só lê `template` e `age_key_ref`. */
+  const tplCfg = (txt, extra = {}) => {
+    const p = path.join(tmp(), 'secrets.tpl')
+    fs.writeFileSync(p, txt)
+    return { template: p, age_key_ref: null, ...extra }
+  }
+
+  it('aceita `KEY=op://...`, com ou sem aspas', () => {
+    expect(confereTemplate(tplCfg('TOKEN=op://v/i/f\n')).ok).toBe(true)
+    expect(confereTemplate(tplCfg('TOKEN="op://v/i/f"\n')).ok).toBe(true)
+  })
+
+  it('aceita campo com ESPACO (`op://v/i/private key`) — o resto da linha até o fim', () => {
+    const r = confereTemplate(tplCfg('SIGN_KEY=op://v/i/private key\n'))
+    expect(r.ok).toBe(true)
+  })
+
+  it('um comentário e um `KEY=x` sem `op://` não atrapalham', () => {
+    expect(confereTemplate(tplCfg('# nota\nTOKEN=x\n\nOUTRO=op://v/i/g\n')).ok).toBe(true)
+  })
+
+  it('`{{ op://... }}` reprova (o `op run --env-file` entrega o literal com as chaves)', () => {
+    const r = confereTemplate(tplCfg('TOKEN={{ op://v/i/f }}\n'))
+    expect(r.ok).toBe(false)
+    expect(r.detalhe).toMatch(/linha 1/)
+  })
+
+  it('`op://` no MEIO do valor reprova', () => {
+    const r = confereTemplate(tplCfg('TOKEN=prefixo op://v/i/f\n'))
+    expect(r.ok).toBe(false)
+    expect(r.detalhe).toMatch(/linha 1/)
+  })
+
+  it('comentário com `op://` reprova (o `op run` resolve até comentário)', () => {
+    const r = confereTemplate(tplCfg('# usar op://v/i/f\nTOKEN=x\n'))
+    expect(r.ok).toBe(false)
+    expect(r.detalhe).toMatch(/linha 1/)
+  })
+
+  it('`export KEY=...` reprova EXPLICITAMENTE (formato único do env-file)', () => {
+    const r = confereTemplate(tplCfg('export TOKEN=op://v/i/f\n'))
+    expect(r.ok).toBe(false)
+    expect(r.detalhe).toMatch(/`export` nao e' aceito/)
+  })
+
+  it('mais de uma `op://` na mesma linha reprova', () => {
+    const r = confereTemplate(tplCfg('TOKEN=op://v/i/f op://v/i/g\n'))
+    expect(r.ok).toBe(false)
+    expect(r.detalhe).toMatch(/mais de uma/)
+  })
+
+  it('a mensagem nomeia a linha, NUNCA o valor', () => {
+    const r = confereTemplate(tplCfg('TOKEN=nao-secretamente op://v/i/f\n'))
+    expect(r.detalhe).not.toContain('nao-secretamente')
+  })
+})
+
 describe('quem abre o cofre', () => {
   it('automation sem token_file falha alto nomeando o caminho', () => {
     const dir = tmp()
@@ -196,7 +254,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
   it('project: le a chave pelo --out-file (nunca stdout), grava 0600 e nao vaza nada', () => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN={{ op://v/i/f }}\n')
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=op://v/i/f\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'segredo-de-teste' } })
     const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
@@ -220,7 +278,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
   it('project: a chave e RELIDA a cada refresh (troca no cofre muda o recipient do cache)', () => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN={{ op://v/i/f }}\n')
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=op://v/i/f\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'x' } })
     const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
@@ -238,7 +296,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('refresh', () => {
   it('valor MULTILINHA sobrevive ao refresh (o motivo de ser `op run` + JSON)', () => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'SIGN_KEY={{ op://v/i/f }}\n')
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'SIGN_KEY=op://v/i/f\n')
     const stub = stubOp({ keySrc, valores: { SIGN_KEY: 'linha1\nlinha2\nlinha3' } })
     const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
@@ -350,7 +408,7 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('exec', () => {
   beforeEach(() => {
     const dir = tmp()
     const keySrc = chaveReal()
-    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN={{ op://v/i/f }}\nOUTRO={{ op://v/i/f }}\n')
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=op://v/i/f\nOUTRO=op://v/i/g\n')
     const stub = stubOp({ keySrc, valores: { TOKEN: 'segredo-de-teste', OUTRO: 'x' } })
     c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', token_file: path.join(dir, 'op-token') }, dir)
     fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
@@ -467,10 +525,9 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
     expect(r.linhas.find((l) => l.nome === 'sops_config').ok).toBe(false)
   })
 
-  it('template com `op://` fora de `{{ }}` (comentario incluso) reprova', () => {
+  it('template com `op://` em comentario reprova (o `op run` resolve ate comentario)', () => {
     const c = pronto()
-    // O `op run` resolve QUALQUER `op://` — inclusive este, que so' queria ser comentario.
-    fs.writeFileSync(c.template, '# nao usar {{ op://v/i/f }}\n{"TOKEN":"x","OUTRO":"op://v/i/g"}\n')
+    fs.writeFileSync(c.template, `# nao usar op://v/i/g\nTOKEN=op://v/i/f\n`)
     const r = check(c, { env: { PATH: process.env.PATH } })
     expect(r.linhas.find((l) => l.nome === 'template').ok).toBe(false)
     expect(r.ok).toBe(false)
@@ -478,7 +535,8 @@ describe.skipIf(!TEM_AGE || !TEM_SOPS)('check', () => {
 
   it('template que cita a ref da CHAVE age reprova (a chave vem so do manifesto)', () => {
     const c = pronto()
-    fs.writeFileSync(c.template, `{"TOKEN":"x","OUTRO":"{{ ${c.age_key_ref} }}"}`)
+    // Formato VALIDO (`KEY=op://...`): reprova pela REF, nao pelo formato.
+    fs.writeFileSync(c.template, `TOKEN=op://v/i/f\nAGE_KEY=${c.age_key_ref}\n`)
     expect(confereTemplate(c).ok).toBe(false)
     expect(confereTemplate(c).detalhe).toMatch(/ref da CHAVE age/)
   })

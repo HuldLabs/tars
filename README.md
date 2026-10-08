@@ -109,7 +109,9 @@ age_key_ref = "op://tars/age-key/ref"  # obrigatório com key_scope="project"; p
 # age_key_file / cache_file / template / token_file — defaults em <dir do projeto>
 ```
 
-- O **template** é dotenv (`KEY={{ op://cofre/item/campo }}`), o formato que o `op run` resolve.
+- O **template** é um env-file (`KEY=op://cofre/item/campo`) — o formato que o `op run
+  --env-file` resolve. Só a ref como **valor inteiro** de `KEY=` vale: `{{ op://… }}`, `# op://…`
+  e `export KEY=…` reprovam no `check` (o `op run` resolve qualquer `op://` do arquivo).
 - `refresh` é o **único** que abre o cofre: `op read --out-file` (nunca pelo stdout) para a chave
   — relida a **cada** refresh com `key_scope="project"` (a chave no cofre pode ter rodado) —,
   `op run --env-file` do template (o helper serializa o env resolvido em JSON, então valor
@@ -122,8 +124,9 @@ age_key_ref = "op://tars/age-key/ref"  # obrigatório com key_scope="project"; p
   `SOPS_AGE_KEY_FILE` (o caminho).
 - `check` **não** abre o cofre: julga chave (0600/ACL) × recipient do cache × `.sops.yaml`, o
   **token** (`source="automation"`: existe, não vazio, `0400`/`0600`/ACL — o conteúdo nunca é
-  lido além de "está vazio"), o template (nenhum `op://` fora de `{{ }}` — o `op run` resolve
-  até comentário), se o cache decifra e se o ambiente já está sujo. A linha `ambiente` acusa só
+  lido além de "está vazio"), o template (cada `op://` **só** como valor inteiro de `KEY=op://…`
+  — nem em comentário, nem no meio, nem em `{{ }}`, nem `export` — porque o `op run` resolve
+  qualquer `op://` do arquivo), se o cache decifra e se o ambiente já está sujo. A linha `ambiente` acusa só
   o que aponta para a fonte (`OP_SERVICE_ACCOUNT_TOKEN`, `OP_CONNECT_TOKEN`, `OP_CONNECT_HOST`,
   `OP_SESSION_*`, `SOPS_AGE_KEY`), sempre imprimindo só **nomes**.
 - A ref da chave age vem **só do manifesto** — nunca do template; `check` reprova se o template

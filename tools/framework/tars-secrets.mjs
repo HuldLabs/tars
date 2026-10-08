@@ -286,22 +286,45 @@ function garanteChave(cfg, env = process.env) {
 }
 
 /**
- * O template so' tem UM lugar de segredo: `{{ op://... }}` dentro de um valor. O `op run`
- * resolve QUALQUER `op://` do arquivo — inclusive num comentario e SEM as chaves duplas: um
- * `# nao usar op://cofre/item` viraria segredo resolvido no material cifrado. Pior: se o
- * template citar a ref da CHAVE age, a chave entra no cache. Os dois casos REPROVAM.
+ * O template e' um env-file do `op run`: o UNICO lugar de segredo e' `KEY=op://...` — a ref
+ * como VALOR INTEIRO de uma atribuicao. NAO e' `{{ op://... }}` (o `op run --env-file` entrega
+ * ao filho o literal COM as chaves, nao o valor) nem `# op://...` num comentario: o `op run`
+ * resolve QUALQUER `op://` do arquivo, entao um comentario viraria segredo a mais no material
+ * cifrado. E se o template citar a ref da CHAVE age, a chave entra no cache. Todos REPROVAM.
+ * So' `op://` de atribuicao conta — as demais linhas (comentario sem ref, `KEY=x` sem op://)
+ * passam. A mensagem cita linha e NOME, nunca o valor.
  */
 export function confereTemplate(cfg, { fs: fsm = fs } = {}) {
   if (!fsm.existsSync(cfg.template)) return { ok: false, detalhe: `ausente: ${cfg.template}` }
   const txt = fsm.readFileSync(cfg.template, 'utf8')
-  const foraDeBloco = txt.replace(/\{\{[^}]*\}\}/g, '')
-  if (/op:\/\//.test(foraDeBloco)) {
-    return { ok: false, detalhe: 'ha\' `op://` fora de `{{ }}` (comentario ou valor cru) — o `op run` resolve qualquer um' }
+  const linhas = txt.split(/\r?\n/)
+  // `export KEY=...` recusado: o env-file do `op run` tem UM formato (KISS) — `KEY=valor`. Um
+  // `export` funcionaria por acidente no `op run` e mentiria sobre o formato em todo o resto.
+  const iExport = linhas.findIndex((l) => /^\s*export\s+\S/.test(l))
+  if (iExport !== -1) {
+    return { ok: false, detalhe: `linha ${iExport + 1}: \`export\` nao e' aceito — use \`KEY=op://...\` (o env-file do \`op run\` tem formato unico)` }
+  }
+  // `KEY=op://...`: valor inteiro, opcionalmente entre aspas; o resto da linha (ate o fim) pode
+  // ter espaco — um campo do 1Password pode chama-lo (`op://v/i/private key`).
+  const refValida = /^\s*[A-Z_][A-Z0-9_]*\s*=\s*"?op:\/\/[^"\r\n]+"?\s*$/
+  let achadas = 0
+  for (let i = 0; i < linhas.length; i++) {
+    const refs = (linhas[i].match(/op:\/\//g) || []).length
+    if (refs === 0) continue
+    achadas += refs
+    if (!refValida.test(linhas[i])) {
+      const nome = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(linhas[i])?.[1]
+      return {
+        ok: false,
+        detalhe: `linha ${i + 1}${nome ? ` (\`${nome}\`)` : ''}: \`op://\` so' vale como valor inteiro de \`KEY=op://...\` — nem em comentario, nem no meio do valor, nem dentro de \`{{ }}\``,
+      }
+    }
+    if (refs > 1) return { ok: false, detalhe: `linha ${i + 1}: mais de uma \`op://\` — cada linha e' uma chave` }
   }
   if (cfg.age_key_ref && txt.includes(cfg.age_key_ref)) {
     return { ok: false, detalhe: 'o template cita a ref da CHAVE age — ela vem so\' do manifesto' }
   }
-  return { ok: true, detalhe: 'nenhuma `op://` fora de `{{ }}`' }
+  return { ok: true, detalhe: `${achadas} referencia(s) \`op://\` no formato \`KEY=op://...\`` }
 }
 
 /** Escrita ATOMICA (tmp + rename) e 0600: o cache nunca existe meio-escrito. */
