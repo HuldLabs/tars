@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseToml, sync } from "./tars-sync.mjs";
+import { actor, avalia, PREDICADOS } from "./tars-actor.mjs";
 import { planGates, runHooks } from "./tars-hooks.mjs";
 // O alvo do gate e' caminho de DISCO (`\` no win32): normaliza antes de casar/partir o
 // nome, senao o mock do teste nunca casa com o gate e o teste so' passa no Linux.
@@ -193,5 +194,123 @@ describe("tars-hooks — CLI", () => {
     const r = roda(project, "pre-commit");
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/gate g1: NAO ENCONTRADO/);
+  });
+});
+
+// dev.8 fatia 2: QUEM escreve o commit. `actor` decide 'agent' x 'human' por marcador
+// POSITIVO (env do harness ou trailer `Co-Authored-By:` com nome de modelo); sem marcador
+// nenhum e' humano — o default e' o lado que NAO afrouxa gate nenhum.
+describe("tars-actor — quem escreveu o commit", () => {
+  it("TARS_ACTOR=agent do motor marca agente", () => {
+    expect(actor({ env: { TARS_ACTOR: "agent" }, msg: "" })).toBe("agent");
+  });
+
+  it("CLAUDECODE=1 marca agente", () => {
+    expect(actor({ env: { CLAUDECODE: "1" }, msg: "" })).toBe("agent");
+  });
+
+  it("trailer Co-Authored-By com nome de modelo marca agente (case-insensitive)", () => {
+    const com = (t) => actor({ env: {}, msg: `✨ feat(x): y\n\nCo-Authored-By: ${t} <n@a>\n` });
+    expect(com("Claude")).toBe("agent");
+    expect(com("claude-opus-5")).toBe("agent");
+    expect(com("DeepSeek")).toBe("agent");
+    expect(actor({ env: {}, msg: "feat(x): y\n\nco-authored-by: GitHub Copilot <n@a>\n" })).toBe("agent");
+    expect(actor({ env: {}, msg: "feat(x): y\n\nCo-Authored-By: OpenAI <n@a>\n" })).toBe("agent");
+  });
+
+  it("Co-Authored-By de uma PESSOA nao vira agente", () => {
+    expect(actor({ env: {}, msg: "feat(x): y\n\nCo-Authored-By: Joao Silva <j@a>\n" })).toBe("human");
+  });
+
+  it("sem marcador nenhum (nem env, nem msg) e' humano", () => {
+    expect(actor({ env: {}, msg: "feat(x): escrevo eu\n" })).toBe("human");
+    expect(actor({})).toBe("human");
+    expect(actor({ env: {}, msg: undefined })).toBe("human");
+  });
+
+  it("sem `when` e' sempre true; `when` vazio tambem", () => {
+    expect(avalia(undefined, {})).toBe(true);
+    expect(avalia({}, { env: {}, msg: "" })).toBe(true);
+  });
+
+  it("`when` {actor} usa o ator calculado do ctx (env OU msg)", () => {
+    expect(avalia({ actor: "agent" }, { env: { TARS_ACTOR: "agent" }, msg: "" })).toBe(true);
+    expect(avalia({ actor: "agent" }, { env: {}, msg: "nada\n" })).toBe(false);
+    expect(avalia({ actor: "human" }, { env: {}, msg: "nada\n" })).toBe(true);
+    expect(avalia({ actor: "agent" }, { env: {}, msg: "x\n\nCo-Authored-By: Claude <n@a>\n" })).toBe(true);
+  });
+
+  it("predicado desconhecido GRITA (nao passa calado)", () => {
+    expect(() => avalia({ cor: "azul" }, { env: {}, msg: "" })).toThrow(/cor/);
+    expect(Object.keys(PREDICADOS)).toContain("actor");
+  });
+});
+
+// O MOTOR com `when`: o gate condicional pula (com log nomeado) em vez de rodar. Sem
+// `when` o comportamento e' o de sempre — os testes acima ja' o cobrem.
+describe("tars-hooks — gate condicional (when)", () => {
+  const MANIFEST_WHEN = `[tars]
+version = "v0.4"
+skills  = []
+rules   = []
+memory  = []
+
+[gates]
+pre-commit = ["g1", "g2"]
+
+[gates.params.g2.when]
+actor = "agent"
+`;
+
+  it("pula o gate cujo `when` nao casa, nomeando o motivo, e roda o resto", async () => {
+    const { project } = await projeto({ body: MANIFEST_WHEN });
+    const logs = [];
+    const r = runHooks({
+      hook: "pre-commit", manifest: parseToml(MANIFEST_WHEN), project,
+      env: {},
+      log: (m) => logs.push(m),
+      err: () => {},
+      spawn: () => ({ status: 0 }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.rodados).toEqual(["g1"]);
+    expect(logs.join("\n")).toMatch(/gate g2: pulado \(when actor=agent\)/);
+  });
+
+  it("roda o gate quando o `when` casa (CLAUDECODE no env)", async () => {
+    const { project } = await projeto({ body: MANIFEST_WHEN });
+    const r = runHooks({
+      hook: "pre-commit", manifest: parseToml(MANIFEST_WHEN), project,
+      env: { CLAUDECODE: "1" },
+      ...silencio,
+      spawn: () => ({ status: 0 }),
+    });
+    expect(r.rodados).toEqual(["g1", "g2"]);
+  });
+
+  it("no commit-msg o ctx.msg e' o arquivo do `$1` (trailer Co-Authored-By = agente)", async () => {
+    const body = MANIFEST_WHEN.replace('pre-commit = ["g1", "g2"]', 'commit-msg = ["g2"]');
+    const { project } = await projeto({ body });
+    const msgFile = path.join(project, "MSG");
+    fs.writeFileSync(msgFile, "✨ feat(x): y\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n");
+    const r = runHooks({
+      hook: "commit-msg", manifest: parseToml(body), project, args: [msgFile],
+      env: {},
+      ...silencio,
+      spawn: () => ({ status: 0 }),
+    });
+    expect(r.rodados).toEqual(["g2"]);
+  });
+
+  it("o gate recebe TARS_ACTOR calculado pelo motor (o env do harness manda)", async () => {
+    const { project } = await projeto({ body: MANIFEST_WHEN });
+    let visto = null;
+    runHooks({
+      hook: "pre-commit", manifest: parseToml(MANIFEST_WHEN), project,
+      env: { TARS_ACTOR: "agent" },
+      ...silencio,
+      spawn: (c, a, opt) => ((visto = opt.env), { status: 0 }),
+    });
+    expect(visto.TARS_ACTOR).toBe("agent");
   });
 });

@@ -17,12 +17,19 @@
 //
 // O que o gate recebe: os argumentos do hook como estao (ex.: o arquivo da mensagem no
 // `commit-msg`, §1 do `.githooks/` do segtools), `TARS_PROJECT` no ambiente, `TARS_GATE`
-// com o nome e `TARS_GATE_PARAMS` com o JSON de `[gates.params.<nome>]` do manifesto.
+// com o nome, `TARS_GATE_PARAMS` com o JSON de `[gates.params.<nome>]` do manifesto e
+// `TARS_ACTOR` ('agent'|'human') — quem escreve o commit, decidido UMA vez aqui
+// (`tars-actor.mjs`).
+//
+// GATE CONDICIONAL (dev.8): `[gates.params.<nome>.when]` no manifesto, ex. `actor = "agent"`,
+// faz o gate rodar SO' quando o contexto casa; fora disso ele e' pulado COM LOG (nunca em
+// silencio). Sem `[gates.params.<nome>.when]` o gate roda como sempre.
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HOOKS, parseToml } from './tars-sync.mjs'
+import { actor, avalia, descreveWhen } from './tars-actor.mjs'
 import { jsRuntime } from './tars-runtime.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
@@ -102,12 +109,25 @@ function command(dir, hook, runtime) {
   return null
 }
 
+/** A mensagem do commit: o git passa o arquivo dela em `$1` do hook. Ilegivel = sem msg. */
+function mensagemDoHook(hook, args) {
+  const arquivo = hook === 'commit-msg' ? args[0] : null
+  return arquivo && existsSync(arquivo) ? readFileSync(arquivo, 'utf8') : ''
+}
+
 /**
  * Roda o hook inteiro. Devolve {ok, rodados, falhou}; o CLI traduz para o exit code.
  * `log`/`err` sao injetaveis para o teste (a saida de cada gate vai para o terminal, herdada).
+ * `env` e' o ambiente de quem chama (default: o do processo) — e' ele que diz se quem
+ * escreve e' o AGENTE ou o humano, e vai junto para o gate.
  */
-export function runHooks({ hook, manifest, project, args = [], log = console.log, err = console.error, spawn = spawnSync } = {}) {
+export function runHooks({ hook, manifest, project, args = [], log = console.log, err = console.error, spawn = spawnSync, env = process.env } = {}) {
   const rodados = []
+  // O contexto do `when`: quem chamou (env) + a mensagem (o arquivo do `$1` no commit-msg).
+  // O ator e' resolvido UMA vez (R3) e viaja no env do gate — o gate nao recalcula o que o
+  // motor ja' sabe, e um `lesson = "agent"` no manifesto julga pelo MESMO ator.
+  const ctx = { env, msg: mensagemDoHook(hook, args) }
+  ctx.actor = actor(ctx)
   // O runtime dos gates `.mjs` e' resolvido UMA vez (R3) e passado a quem monta o comando.
   // Sem runtime NENHUM, falha antes de tocar qualquer gate: um "ok" aqui seria o gate calado.
   const runtime = jsRuntime()
@@ -127,11 +147,18 @@ export function runHooks({ hook, manifest, project, args = [], log = console.log
       err(`gate ${item.nome}: nao sei executar ${dir} (esperado pasta com gate.mjs, ou arquivo .mjs/.sh).`)
       return { ok: false, rodados, falhou: { nome: item.nome, motivo: 'sem-exec' } }
     }
-    log(`gate ${item.nome}`)
     const params = manifest.gates?.params?.[item.nome] ?? {}
+    // `when` no manifesto = gate CONDICIONAL ao contexto (ex.: `actor = "agent"`). Nao casa:
+    // PULA, dizendo o motivo — pular calado seria o gate que some, so' que de proposito.
+    // Sem `when`, `avalia` devolve true e o comportamento e' o de sempre.
+    if (!avalia(params.when, ctx)) {
+      log(`gate ${item.nome}: pulado (when ${descreveWhen(params.when)})`)
+      continue
+    }
+    log(`gate ${item.nome}`)
     const r = spawn(cmd[0], [...cmd.slice(1), ...args], {
       stdio: 'inherit',
-      env: { ...process.env, ...runtime.env, TARS_PROJECT: project, TARS_GATE: item.nome, TARS_GATE_PARAMS: JSON.stringify(params) },
+      env: { ...env, ...runtime.env, TARS_PROJECT: project, TARS_GATE: item.nome, TARS_GATE_PARAMS: JSON.stringify(params), TARS_ACTOR: ctx.actor },
     })
     rodados.push(item.nome)
     if (r.error) {
