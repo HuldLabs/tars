@@ -60,8 +60,26 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 - A linha **`ambiente`** do `check` acusa só o que aponta para a fonte
   (`OP_SERVICE_ACCOUNT_TOKEN`, `OP_CONNECT_TOKEN`, `OP_CONNECT_HOST`, `OP_SESSION_*`,
   `SOPS_AGE_KEY`); um `OP_*` qualquer do app era ruído.
+- **`tars secrets rotate`** (S2): a rotação da chave age. É **do dono** — `source="automation"`
+  recusa alto, e `owner` ainda exige ator humano **e** TTY. `key_scope="machine"` apaga a chave
+  e o cache locais e refaz; `key_scope="project"` percorre 8 passos **retomáveis** por
+  `<dir>/rotate.state` (o estado guarda o passo que ainda falta rodar): plano com `[s/N]` →
+  `age-keygen` num `.rotate` ao lado da chave → identidade NOVA no item do cofre pelo
+  **template** (`op item get`/`item edit --template`, **nunca por argv**) → confere lendo de
+  volta do cofre (recipient tem de ser o novo, senão para **sem tocar nada local**) → recifra
+  os versionados (troca o recipient no `.sops.yaml` e `sops updatekeys` em cada arquivo de
+  `sops_files`; sem a lista, **falha alto**) → só então troca a chave local e refaz o cache →
+  verifica (check ok, cada versionado decifra **só** com a nova, nenhum cita a velha) → fim
+  (apaga estado e temporários, imprime o que o dono commita). A chave velha só sai no passo 6.
+- **`tars secrets token set`** (S2): lê o token NOVO do **stdin oculto** (sem eco, nunca argv),
+  grava `<token_file>.novo` 0600 e só o promove se `op whoami` o aceitar **sozinho** (sem sessão
+  do app, biometria `false`) — recusou, o antigo continua e o `.novo` some. A mensagem final manda
+  revogar o antigo no 1Password **só depois** de rodar isto em todas as máquinas de automação.
+- **`token_expires`** (`AAAA-MM-DD`, perfil ou projeto, mesmas camadas): a linha `token` do
+  `check` **falha** quando vencido, **avisa** a menos de 14 dias e diz `sem data` quando o campo
+  não existe. Data malformada grita.
 
-> **Antes do release de dev.9**: entram ainda **S2**, **S2b** e **S3** (cofre do projeto nos
+> **Antes do release de dev.9**: entram ainda **S2b** e **S3** (cofre do projeto nos
 > consumidores). O dev.9 não fecha sem elas.
 
 ### Por que

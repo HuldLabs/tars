@@ -16,8 +16,12 @@ import {
   ErroConfig,
   check,
   confereTemplate,
+  DIAS_AVISO_TOKEN,
   configDir,
   decifraMapa,
+  diasAte,
+  estadoRotate,
+  expandeArquivos,
   envDoCofre,
   envDoFilho,
   exec,
@@ -26,10 +30,13 @@ import {
   lerPerfil,
   perfilFile,
   reapResiduo,
+  recipient,
   recipientDoCache,
   redige,
   refresh,
   registra,
+  rotate,
+  tokenSet,
   validaRef,
 } from './tars-secrets.mjs'
 
@@ -58,7 +65,7 @@ const TEM_AGE = tem('age-keygen')
  * emula o `op run`: resolve os NOMES do template a partir de `TARS_STUB_VALORES` e executa o
  * filho com eles no ambiente (e' assim que o helper ve o valor — intacto, multilinha incluso).
  */
-function stubOp({ keySrc, valores }) {
+function stubOp({ keySrc, valores, item, editIgnora, whoami }) {
   const dir = tmp('tars-op-')
   const log = path.join(dir, 'argv.log')
   const js = path.join(dir, 'op.mjs')
@@ -74,7 +81,24 @@ function stubOp({ keySrc, valores }) {
       "fs.appendFileSync(process.env.TARS_STUB_ENV, String(process.env.OP_BIOMETRIC_UNLOCK_ENABLED) + '\\n')",
       "if (process.env.TARS_STUB_MORTO) process.exit(1)",
       "const i = (n) => argv.indexOf(n)",
-      "if (argv[0] === 'read' && i('--out-file') !== -1) fs.copyFileSync(process.env.TARS_STUB_KEY_SRC, argv[i('--out-file') + 1])",
+      // `read` devolve o CAMPO do item quando ha' item: e' assim que o cofre real reflete o que
+      // o `item edit` gravou — a prova de que a rotacao fechou o ciclo pelo cofre.
+      "if (argv[0] === 'read' && i('--out-file') !== -1) {",
+      "  const out = argv[i('--out-file') + 1]",
+      "  if (process.env.TARS_STUB_ITEM && fs.existsSync(process.env.TARS_STUB_ITEM)) {",
+      "    const doc = JSON.parse(fs.readFileSync(process.env.TARS_STUB_ITEM, 'utf8'))",
+      "    const f = (doc.fields || []).find((x) => x.id === 'age.key' || x.label === 'age.key') || doc.fields[0]",
+      "    fs.writeFileSync(out, (f && f.value) || '', { mode: 0o600 })",
+      '  } else fs.copyFileSync(process.env.TARS_STUB_KEY_SRC, out)',
+      '}',
+      "if (argv[0] === 'item' && argv[1] === 'get') { process.stdout.write(fs.readFileSync(process.env.TARS_STUB_ITEM, 'utf8')); process.exit(0) }",
+      "if (argv[0] === 'item' && argv[1] === 'edit') {",
+      "  const t = argv.find((a) => a.startsWith('--template=')).slice(11)",
+      "  fs.appendFileSync(process.env.TARS_STUB_TEMPLATE_LOG, fs.readFileSync(t, 'utf8') + '\\n')",
+      "  if (!process.env.TARS_STUB_EDIT_IGNORA) fs.copyFileSync(t, process.env.TARS_STUB_ITEM)",
+      "  process.exit(Number(process.env.TARS_STUB_EDIT_STATUS || 0))",
+      '}',
+      "if (argv[0] === 'whoami') process.exit(Number(process.env.TARS_STUB_WHOAMI || 0))",
       "if (argv[0] === 'run') {",
       "  const tpl = argv.find((a) => a.startsWith('--env-file=')).slice(11)",
       "  const nomes = fs.readFileSync(tpl, 'utf8').split('\\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split('=')[0].trim())",
@@ -90,9 +114,14 @@ function stubOp({ keySrc, valores }) {
   )
   const envLog = path.join(dir, 'env.log')
   fs.writeFileSync(envLog, '')
-  const env = { ...process.env, TARS_STUB_LOG: log, TARS_STUB_ENV: envLog }
+  const tplLog = path.join(dir, 'template.log')
+  fs.writeFileSync(tplLog, '')
+  const env = { ...process.env, TARS_STUB_LOG: log, TARS_STUB_ENV: envLog, TARS_STUB_TEMPLATE_LOG: tplLog }
   if (keySrc) env.TARS_STUB_KEY_SRC = keySrc
   if (valores) env.TARS_STUB_VALORES = JSON.stringify(valores)
+  if (item) env.TARS_STUB_ITEM = item
+  if (editIgnora) env.TARS_STUB_EDIT_IGNORA = '1'
+  if (whoami !== undefined) env.TARS_STUB_WHOAMI = String(whoami)
   // O seam: trocar o PATH nao basta no Windows — o libuv acha o `op.exe` de verdade antes
   // de qualquer `.cmd` do stub, e o teste abriria o COFRE REAL. O caminho explicito nao.
   const launcher = path.join(dir, process.platform === 'win32' ? 'op.cmd' : 'op')
@@ -102,7 +131,7 @@ function stubOp({ keySrc, valores }) {
     fs.writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`, { mode: 0o755 })
   }
   process.env.TARS_SECRETS_OP = launcher
-  return { env, log, envLog, launcher, antes }
+  return { env, log, envLog, tplLog, launcher, antes }
 }
 
 /** Uma chave age REAL (o `sops` so' cifra para um recipient de verdade). */
@@ -736,5 +765,271 @@ describe('camadas de config: embutido | perfil | projeto', () => {
 
   it('as camadas sao as TRES, nessa ordem de forca', () => {
     expect(CAMADAS).toEqual(['embutido', 'perfil', 'projeto'])
+  })
+})
+
+// --- `rotate` e `token set` (dev.9) ----------------------------------------------------
+// O `op` continua stub, mas o `sops` e o `age-keygen` sao REAIS: e' o unico jeito de provar
+// que a recifra fecha (o cache e os versionados decifram com a chave NOVA, nunca com a velha).
+
+/** O ambiente do DONO no terminal dele: sem marcador de ator e sem nada que aponte a fonte. */
+const envDono = (stub) => {
+  const env = { ...stub.env, CLAUDECODE: '0', TARS_ACTOR: '' }
+  for (const k of Object.keys(env)) {
+    if (k.startsWith('OP_SESSION_') || ['OP_SERVICE_ACCOUNT_TOKEN', 'OP_CONNECT_TOKEN', 'OP_CONNECT_HOST', 'SOPS_AGE_KEY'].includes(k)) {
+      delete env[k]
+    }
+  }
+  return env
+}
+
+/** O JSON do item como o `op item get --format json` devolve (campos com id/label/value). */
+const itemJson = (identidade) =>
+  JSON.stringify({ id: 'agekey', title: 'agekey', fields: [{ id: 'age.key', label: 'age.key', type: 'concealed', value: identidade }] })
+
+/** Um versionado de verdade: yaml cifrado com sops para `rec`. */
+function versionado(dir, rec, nome) {
+  const plain = path.join(dir, `${nome}.plain`)
+  const alvo = path.join(dir, nome)
+  fs.writeFileSync(plain, 'senha: valor-de-teste\n')
+  const r = spawnSync('sops', ['--encrypt', '--age', rec, '--input-type', 'yaml', '--output-type', 'yaml', '--output', alvo, plain], {
+    encoding: 'utf8',
+  })
+  if (r.status !== 0) throw new Error(`sops --encrypt falhou: ${r.stderr}`)
+  fs.rmSync(plain, { force: true })
+  return alvo
+}
+
+describe.skipIf(!TEM_AGE || !TEM_SOPS)('rotate', () => {
+  /** Um projeto pronto para rotacionar: chave velha em disco, item no stub, versionado cifrado. */
+  const cenario = ({ editIgnora, extra = [] } = {}) => {
+    const dir = tmp('tars-rot-')
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
+    const keyAlvo = path.join(dir, 'age.key')
+    fs.copyFileSync(chaveReal(), keyAlvo)
+    fs.chmodSync(keyAlvo, 0o600)
+    const recVelho = recipient(keyAlvo)
+    const item = path.join(dir, 'item.json')
+    fs.writeFileSync(item, itemJson(fs.readFileSync(keyAlvo, 'utf8').trim()))
+    const sops_config = path.join(dir, '.sops.yaml')
+    fs.writeFileSync(sops_config, `creation_rules:\n  - path_regex: .*\n    age: ${recVelho}\n`)
+    const arquivos = [versionado(dir, recVelho, 'segredos.yaml')]
+    for (const e of extra) arquivos.push(e(dir))
+    const c = cfgDe(
+      {
+        key_scope: 'project',
+        source: 'owner',
+        age_key_ref: 'op://tars/agekey/age.key',
+        sops_config,
+        sops_files: arquivos.map((a) => path.basename(a)),
+      },
+      dir,
+    )
+    const stub = stubOp({ item, editIgnora })
+    return { dir, c, keyAlvo, item, sops_config, stub, recVelho, arquivos }
+  }
+
+  it('automation RECUSA rotate (a automacao consome a chave, nao a troca)', () => {
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/agekey/age.key' }, tmp())
+    expect(() => rotate(c, { env: process.env, tty: true })).toThrow(/rotate e' do dono.*automation/)
+  })
+
+  it('owner SEM TTY recusa (nao ha sessao do app 1Password para abrir)', () => {
+    const c = cfgDe({ source: 'owner', age_key_ref: 'op://tars/agekey/age.key' }, tmp())
+    const env = { ...process.env, CLAUDECODE: '0', TARS_ACTOR: '' }
+    expect(() => rotate(c, { env, tty: false })).toThrow(/source=owner sem TTY/)
+  })
+
+  it('sops_config SEM sops_files falha alto nomeando o que falta', () => {
+    const dir = tmp('tars-rot-')
+    const c = cfgDe({ source: 'owner', age_key_ref: 'op://tars/agekey/age.key', sops_config: path.join(dir, '.sops.yaml') }, dir)
+    expect(() => expandeArquivos(c)).toThrow(/SEM `sops_files`/)
+  })
+
+  it('project feliz: cofre pelo TEMPLATE (nunca argv), versionado so com a chave NOVA', () => {
+    const { c, item, stub, sops_config, dir, recVelho } = cenario()
+    const r = rotate(c, { env: envDono(stub), tty: true, confirma: () => true })
+    expect(r.status).toBe(0)
+
+    const identidade = fs.readFileSync(c.age_key_file, 'utf8').trim()
+    const recNovo = recipient(c.age_key_file)
+    expect(recNovo).not.toBe(recVelho)
+
+    // O cofre recebeu a identidade NOVA, e ela foi por ARQUIVO: o argv do `op` nunca a carrega.
+    expect(JSON.parse(fs.readFileSync(item, 'utf8')).fields[0].value).toBe(identidade)
+    const chamadas = fs.readFileSync(stub.log, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+    expect(JSON.stringify(chamadas)).not.toContain('AGE-SECRET-KEY')
+    expect(chamadas.some((a) => a[0] === 'item' && a[1] === 'edit' && a.some((x) => x.startsWith('--template=')))).toBe(true)
+    // ...e o template que o stub recebeu CARREGA a identidade (prova de que foi pelo arquivo).
+    // O template e' o JSON do item, entao a quebra de linha vem escapada (`\n`): o que se cobra
+    // aqui e' o MATERIAL da chave, nao a formatacao.
+    expect(fs.readFileSync(stub.tplLog, 'utf8')).toContain(identidade.split('\n').pop())
+
+    // O manifesto e o versionado so citam o recipient NOVO.
+    expect(fs.readFileSync(sops_config, 'utf8')).toContain(recNovo)
+    expect(fs.readFileSync(sops_config, 'utf8')).not.toContain(recVelho)
+    expect(fs.readFileSync(path.join(dir, 'segredos.yaml'), 'utf8')).not.toContain(recVelho)
+
+    // E o versionado decifra SO com a chave nova.
+    const d = spawnSync('sops', ['--decrypt', '--input-type', 'yaml', '--output-type', 'json', path.join(dir, 'segredos.yaml')], {
+      encoding: 'utf8',
+      env: { ...process.env, SOPS_AGE_KEY_FILE: c.age_key_file },
+    })
+    expect(d.status).toBe(0)
+    expect(d.stdout).toContain('valor-de-teste')
+
+    // Nenhum segredo (identidade ou valor) na saida do comando, e o estado saiu no fim.
+    expect(r.saida).not.toContain('AGE-SECRET-KEY')
+    expect(r.saida).not.toContain('valor-de-teste')
+    expect(fs.existsSync(estadoRotate(c))).toBe(false)
+  })
+
+  it('falha no passo 4 (cofre devolve a chave velha): nada local muda, estado no 4, retoma', () => {
+    const { c, keyAlvo, stub, sops_config, recVelho } = cenario({ editIgnora: true })
+    const antesChave = fs.readFileSync(keyAlvo, 'utf8')
+    const antesManifesto = fs.readFileSync(sops_config, 'utf8')
+
+    expect(() => rotate(c, { env: envDono(stub), tty: true, confirma: () => true })).toThrow(/recipient DIFERENTE/)
+    // Nada local mudou — nem a chave, nem o manifesto, nem o cache.
+    expect(fs.readFileSync(keyAlvo, 'utf8')).toBe(antesChave)
+    expect(fs.readFileSync(sops_config, 'utf8')).toBe(antesManifesto)
+    expect(fs.existsSync(c.cache_file)).toBe(false)
+    expect(JSON.parse(fs.readFileSync(estadoRotate(c), 'utf8')).passo).toBe(4)
+
+    // Retoma: o cofre passa a aceitar a edicao e a rotacao fecha do passo 4 em diante.
+    const stub2 = stubOp({ item: path.join(c.dir, 'item.json') })
+    const r = rotate(c, { env: envDono(stub2), tty: true, confirma: () => true })
+    expect(r.status).toBe(0)
+    expect(recipient(c.age_key_file)).not.toBe(recVelho)
+    expect(fs.existsSync(estadoRotate(c))).toBe(false)
+  })
+
+  it('falha no passo 5 (um arquivo nao recifra): chave local continua a velha, retoma completa', () => {
+    const { c, keyAlvo, stub, dir, recVelho } = cenario({
+      extra: [
+        (d) => {
+          const p = path.join(d, 'quebrado.yaml')
+          fs.writeFileSync(p, 'nao sou sops\n')
+          return p
+        },
+      ],
+    })
+    const antes = fs.readFileSync(keyAlvo, 'utf8')
+
+    expect(() => rotate(c, { env: envDono(stub), tty: true, confirma: () => true })).toThrow(/sops updatekeys` falhou/)
+    // A chave LOCAL continua a velha: o passo 6 (a troca) so roda com os versionados prontos.
+    expect(fs.readFileSync(keyAlvo, 'utf8')).toBe(antes)
+    expect(recipient(keyAlvo)).toBe(recVelho)
+    expect(JSON.parse(fs.readFileSync(estadoRotate(c), 'utf8')).passo).toBe(5)
+
+    // O defeito do arquivo e corrigido e a retomada completa a recifra e a troca.
+    versionado(dir, recVelho, 'quebrado.yaml')
+    const stub2 = stubOp({ item: path.join(c.dir, 'item.json') })
+    const r = rotate(c, { env: envDono(stub2), tty: true, confirma: () => true })
+    expect(r.status).toBe(0)
+    expect(recipient(c.age_key_file)).not.toBe(recVelho)
+  })
+
+  it('machine: gera chave DIFERENTE, o cache decifra e o recipient muda', () => {
+    const dir = tmp('tars-rot-mac-')
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
+    const c = cfgDe({ key_scope: 'machine', source: 'owner' }, dir)
+    const stub = stubOp({ valores: { TOKEN: 'x' } })
+    rotate(c, { env: envDono(stub), tty: true, confirma: () => true })
+    const recAntes = recipient(c.age_key_file)
+    const cacheAntes = recipientDoCache(c)
+
+    rotate(c, { env: envDono(stub), tty: true, confirma: () => true })
+    expect(recipient(c.age_key_file)).not.toBe(recAntes)
+    expect(recipientDoCache(c)).toEqual([recipient(c.age_key_file)])
+    expect(recipientDoCache(c)).not.toEqual(cacheAntes)
+    expect(decifraMapa(c).TOKEN).toBe('x')
+  })
+
+  it('cancelar no plano nao deixa estado nem toca em nada', () => {
+    const { c, keyAlvo, stub } = cenario()
+    const antes = fs.readFileSync(keyAlvo, 'utf8')
+    const r = rotate(c, { env: envDono(stub), tty: true, confirma: () => false })
+    expect(r.saida).toMatch(/cancelado/)
+    expect(fs.readFileSync(keyAlvo, 'utf8')).toBe(antes)
+    expect(fs.existsSync(estadoRotate(c))).toBe(false)
+  })
+})
+
+describe('token set', () => {
+  const cenario = (whoami = 0) => {
+    const dir = tmp('tars-tok-')
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/agekey/age.key' }, dir)
+    fs.writeFileSync(c.token_file, 'token-antigo\n', { mode: 0o600 })
+    const stub = stubOp({ whoami })
+    return { c, stub }
+  }
+
+  it('token valido: troca, e o token NUNCA aparece em argv', () => {
+    const { c, stub } = cenario(0)
+    const r = tokenSet(c, { env: stub.env, le: () => 'token-novo-do-dono' })
+    expect(r.status).toBe(0)
+    expect(r.saida).toMatch(/token novo em uso nesta maquina.*revogue o antigo/s)
+    expect(fs.readFileSync(c.token_file, 'utf8').trim()).toBe('token-novo-do-dono')
+    // A prova: o argv de TODAS as chamadas ao `op` (inclusive o `whoami`) nao carrega o token.
+    const chamadas = fs.readFileSync(stub.log, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+    expect(chamadas.some((a) => a[0] === 'whoami')).toBe(true)
+    expect(JSON.stringify(chamadas)).not.toContain('token-novo-do-dono')
+    expect(JSON.stringify(chamadas)).not.toContain('token-antigo')
+    // E o `.novo` nao sobra: o rename e o que o promove.
+    expect(fs.existsSync(`${c.token_file}.novo`)).toBe(false)
+  })
+
+  it('token invalido: o antigo continua e o `.novo` some', () => {
+    const { c, stub } = cenario(1)
+    expect(() => tokenSet(c, { env: stub.env, le: () => 'token-que-nao-vale' })).toThrow(/NAO validou/)
+    expect(fs.readFileSync(c.token_file, 'utf8').trim()).toBe('token-antigo')
+    expect(fs.existsSync(`${c.token_file}.novo`)).toBe(false)
+  })
+
+  it('token vazio nao troca nada', () => {
+    const { c, stub } = cenario(0)
+    expect(() => tokenSet(c, { env: stub.env, le: () => '   ' })).toThrow(/VAZIO/)
+    expect(fs.readFileSync(c.token_file, 'utf8').trim()).toBe('token-antigo')
+  })
+})
+
+describe('expiracao do token (`token_expires`)', () => {
+  const cfgToken = (expires) => {
+    const dir = tmp('tars-exp-')
+    fs.writeFileSync(path.join(dir, 'secrets.tpl'), 'TOKEN=x\n')
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/agekey/age.key', token_expires: expires }, dir)
+    fs.writeFileSync(c.token_file, 'token-falso', { mode: 0o600 })
+    return c
+  }
+  /** Uma data a `n` dias de hoje, no formato do campo. */
+  const emDias = (n) => {
+    const d = new Date()
+    d.setDate(d.getDate() + n)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const linhaToken = (c) => check(c, { env: { PATH: process.env.PATH } }).linhas.find((l) => l.nome === 'token')
+
+  it('vencido FALHA nomeando a data', () => {
+    const c = cfgToken(emDias(-1))
+    expect(linhaToken(c).ok).toBe(false)
+    expect(linhaToken(c).detalhe).toMatch(/vencido em/)
+    expect(check(c, { env: { PATH: process.env.PATH } }).ok).toBe(false)
+  })
+
+  it('a 10 dias AVISA sem reprovar', () => {
+    const c = cfgToken(emDias(10))
+    expect(linhaToken(c).ok).toBe(true)
+    expect(linhaToken(c).detalhe).toMatch(/avisa: vence em 10 dia\(s\)/)
+    expect(DIAS_AVISO_TOKEN).toBe(14)
+    expect(diasAte(emDias(10))).toBe(10)
+  })
+
+  it('sem o campo, a linha diz `sem data`', () => {
+    expect(linhaToken(cfgToken(undefined)).detalhe).toMatch(/sem data/)
+  })
+
+  it('data malformada GRITA (nao passa como "sem data")', () => {
+    expect(() => diasAte('10/10/2026')).toThrow(/token_expires invalido/)
   })
 })

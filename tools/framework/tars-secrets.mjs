@@ -107,13 +107,15 @@ export function validaRef(ref) {
  *      redigir ali corromperia o dado (e nenhum segredo em claro passa por stdout por desenho);
  *   3) sem shell: argv de verdade, nada reinterpretado.
  */
-export function roda(bin, args, { env = process.env } = {}) {
+export function roda(bin, args, { env = process.env, cwd } = {}) {
   for (const a of args) {
     if (typeof a === 'string' && /op:\/\//.test(a)) validaRef(a)
   }
   registra(env.OP_SERVICE_ACCOUNT_TOKEN)
   registra(env.SOPS_AGE_KEY)
-  const r = spawnSync(bin, args, { env, encoding: 'utf8' })
+  // `cwd` existe por um caso so': o `sops updatekeys` descobre o `.sops.yaml` subindo a partir
+  // do diretorio de trabalho (nao do arquivo), e a recifra precisa achar o manifesto do projeto.
+  const r = spawnSync(bin, args, { env, encoding: 'utf8', ...(cwd ? { cwd } : {}) })
   if (r.stderr) r.stderr = redige(r.stderr)
   return r
 }
@@ -142,6 +144,9 @@ export const CAMPOS = {
   cache_file: { padrao: (dir) => path.join(dir, 'secrets.sops.json') },
   template: { padrao: (dir) => path.join(dir, 'secrets.tpl') },
   token_file: { padrao: (dir) => path.join(dir, 'op-token') },
+  // A data de vencimento do token (`AAAA-MM-DD`): nem ref nem caminho — um FATO do token, que
+  // ganha o merge campo a campo de graca por estar nesta tabela. Ausente = `sem data` no check.
+  token_expires: {},
 }
 
 /** As camadas, da mais fraca para a mais forte. A ordem E' o merge (campo a campo). */
@@ -295,7 +300,10 @@ export function lerConfig(secrets = {}, { project = process.cwd(), env = process
   for (const campo of Object.keys(CAMPOS)) {
     if (CAMPOS[campo].ref && cfg[campo]) validaRef(cfg[campo])
   }
-  return { ...cfg, key_scope, source: secrets.source, sops_config, dir }
+  // `sops_files` e' a LISTA de arquivos versionados a recifrar na rotacao (glob, relativo ao
+  // PROJETO). Nao e' ref nem caminho local: ganha tratamento proprio, como o `sops_config`.
+  const sops_files = secrets.sops_files ?? null
+  return { ...cfg, key_scope, source: secrets.source, sops_config, sops_files, projeto: path.resolve(project), dir }
 }
 
 /**
@@ -636,17 +644,45 @@ export function check(cfg, { env = process.env, fs: fsm = fs, decifra = decifraM
     add('chave', modo === 0o600, modo === 0o600 ? '0600' : `modo ${modo.toString(8)} (esperado 600)`)
   }
 
-  // `source=automation` depende do token em arquivo: sem ele nao ha' refresh, e o unico sintoma
-  // seria um `op` recusando longe da causa. Le SO' para saber se esta' VAZIO (nada de conteudo).
-  if (cfg.source === 'automation') {
-    if (!fsm.existsSync(cfg.token_file)) add('token', false, `ausente: ${cfg.token_file}`)
-    else if (!fsm.readFileSync(cfg.token_file, 'utf8').trim()) add('token', false, `VAZIO: ${cfg.token_file}`)
-    else if (process.platform === 'win32') add('token', true, `ACL do usuario (${cfg.token_file})`)
-    else {
-      const modo = fsm.statSync(cfg.token_file).mode & 0o777
-      const ok = modo === 0o400 || modo === 0o600
-      add('token', ok, ok ? modo.toString(8).padStart(3, '0') : `modo ${modo.toString(8)} (esperado 400 ou 600)`)
+  // O token e' UMA linha so': o ARQUIVO (source=automation) e a DATA de vencimento sao fatos do
+  // mesmo token. `source=automation` sem o arquivo nao tem refresh, e o unico sintoma seria um
+  // `op` recusando longe da causa — le SO' para saber se esta' VAZIO (nada de conteudo).
+  if (cfg.source === 'automation' || cfg.token_expires) {
+    let okToken = true
+    let detalheToken = 'sem data'
+    if (cfg.source === 'automation') {
+      if (!fsm.existsSync(cfg.token_file)) {
+        okToken = false
+        detalheToken = `ausente: ${cfg.token_file}`
+      } else if (!fsm.readFileSync(cfg.token_file, 'utf8').trim()) {
+        okToken = false
+        detalheToken = `VAZIO: ${cfg.token_file}`
+      } else if (process.platform === 'win32') {
+        detalheToken = `ACL do usuario (${cfg.token_file})`
+      } else {
+        const modo = fsm.statSync(cfg.token_file).mode & 0o777
+        okToken = modo === 0o400 || modo === 0o600
+        detalheToken = okToken ? modo.toString(8).padStart(3, '0') : `modo ${modo.toString(8)} (esperado 400 ou 600)`
+      }
     }
+    if (cfg.token_expires) {
+      const dias = diasAte(cfg.token_expires)
+      // Vencido FALHA (o token morreu); perto de vencer AVISA (ainda funciona — reprovar aqui
+      // pararia automacao que esta' viva por um fato que ainda nao aconteceu).
+      if (dias < 0) {
+        okToken = false
+        detalheToken = `vencido em ${cfg.token_expires}`
+      } else if (dias < DIAS_AVISO_TOKEN) {
+        detalheToken += ` — avisa: vence em ${dias} dia(s) (${cfg.token_expires})`
+      } else {
+        detalheToken += ` — vence em ${dias} dia(s) (${cfg.token_expires})`
+      }
+    } else if (okToken) {
+      // Sem `token_expires` a linha DIZ que nao ha' data — "sem data" e' diferente de "esta
+      // tudo certo, nao sei ate' quando". Silencio aqui seria a data que ninguem nota faltar.
+      detalheToken = 'sem data'
+    }
+    add('token', okToken, detalheToken)
   }
 
   const t = confereTemplate(cfg, { fs: fsm })
@@ -708,8 +744,408 @@ export function format(r) {
   ].join('\n')
 }
 
+// --- ROTACAO DA CHAVE (rotate) E TROCA DO TOKEN (token set) ---------------------------
+// Duas operacoes do DONO, com a mesma regra de ouro: o SEGREDO nunca passa por argv (ha'
+// `ps`), o estado fica em DISCO para retomar (idempotencia), e nada local muda antes de o
+// cofre confirmar. O `op` de verdade so' e' exercitado pelo dono; aqui tudo passa pelo
+// mesmo `roda`/`spawnOp`, entao o stub de teste cobre o caminho inteiro.
+
+/** Quantos dias antes do vencimento o `check` AVISA (nao reprova) que o token vai vencer. */
+export const DIAS_AVISO_TOKEN = 14
+
+/** Dias ate' a data `AAAA-MM-DD` (negativo = ja' venceu). Formato invalido GRITA (R4). */
+export function diasAte(data, hoje = new Date()) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(data ?? ''))
+  if (!m) throw new ErroConfig(`[secrets] token_expires invalido: '${data}' (use AAAA-MM-DD)`)
+  const alvo = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const base = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())
+  return Math.round((alvo - base) / 86400000)
+}
+
+/** O arquivo de ESTADO da rotacao: e' ele que faz `rodar de novo` RETOMAR, nao recomecar. */
+export const estadoRotate = (cfg) => path.join(cfg.dir, 'rotate.state')
+
+function leEstado(cfg) {
+  const f = estadoRotate(cfg)
+  if (!fs.existsSync(f)) return { passo: 0, recipient_velho: null, recipient_novo: null }
+  try {
+    return { passo: 0, recipient_velho: null, recipient_novo: null, ...JSON.parse(fs.readFileSync(f, 'utf8')) }
+  } catch {
+    return { passo: 0, recipient_velho: null, recipient_novo: null }
+  }
+}
+
+/** Grava o estado 0600 de forma ATOMICA: um estado meio-escrito mentiria sobre o passo. */
+function gravaEstado(cfg, st) {
+  const f = estadoRotate(cfg)
+  fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 })
+  const tmp = `${f}.novo`
+  fs.writeFileSync(tmp, JSON.stringify(st, null, 2), { mode: 0o600 })
+  protegeArquivo(tmp)
+  fs.renameSync(tmp, f)
+}
+
+/** `op://cofre/item/campo` -> o ITEM (para `op item edit`) e o CAMPO a trocar. */
+export function partesRef(ref) {
+  const m = /^op:\/\/([^/]+)\/([^/]+)\/(.+)$/.exec(validaRef(ref))
+  if (!m) {
+    throw new ErroConfig("[secrets] a ref da chave precisa de `op://cofre/item/campo`: sem o campo nao da' para editar o item")
+  }
+  return { item: `op://${m[1]}/${m[2]}`, campo: m[3] }
+}
+
+/** O conteudo do arquivo da chave (a identidade `AGE-SECRET-KEY-1...`) — nunca ecoado fora. */
+const identidadeDe = (arquivo) => fs.readFileSync(arquivo, 'utf8').trim()
+
+/** Le a resposta [s/N] do TTY (sem eco de segredo: aqui so' entra `s`/`n`). */
+export function perguntaTty(msg) {
+  process.stdout.write(`${msg} [s/N] `)
+  const b = Buffer.alloc(64)
+  let n = 0
+  try {
+    n = fs.readSync(0, b, 0, b.length, null)
+  } catch {
+    n = 0
+  }
+  const r = b.subarray(0, n).toString('utf8').trim().toLowerCase()
+  return r === 's' || r === 'sim' || r === 'y' || r === 'yes'
+}
+
+/** Le um segredo do stdin SEM eco (raw mode): o token novo nunca passa por argv nem por eco. */
+export function leOculto(msg) {
+  process.stdout.write(msg)
+  const b = Buffer.alloc(1)
+  const pedacos = []
+  const cru = process.stdin.isTTY && typeof process.stdin.setRawMode === 'function'
+  if (cru) process.stdin.setRawMode(true)
+  try {
+    for (;;) {
+      let n = 0
+      try {
+        n = fs.readSync(0, b, 0, 1, null)
+      } catch {
+        break
+      }
+      if (!n) break
+      const c = b.toString('utf8')
+      if (c === '\n' || c === '\r') break
+      if (c === String.fromCharCode(3)) {
+        process.stdout.write('\n')
+        process.exit(130)
+      }
+      if (c === String.fromCharCode(127) || c === '\b') {
+        pedacos.pop()
+        continue
+      }
+      pedacos.push(c)
+    }
+  } finally {
+    if (cru) process.stdin.setRawMode(false)
+    process.stdout.write('\n')
+  }
+  return pedacos.join('')
+}
+
+/**
+ * Passo 3 — grava a identidade NOVA no campo do item no 1Password. NUNCA por argv: o `op` so'
+ * ve o CAMINHO de um template 0600, que morre no `finally`. Se o `op item edit` falhar, o item
+ * fica como estava (o `op` e' transacional por item) — nenhum estado intermediario.
+ */
+function editaItemNoCofre(cfg, ref, identidade, env) {
+  const { item, campo } = partesRef(ref)
+  const envCofre = envDoCofre(cfg, env)
+  const g = spawnOp(['item', 'get', item, '--format', 'json'], envCofre)
+  if (g.status !== 0) {
+    throw new ErroConfig(`[secrets] nao consegui ler o item ${item} do cofre: ${(g.stderr || g.error?.message || '').trim()}`)
+  }
+  let doc
+  try {
+    doc = JSON.parse(g.stdout)
+  } catch (e) {
+    throw new ErroConfig(`[secrets] o item ${item} nao voltou como JSON: ${e.message}`)
+  }
+  const alvo = (doc.fields || []).find((f) => f.id === campo || f.label === campo)
+  if (!alvo) {
+    throw new ErroConfig(`[secrets] o item ${item} nao tem o campo '${campo}' — confira a ref \`age_key_ref\``)
+  }
+  alvo.value = identidade
+  reapResiduo(os.tmpdir())
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), TMP_PREFIX(process.pid)))
+  const tpl = path.join(dir, 'item.json')
+  fs.writeFileSync(tpl, JSON.stringify(doc), { mode: 0o600 })
+  protegeArquivo(tpl)
+  try {
+    const e = spawnOp(['item', 'edit', item, `--template=${tpl}`], envCofre)
+    if (e.status !== 0) {
+      throw new ErroConfig(`[secrets] o 1Password recusou gravar o item ${item}: ${(e.stderr || e.error?.message || '').trim()}`)
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** Passo 4 — CONFERE lendo a chave de volta do cofre: so' segue se o recipient for o NOVO. */
+function confereCofre(cfg, recipientNovo, env) {
+  reapResiduo(os.tmpdir())
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), TMP_PREFIX(process.pid)))
+  const out = path.join(dir, 'age.key')
+  try {
+    const r = spawnOp(['read', '--out-file', out, cfg.age_key_ref], envDoCofre(cfg, env))
+    if (r.status !== 0 || !fs.existsSync(out)) {
+      throw new ErroConfig(`[secrets] o cofre nao devolveu a chave (${cfg.age_key_ref}): nada local foi tocado`)
+    }
+    const rec = recipient(out)
+    if (rec !== recipientNovo) {
+      throw new ErroConfig('[secrets] o cofre devolveu uma chave com recipient DIFERENTE do novo — nada local foi tocado')
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** Os arquivos versionados a recifrar: glob do manifesto, resolvido na raiz do PROJETO. */
+export function expandeArquivos(cfg, { fs: fsm = fs } = {}) {
+  if (!cfg.sops_config) return []
+  const lista = cfg.sops_files
+  if (!Array.isArray(lista) || lista.length === 0) {
+    throw new ErroConfig("[secrets] `sops_config` declarado SEM `sops_files`: sem a lista do que recifrar nao da' para rotacionar (nem para dizer o que mudou)")
+  }
+  const base = cfg.projeto ?? process.cwd()
+  const casados = [...new Set(lista.flatMap((g) => fsm.globSync(g, { cwd: base })).map((f) => path.resolve(base, f)))]
+  if (!casados.length) throw new ErroConfig(`[secrets] \`sops_files\` nao casou nenhum arquivo: ${lista.join(', ')}`)
+  return casados
+}
+
+/** Uma identidade temporaria 0600 com as DUAS chaves (velha + nova) para o `sops updatekeys`. */
+function comIdentidades(cfg, arquivoNova, fn) {
+  reapResiduo(os.tmpdir())
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), TMP_PREFIX(process.pid)))
+  const kf = path.join(dir, 'identidades.key')
+  try {
+    fs.writeFileSync(kf, `${identidadeDe(cfg.age_key_file)}\n${identidadeDe(arquivoNova)}\n`, { mode: 0o600 })
+    protegeArquivo(kf)
+    return fn(kf)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Passo 5 — recifra os versionados: o `.sops.yaml` passa a declarar o recipient NOVO e cada
+ * arquivo e' re-cifrado com `sops updatekeys`. Sem lista = falha alta (nunca "recifrei o que
+ * achei"). A troca no `.sops.yaml` e' a UNICA escrita em arquivo do dono que o rotate faz.
+ */
+function recifra(cfg, recVelho, recNovo, arquivos, env) {
+  if (!cfg.sops_config) return []
+  const cfgTxt = fs.readFileSync(cfg.sops_config, 'utf8')
+  // O manifesto passa a declarar o recipient NOVO ANTES do `updatekeys` (e' dele que o sops
+  // le' a receita de cifra) — e o passo 7 confere que nenhum arquivo ficou para tras. Se a
+  // troca JA' foi feita (retomada de um updatekeys que abortou no meio), nao se troca de novo.
+  if (!cfgTxt.includes(recNovo)) {
+    if (!cfgTxt.includes(recVelho)) {
+      throw new ErroConfig(`[secrets] o \`.sops.yaml\` (${cfg.sops_config}) nao declara nem o recipient VELHO nem o NOVO — confira antes de recifrar`)
+    }
+    fs.writeFileSync(cfg.sops_config, cfgTxt.split(recVelho).join(recNovo))
+  }
+  return comIdentidades(cfg, `${cfg.age_key_file}.rotate`, (kf) => {
+    const envSops = { ...env, SOPS_AGE_KEY_FILE: kf }
+    for (const a of arquivos) {
+      const u = roda('sops', ['updatekeys', '-y', a], { env: envSops, cwd: path.dirname(cfg.sops_config) })
+      if (u.status !== 0) {
+        throw new ErroConfig(`[secrets] \`sops updatekeys\` falhou em ${a}: ${(u.stderr || u.error?.message || '').trim()}`)
+      }
+    }
+    return arquivos
+  })
+}
+
+/**
+ * Passo 7 — VERIFICA sem tocar em mais nada: o `check` passa, cada arquivo decifra SO' com a
+ * chave NOVA (identidade velha OUT) e nenhum cita o recipient velho. Falha = para com o estado
+ * preservado (o proximo `rotate` retoma daqui).
+ */
+function verificaRotate(cfg, recVelho, arquivos, env) {
+  reapResiduo(os.tmpdir())
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), TMP_PREFIX(process.pid)))
+  const kf = path.join(dir, 'nova.key')
+  try {
+    fs.writeFileSync(kf, `${identidadeDe(cfg.age_key_file)}\n`, { mode: 0o600 })
+    protegeArquivo(kf)
+    for (const a of arquivos) {
+      if (fs.readFileSync(a, 'utf8').includes(recVelho)) {
+        throw new ErroConfig(`[secrets] ${a} ainda cita o recipient VELHO`)
+      }
+      const d = roda('sops', ['--decrypt', '--input-type', 'yaml', '--output-type', 'json', a], {
+        env: { ...env, SOPS_AGE_KEY_FILE: kf },
+      })
+      if (d.status !== 0) throw new ErroConfig(`[secrets] ${a} nao decifra SO' com a chave nova — estado preservado para retomar`)
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+  const r = check(cfg, { env })
+  if (!r.ok) throw new ErroConfig(`[secrets] o check reprovou depois da troca (estado preservado):\n${format(r)}`)
+}
+
+/** `key_scope=machine`: a chave e' LOCAL — nao ha' cofre a editar, so' apagar e refazer. */
+function rotateMachine(cfg, { env, confirma }) {
+  const onde = `chave ${cfg.age_key_file}\ncache ${cfg.cache_file}`
+  if (!confirma(`tars secrets rotate (machine): apagar a chave e o cache desta MAQUINA e refazer?\n${onde}\n`)) {
+    return { saida: 'tars secrets rotate: cancelado (nada foi tocado)', status: 0 }
+  }
+  fs.rmSync(cfg.age_key_file, { force: true })
+  fs.rmSync(cfg.cache_file, { force: true })
+  const r = refresh(cfg, { env, tty: true })
+  return {
+    saida: `tars secrets rotate (machine): chave e cache refeitos\n${onde}\ntars secrets rotate: ${r.chaves} chave(s) no cache`,
+    status: 0,
+  }
+}
+
+/**
+ * `rotate` (escopo project) — oito passos, RETOMAVEIS. O estado em disco guarda o passo que
+ * ainda precisa rodar: um erro no meio para ali, e rodar de novo continua DAQUELE passo. A
+ * chave velha so' sai no passo 6 (depois de o cofre e os versionados ja' estarem no novo).
+ */
+function rotateProject(cfg, { env, tty, confirma }) {
+  const st = leEstado(cfg)
+  const arquivoNova = `${cfg.age_key_file}.rotate`
+  const linhas = []
+  const passo = (n) => {
+    gravaEstado(cfg, { ...st, passo: n })
+    st.passo = n + 1
+  }
+  // 1 PLANO — e' o unico ponto em que o dono VE o que vai mudar antes de mudar.
+  if (st.passo <= 1) {
+    if (!cfg.age_key_ref) throw new ErroConfig('[secrets] rotate precisa de `age_key_ref` (escopo project)')
+    const arquivos = expandeArquivos(cfg)
+    const recVelho = fs.existsSync(cfg.age_key_file) ? recipient(cfg.age_key_file) : null
+    linhas.push(`tars secrets rotate: ref ${cfg.age_key_ref}`)
+    linhas.push(`tars secrets rotate: recipient atual ${recVelho ?? '(sem chave local)'}`)
+    if (cfg.sops_config) linhas.push(`tars secrets rotate: recifrar ${arquivos.join(', ')}`)
+    if (!confirma(`tars secrets rotate: gerar chave nova e trocar no cofre?\n${linhas.join('\n')}\n`)) {
+      fs.rmSync(estadoRotate(cfg), { force: true })
+      return { saida: 'tars secrets rotate: cancelado (nada foi tocado)', status: 0 }
+    }
+    st.recipient_velho = recVelho
+    passo(1)
+  }
+  const arquivos = expandeArquivos(cfg)
+  const recNova = () => st.recipient_novo ?? recipient(arquivoNova)
+  // 2 GERA — a chave nova nasce AO LADO da velha (`.rotate`): a velha so' sai no passo 6.
+  if (st.passo <= 2) {
+    passo(2)
+    fs.mkdirSync(path.dirname(cfg.age_key_file), { recursive: true, mode: 0o700 })
+    fs.rmSync(arquivoNova, { force: true })
+    const g = roda('age-keygen', ['-o', arquivoNova])
+    if (g.status !== 0) throw new ErroConfig(`[secrets] age-keygen nao gerou a chave nova: ${(g.stderr || g.error?.message || '').trim()}`)
+    protegeArquivo(arquivoNova)
+    st.recipient_novo = recipient(arquivoNova)
+    gravaEstado(cfg, st)
+  }
+  // 3 COFRE — a identidade entra pelo TEMPLATE, nunca por argv. Reescrever a MESMA identidade
+  // nao muda nada, entao a retomada de um passo 4 que falhou passa por aqui de novo: se o
+  // cofre ficou com a chave velha, e' aqui que ele volta a ficar certo (senao a retomada
+  // nunca fecharia — o passo 4 so' confere, nao grava).
+  if (st.passo <= 4) {
+    if (st.passo <= 3) passo(3)
+    editaItemNoCofre(cfg, cfg.age_key_ref, identidadeDe(arquivoNova), env)
+  }
+  // 4 CONFERE — o cofre tem de devolver o recipient NOVO; senao para SEM tocar nada local.
+  if (st.passo <= 4) {
+    passo(4)
+    confereCofre(cfg, recNova(), env)
+  }
+  // 5 RECIFRA — versionados + `.sops.yaml`.
+  if (st.passo <= 5) {
+    passo(5)
+    recifra(cfg, st.recipient_velho ?? recipienteAtual(cfg), recNova(), arquivos, env)
+  }
+  // 6 TROCA LOCAL — o rename e' ATOMICO: a chave velha some so' aqui, e a nova ja' e' a do cofre.
+  if (st.passo <= 6) {
+    passo(6)
+    fs.renameSync(arquivoNova, cfg.age_key_file)
+    protegeArquivo(cfg.age_key_file)
+    const r = refresh(cfg, { env, tty })
+    linhas.push(`tars secrets rotate: cache regravado (${r.chaves} chave(s))`)
+  }
+  // 7 VERIFICA — check ok, cada versionado decifra SO' com a nova, nenhum cita a velha.
+  if (st.passo <= 7) {
+    passo(7)
+    verificaRotate(cfg, st.recipient_velho, arquivos, env)
+  }
+  // 8 FIM — o estado e o tmp das identidades saem; fica so' o que o dono commita.
+  fs.rmSync(estadoRotate(cfg), { force: true })
+  fs.rmSync(arquivoNova, { force: true })
+  reapResiduo(os.tmpdir())
+  const aCommitar = [cfg.sops_config, ...arquivos].filter(Boolean)
+  linhas.push(`tars secrets rotate: pronto (recipient ${st.recipient_novo})`)
+  if (aCommitar.length) linhas.push(`tars secrets rotate: commite ${aCommitar.join(', ')}`)
+  linhas.push('tars secrets rotate: as outras maquinas pegam no proximo refresh; ate la o check delas acusa recipient desatualizado')
+  linhas.push('tars secrets rotate: o historico do item no 1Password guarda o valor velho (esperado)')
+  return { saida: linhas.join('\n'), status: 0 }
+}
+
+/** O recipient da chave local — usado so' como fallback se o estado perdeu o velho. */
+const recipienteAtual = (cfg) => (fs.existsSync(cfg.age_key_file) ? recipient(cfg.age_key_file) : null)
+
+/**
+ * `rotate` — so' o DONO roda (a automacao nao tem por que trocar a propria chave). `source`
+ * diferente de `owner` RECUSA alto; `owner` ainda passa por `podeAbrirCofre` (ator + TTY).
+ */
+export function rotate(cfg, { env = process.env, tty = process.stdin.isTTY, confirma = perguntaTty } = {}) {
+  if (cfg.source !== 'owner') {
+    throw new ErroConfig("[secrets] rotate e' do dono: `source=automation` nao rotaciona (a automacao consome a chave, nao a troca)")
+  }
+  podeAbrirCofre(cfg, { env, tty })
+  return cfg.key_scope === 'machine' ? rotateMachine(cfg, { env, confirma }) : rotateProject(cfg, { env, tty, confirma })
+}
+
+/**
+ * `token set` — troca o token da service account. O token NOVO vem do stdin OCULTO (nunca
+ * argv, nunca eco) e so' substitui o antigo depois de `op whoami` aceita-lo SOZINHO (sem
+ * sessao do app, biometria off): se nao validar, o antigo continua e o `.novo` some.
+ */
+export function tokenSet(cfg, { env = process.env, le = leOculto, spawn = spawnOp } = {}) {
+  const novo = String(le('tars secrets token set: cole o TOKEN NOVO (nao aparece no terminal): ') ?? '').trim()
+  if (!novo) throw new ErroConfig('[secrets] token VAZIO — nada foi trocado')
+  registra(novo)
+  const alvo = `${cfg.token_file}.novo`
+  fs.mkdirSync(path.dirname(cfg.token_file), { recursive: true, mode: 0o700 })
+  fs.rmSync(alvo, { force: true })
+  fs.writeFileSync(alvo, `${novo}\n`, { mode: 0o600 })
+  protegeArquivo(alvo)
+  const envNovo = { ...env, OP_SERVICE_ACCOUNT_TOKEN: novo, OP_BIOMETRIC_UNLOCK_ENABLED: 'false' }
+  for (const k of Object.keys(envNovo)) if (k.startsWith('OP_SESSION_')) delete envNovo[k]
+  delete envNovo.OP_CONNECT_HOST
+  delete envNovo.OP_CONNECT_TOKEN
+  let ok = false
+  try {
+    ok = spawn(['whoami'], envNovo).status === 0
+  } catch {
+    ok = false
+  }
+  if (!ok) {
+    fs.rmSync(alvo, { force: true })
+    throw new ErroConfig('[secrets] o token novo NAO validou (`op whoami` recusou) — o antigo continua em uso')
+  }
+  fs.renameSync(alvo, cfg.token_file)
+  protegeArquivo(cfg.token_file)
+  return {
+    saida:
+      'tars secrets token set: token novo em uso nesta maquina; revogue o antigo no 1Password SO depois de rodar isto em todas as maquinas de automacao',
+    status: 0,
+  }
+}
+
 /** Modulo DONO do subcomando: o CLI so' chama; o julgamento fica aqui. */
-export function run({ sub, rest = [], cfg, env = process.env, tty = process.stdin.isTTY }) {
+export function run({ sub, rest = [], cfg, env = process.env, tty = process.stdin.isTTY, confirma, le }) {
+  if (sub === 'rotate') return rotate(cfg, { env, tty, confirma })
+  if (sub === 'token') {
+    const acao = rest[0]
+    if (acao !== 'set') throw new ErroConfig(`uso: tars secrets token set (recebi '${acao ?? ''}')`)
+    return tokenSet(cfg, { env, le })
+  }
   if (sub === 'refresh') {
     const r = refresh(cfg, { env, tty })
     return { saida: `tars secrets refresh: cache atualizado em ${r.cache_file} (${r.chaves} chave(s))`, status: 0 }
@@ -722,5 +1158,5 @@ export function run({ sub, rest = [], cfg, env = process.env, tty = process.stdi
     const r = check(cfg, { env })
     return { saida: format(r), status: r.ok ? 0 : 1 }
   }
-  throw new ErroConfig(`uso: tars secrets <refresh|exec|check> (recebi '${sub ?? ''}')`)
+  throw new ErroConfig(`uso: tars secrets <refresh|exec|check|rotate|token> (recebi '${sub ?? ''}')`)
 }
