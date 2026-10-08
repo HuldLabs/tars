@@ -23,8 +23,8 @@ levantar hipótese, testar a hipótese e só então corrigir ou pedir algo a alg
   nada" vira uma investigação, não uma suposição.
 
 Porquê (incidente de 08/10/2026): o agente afirmou de memória como o push funcionava antes
-do crash e errou; acionou a biometria do dono antes de procurar o token de automação que
-existia; e pediu ao dono ações que ele mesmo podia testar.
+do crash e errou; acionou a biometria do dono antes de verificar os caminhos que não a
+exigiam; e pediu ao dono ações que ele mesmo podia testar.
 
 ## Mantras (a régua de todo desenho)
 
