@@ -24,6 +24,9 @@ levantar hipótese, testar a hipótese e só então corrigir ou pedir algo a alg
   **restaure-o**. Nunca invente um caminho paralelo para contornar a regressão.
 - **A skill é lida e seguida, não citada:** abra o arquivo da skill e execute os passos.
   Dizer que usou sem ter lido é o mesmo erro que chutar.
+- **Erro repetido é classe, não deslize:** na segunda vez que a mesma falha aparece,
+  pare e crie a prevenção (guard, check ou memória com o padrão e a regra) **antes** de
+  seguir. Corrigir de novo no lugar, sem prevenção, garante a terceira.
 - **Quando o dono aponta um erro:** pare a linha atual, entenda o apontamento, pondere
   as opções e volte ao processo. Se o apontamento for ambíguo, pergunte antes de agir.
   Nunca insista na mesma abordagem que acabou de ser apontada.
