@@ -71,4 +71,10 @@ check "CLAUDECODE=1 (o normal)"    "CLAUDECODE=1 bun test"                      
 check "export TARS_ACTOR=agent"    "export TARS_ACTOR=agent"                          allow
 check "unset PATH (nao e' marcador)" "unset PATH"                                     allow
 check "env -u HOME (nao e' marcador)" "env -u HOME git commit -F /tmp/m"              allow
+
+# --- wsl.exe com $ inline: o Windows expande antes do bash ---
+check "wsl.exe -c com \$HOME"      "wsl.exe -d ubuntu-24.04 -- bash -c 'cd \$HOME && ls'"   block
+check "wsl -lc com \$PATH"         "wsl -d ubuntu-24.04 -- bash -lc 'export PATH=\$HOME/x:\$PATH'" block
+check "wsl.exe com script"         "wsl.exe -d ubuntu-24.04 -- bash /mnt/c/tmp/s.sh"        allow
+check "wsl.exe -c sem \$"          "wsl.exe -d ubuntu-24.04 -- bash -c 'ls ~/projects'"     allow
 exit $fail
