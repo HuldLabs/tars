@@ -69,6 +69,7 @@
   "env": {
     "GIT_TERMINAL_PROMPT": "0",
     "GCM_INTERACTIVE": "never",
-    "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=15"
+    "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=15",
+    "TARS_ACTOR": "agent"
   }
 }

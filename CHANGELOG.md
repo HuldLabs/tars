@@ -20,6 +20,14 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   o harness diz quem escreve. Um `[env]` do consumidor **nao** rebaixa o ator.
 - `block-destructive-commands.sh` **barra `TARS_ACTOR=human`** no comando (ec3c8f8) — o
   agente nao se declara humano para isentar o proprio commit da licao.
+- `tars doctor` julga o hook "vivo" pelo **`hookVivo`** (o mesmo do `tars-sync.mjs`):
+  bit de execucao no POSIX, `#!` no win32 — onde o NTFS nao guarda bit e o doctor acusava
+  `HOOKS MORTOS` com o hook no lugar certo (paridade Windows com o `tars sync`).
+- **AVISO — o dogfood do Tars nao acha mais o binario sozinho.** O hook gerado perdeu o
+  `$root/dist/tars` (o caminho do clone deixou de ser adivinhado); o hook passa a depender
+  do **`TARS_HOME`**, de um **`tars` no `PATH`** ou do **`node`** com o modulo do catalogo.
+  Clone do Tars que use o proprio hook: exporte `TARS_HOME` (ou ponha `tars` no PATH) antes
+  de commitar, senao o hook nao roda.
 
 ### Por que
 - Gate que reprova o certo (Windows) ensina a desligar o gate; gate que some calado e' pior
