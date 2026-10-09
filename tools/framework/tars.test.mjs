@@ -11,7 +11,8 @@ describe('tars — despacho', () => {
     // `upgrade-notes` entrou com o caminho de upgrade (ecc63bd, TARS-VERSAO item 6): o
     // consumidor le' as notas entre a versao do `.ai/tars.lock` e a atual.
     // `incident` entrou com TARS-INCIDENTE-AUTO fatia 1 (o ledger deixa de ser escrito a mao).
-    expect(Object.keys(COMMANDS).sort()).toEqual(['check', 'check-refs', 'doctor', 'git', 'handoff', 'hooks', 'incident', 'init', 'memory', 'promote', 'sync', 'upgrade-notes', 'verify'])
+    // `secrets` entrou com o dev.9: o cofre do PROJETO, declarado em `[secrets]` do `.ai/tars.toml`.
+    expect(Object.keys(COMMANDS).sort()).toEqual(['check', 'check-refs', 'doctor', 'git', 'handoff', 'hooks', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {

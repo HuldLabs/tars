@@ -26,6 +26,9 @@ import { findTars, parseToml, NONINTERACTIVE_ENV, effectiveHooksPath, usesGitHoo
 // TARS-REC-1: a classe que repetiu no ledger e' cobrada pelo doctor (a camada "acusa o estado
 // errado" da doutrina incidente-vira-prevencao). A CONTAGEM mora no ai-memory — aqui so' se le'.
 import { classesRecorrentes, readJsonl } from './ai-memory.mjs'
+// S3 (dev.9): o doctor de SEGREDOS mora no modulo dono (`tars-secrets.mjs`) — aqui so' se
+// anexa o que ele julga quando o projeto declara `[secrets]`/`[identity]` (R3).
+import { doctorDoProjeto } from './tars-secrets.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -254,7 +257,7 @@ export function gitHooksCheck(project) {
 }
 
 /** Carrega, classifica e resume. `faltando` e' o que derruba o exit code. */
-export function doctor({ tars, project } = {}) {
+export function doctor({ tars, project, env = process.env } = {}) {
   const catalogo = resolve(tars ?? findTars())
   const root = resolve(project ?? process.cwd())
   // A base de cada doutrina e' quem a DECLAROU: a do catalogo (`escopo = "catalogo"`) resolve
@@ -283,24 +286,38 @@ export function doctor({ tars, project } = {}) {
     gate: 'doctor',
     detalhe: `classe repetiu ${c.ocorrencias}x sem 'destino' (id do item de backlog) — ${c.entradas.join(', ')}`,
   }))
+  // S3: so' julga quando o projeto declara `[secrets]`/`[identity]` (senao `null`). Cada linha
+  // reprovada vira uma FALHA nomeada — a mesma forma das doutrinas, para o exit code e o
+  // `--json` nao precisarem de um caminho novo.
+  let segredos = null
+  try {
+    segredos = doctorDoProjeto(root, { env })
+  } catch (e) {
+    segredos = { ok: false, linhas: [{ nome: 'secrets', ok: false, detalhe: e.message }] }
+  }
+  const segredosFalha = (segredos?.linhas ?? [])
+    .filter((l) => !l.ok)
+    .map((l) => ({ id: `segredos/${l.nome}`, status: 'FALHA', onde: 'ci', gate: 'doctor', detalhe: l.detalhe }))
   return {
     tars: catalogo,
     project: root,
     itens,
     porStatus,
     wiring,
+    segredos,
     classes: recorrencia.classes,
     incidentes: { total: ledgerEntries.length, recorrentesSemGuarda: semGuarda.map((e) => e.id) },
     faltando: [
       ...itens.filter((i) => FALHA.includes(i.status)),
       ...(wiring.ok ? [] : [{ id: 'wiring/settings', status: 'FALHA' }]),
       ...classesFalha,
+      ...segredosFalha,
     ],
   }
 }
 
 /** Uma linha por doutrina: `STATUS  id  onde  gate`, com o detalhe abaixo quando ha' o que dizer. */
-export function format({ itens, porStatus, tars, project, wiring, classes, incidentes }, log = console.log) {
+export function format({ itens, porStatus, tars, project, wiring, classes, incidentes, segredos }, log = console.log) {
   log(`tars doctor — ${itens.length} doutrina(s) · catalogo ${tars} · projeto ${project}`)
   for (const i of itens) {
     log(`${i.status.padEnd(9)} ${i.id}  [${i.onde}]  gate=${i.gate}`)
@@ -319,6 +336,12 @@ export function format({ itens, porStatus, tars, project, wiring, classes, incid
   // Zero recorrentes ainda IMPRIME: saida ausente nao distingue "nada repetiu" de "o doctor
   // nao olhou". Sem guarda = a correcao nao cita commit nem arquivo (`citaGuarda`).
   if (incidentes) log(`INCIDENTES: ${incidentes.recorrentesSemGuarda.length} recorrentes sem guarda${incidentes.recorrentesSemGuarda.length ? ` (${incidentes.recorrentesSemGuarda.join(', ')})` : ''}`)
+  // S3: as linhas de segredo/identidade so' aparecem quando o projeto declarou a tabela — a
+  // saida ausente continua distinguindo "nao declarou" de "declarou e esta' tudo certo".
+  if (segredos) {
+    log(`\nSEGREDOS/IDENTIDADE (${segredos.ok ? 'ok' : 'FALHA'}):`)
+    for (const l of segredos.linhas) log(`  ${(l.ok ? 'OK    ' : 'FALHA ')}${l.nome.padEnd(12)}  ${l.detalhe}`)
+  }
   if (wiring) log(`${(wiring.ok ? 'OK' : 'FALHA').padEnd(9)} wiring/settings  [session-start]  ${wiring.detalhe}`)
   log(
     `\nOK ${porStatus.OK} · PHANTOM ${porStatus.PHANTOM} · SEM GATE ${porStatus['SEM GATE']} · DRIFT ${porStatus.DRIFT}` +

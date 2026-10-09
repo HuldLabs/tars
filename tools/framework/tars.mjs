@@ -37,6 +37,12 @@ import * as upgradeMod from './tars-upgrade.mjs'
 // `tars incident` (TARS-INCIDENTE-AUTO): o ledger deixa de ser escrito a mao. O modulo DONO
 // mora em tars-incident.mjs; aqui so' o despacho fino (R3).
 import * as incidentMod from './tars-incident.mjs'
+// `tars secrets` (dev.9): o cofre do PROJETO, declarado em `[secrets]` do `.ai/tars.toml`.
+// Como o doctor, o dono mora no modulo `tars-secrets.mjs`; aqui so' o despacho fino (R3).
+import * as secretsMod from './tars-secrets.mjs'
+// As operacoes do dia a dia (compare/fingerprint/set/copy/move/rm/scan/import) moram no
+// modulo proprio e reusam as primitivas do dono — aqui so' se escolhe QUEM despacha (R3).
+import * as secretsOps from './tars-secrets-ops.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -102,6 +108,26 @@ const USAGE = [
   '    --o-que X --causa C        gerados; recusa campo vazio nomeando-o). Marca `recorrencia` e',
   '    --correcao R               imprime RECORRENTE: <ids> quando ja repetiu (>= 2 -> lembrete',
   '    [--tags a,b] [--fonte F]   de harness-postmortem). Tudo em uma linha so.',
+  '',
+  '  secrets refresh            abre o cofre (1Password) e regrava o cache cifrado do projeto',
+  '  secrets exec -- <cmd...>   roda <cmd> com o cache decifrado no env SO do filho (sem shell)',
+  '  secrets check              julga chave/token/cache/recipient/ambiente SEM abrir o cofre',
+  '  secrets rotate             DONO: gera a chave age nova, troca no cofre e recifra os',
+  '                             versionados; retomavel por `<dir>/rotate.state`',
+  '  secrets token set          DONO: troca o token da service account (lido do stdin oculto)',
+  '  secrets compare <a> <b>    compara dois enderecos em tempo constante; imprime so` igual ou',
+  '                             diferente (exit 0/1). Enderecos: op://cofre/item/campo, file:<cam>,',
+  '                             env:<NOME> e cache:<NOME> (os dois ultimos so` como ORIGEM)',
+  '  secrets fingerprint <a>    identidade PUBLICA de uma chave (recipient age / impressao SSH)',
+  '  secrets set <op://...>     DONO: grava um valor no cofre (stdin oculto, --from-file 600 ou',
+  '                             --from <endereco>); rele` e compara antes do ok',
+  '  secrets copy|move <a> <b>  le`, grava e CONFIRMA; move so` apaga a origem apos o compare',
+  '  secrets rm <a>             [s/N]: cofre ARQUIVA (--archive), file: apaga, env: tira a linha',
+  '                             persistente (--em <arquivo> ou HKCU\\Environment no Windows)',
+  '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
+  '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
+  '  secrets import <env>       DONO: grava cada NOME=VALOR como campo do --item op://cofre/item',
+  '  secrets exec -- <cmd...>   idem; fora de TTY (ou com --redact) a saida do filho e redigida',
   '',
   '  --help                     esta ajuda',
   '',
@@ -278,6 +304,26 @@ async function handoffCommand(rest, project) {
   if (!r.ok) process.exit(1)
 }
 
+/**
+ * `tars secrets <refresh|exec|check>` — despacho fino: o julgamento mora no modulo dono. A
+ * tabela `[secrets]` e' lida do `.ai/tars.toml` do PROJETO pelo parser do sync (R3: um
+ * parser so'); a config resolvida e' que vai para o modulo.
+ */
+async function secretsCommand(rest, project) {
+  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  const file = join(raiz, '.ai', 'tars.toml')
+  const tabela = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')).secrets ?? {} : {}
+  const cfg = secretsMod.lerConfig(tabela, { project: raiz })
+  const sub = rest[0]
+  // Dois donos, um despacho: o ciclo do cofre (refresh/check/rotate/token) fica no modulo
+  // original; a manipulacao de segredo, no de operacoes. `exec` e' do segundo porque e' la'
+  // que mora a REDACAO da saida do filho.
+  const mod = secretsOps.SUBCOMANDOS.includes(sub) ? secretsOps : secretsMod
+  const r = await mod.run({ sub, rest: rest.slice(1), cfg, em: argValue(rest, '--em') })
+  if (r.saida) console.log(r.saida)
+  process.exit(r.status ?? 0)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -321,6 +367,7 @@ const COMMANDS = {
   verify: verifyCommand,
   memory: memoryCommand,
   incident: incidentCommand,
+  secrets: secretsCommand,
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,

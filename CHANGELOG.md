@@ -4,6 +4,191 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.9
+
+### O que mudou
+- **`tars secrets`** (`refresh | exec | check`): o cofre do PROJETO deixa de ser reinvenção de
+  cada consumidor. O módulo novo (`tars-secrets.mjs`) porta a lógica do `secrets.mjs` do
+  segtools e a parametriza pela tabela `[secrets]` do `.ai/tars.toml` — o Tars é o catálogo,
+  quem declara é o consumidor.
+- **Três camadas com merge campo a campo**: (1) **embutido** no Tars — só estrutura, nomes de
+  campo e caminhos **locais** (`~/.config/tars/<projeto>/`); **nenhuma ref `op://` e nenhuma
+  identidade** no catálogo. (2) **perfil do usuário**, fora do repo
+  (`~/.config/tars/profile.toml`; Windows `%APPDATA%\tars\profile.toml`) — as refs pessoais
+  (`age_key_ref`, `bot`, `allowed_signers`). (3) **projeto** (`.ai/tars.toml [secrets]`), que
+  sobrescreve o perfil campo a campo. Ref que nenhuma camada declara **falha alta nomeando o
+  campo**. O campo da chave age chama-se `age_key_ref` em toda camada (o antigo nome interno
+  `cofre` saiu: o mesmo nome nos tres lugares).
+- **Ref da chave age por PROJETO (o padrão)**: o perfil declara `age_key_ref_pattern` com o
+  placeholder único `{projeto}` (resolvido pelo nome do diretório), e não uma ref fixa por
+  máquina — assim cada projeto tem a sua chave. Padrão sem `{projeto}` **falha alto**. Um
+  `age_key_ref` pronto (perfil ou projeto) vence o padrão; `bot`/`allowed_signers` são por
+  PESSOA e seguem ref pronta. `check` mostra a origem `perfil(padrao)` ou `projeto`.
+- `tars secrets check` ganha a linha **`refs`**: a **camada de origem** de cada ref
+  (`embutido | perfil | projeto`), nunca o valor.
+- `source="automation"` força **`OP_BIOMETRIC_UNLOCK_ENABLED=false`** no env do spawn do `op`
+  (não há dono nem leitor biométrico nesse caminho); com `owner` nada é forçado.
+- `key_scope` (`project` | `machine`) e `source` (`automation` | `owner`) **obrigatórios**, sem
+  fallback entre fontes. `project` exige a ref `age_key_ref`; `machine` proíbe `age_key_ref` e `sops_config`
+  versionado — cada violação grita com a lista de valores válidos.
+- **Um wrapper único para `op`/`sops`**: toda ref é conferida como `^op://` antes do spawn
+  (inválida = erro que **não** ecoa o valor) e o stderr volta **redigido** (valor de segredo
+  conhecido vira `***`) — nunca `>/dev/null`.
+- `check` reprova o **template** com `op://` fora de `{{ }}` (comentário incluso: o `op run`
+  resolve qualquer um) e o template que cita a ref da **chave age** — a chave vem só do manifesto.
+- `exec` roda por **argv, sem shell**: `;`/`|`/`$()` são dado, não sintaxe; o filho não herda
+  `OP_*`/`SOPS_AGE_KEY` e recebe só `SOPS_AGE_KEY_FILE`.
+- **`.ai/governance/segredos-e-identidade.md`** (novo, distribuído pelo `tars sync`): a seção
+  **segredos e identidade** com 11 lições, cada uma com a regra, o incidente que a produziu e o
+  gate — o dia 08/10 (o `op` ecoando a chave age; a `{{ op://… }}` inerte no `op run`) vira
+  régua, não anedota.
+
+**Correções da revisão (S1-fix), ainda dentro de dev.9:**
+- `key_scope="project"` **relê a chave a cada `refresh`** (`op read --out-file` para um temporário
+  0600 ao lado da chave, promovido por rename só se vier inteiro). O `existsSync` antecipado vale
+  só para `machine`: com a chave do cofre, ele manteria o cache cifrado para um recipient que
+  já não existe quando a chave roda — falha longe da causa.
+- O template passa a ser resolvido por **`op run --env-file=<template>`** com o helper
+  `tars-secrets-inject.mjs` (porte do segtools), e não por `op inject`: valor **multilinha**
+  (chave de assinatura) sobrevive ao cache, que é JSON — nos dois formatos do `inject` ele
+  quebra, um com JSON inválido e o outro truncado em silêncio.
+- **`reapResiduo`** (porte do segtools): o `refresh` apaga o texto claro que um refresh **morto**
+  deixou em `os.tmpdir()` (o `finally` não roda em `kill -9`/OOM). A decisão é por **PID** — dir
+  de processo vivo é preservado; nome sem PID (esquema antigo) não é tocado.
+- `check` ganha a linha **`token`** (`source="automation"`): existe, não vazio e modo `0400`/`0600`
+  (ACL no win32) — lê o arquivo só para saber se está vazio, nunca o conteúdo.
+- A linha **`ambiente`** do `check` acusa só o que aponta para a fonte
+  (`OP_SERVICE_ACCOUNT_TOKEN`, `OP_CONNECT_TOKEN`, `OP_CONNECT_HOST`, `OP_SESSION_*`,
+  `SOPS_AGE_KEY`); um `OP_*` qualquer do app era ruído.
+- **`tars secrets rotate`** (S2): a rotação da chave age. É **do dono** — `source="automation"`
+  recusa alto, e `owner` ainda exige ator humano **e** TTY. `key_scope="machine"` apaga a chave
+  e o cache locais e refaz; `key_scope="project"` percorre 8 passos **retomáveis** por
+  `<dir>/rotate.state` (o estado guarda o passo que ainda falta rodar): plano com `[s/N]` →
+  `age-keygen` num `.rotate` ao lado da chave → identidade NOVA no item do cofre pelo
+  **template** (`op item get`/`item edit --template`, **nunca por argv**) → confere lendo de
+  volta do cofre (recipient tem de ser o novo, senão para **sem tocar nada local**) → recifra
+  os versionados (troca o recipient no `.sops.yaml` e `sops updatekeys` em cada arquivo de
+  `sops_files`; sem a lista, **falha alto**) → só então troca a chave local e refaz o cache →
+  verifica (check ok, cada versionado decifra **só** com a nova, nenhum cita a velha) → fim
+  (apaga estado e temporários, imprime o que o dono commita). A chave velha só sai no passo 6.
+- **`tars secrets token set`** (S2): lê o token NOVO do **stdin oculto** (sem eco, nunca argv),
+  grava `<token_file>.novo` 0600 e só o promove se `op whoami` o aceitar **sozinho** (sem sessão
+  do app, biometria `false`) — recusou, o antigo continua e o `.novo` some. A mensagem final manda
+  revogar o antigo no 1Password **só depois** de rodar isto em todas as máquinas de automação.
+- **`token_expires`** (`AAAA-MM-DD`, perfil ou projeto, mesmas camadas): a linha `token` do
+  `check` **falha** quando vencido, **avisa** a menos de 14 dias e diz `sem data` quando o campo
+  não existe. Data malformada grita.
+
+**Correções da revisão (S2-fix), ainda dentro de dev.9:**
+- `rotate` (escopo `project`) passa a ser **retomável POR PASSO** — morrer logo **depois da ação**
+  de qualquer passo (2..7) não deixa mais a rotação presa. O caso que travava era o **passo 6**:
+  morte entre o `rename` da chave e o fim do `refresh` deixava o `.rotate` já renomeado, e a
+  retomada tentava renomear de novo (**`renameSync` ENOENT**). Agora, sem o `.rotate`, ele confere
+  que a chave local **é** a nova e segue para o `refresh`.
+- Cada passo pergunta antes de refazer: o `.rotate` que já existe é **reaproveitado** em vez de
+  gerar uma chave nova (gerar outra depois de o cofre já citar a primeira não teria volta); o
+  cofre que **já tem** a identidade nova não é reescrito (passo 3, e a leitura de volta virou um
+  helper que também serve ao passo 4); o versionado **já recifrado** é pulado no passo 5, o que
+  deixa um `updatekeys` abortado no meio do lote retomar só pelo que falta.
+- **Escrita no cofre atrás de uma interface** (`ESTRATEGIAS_COFRE`, campo `age_key_write`),
+  **nunca por argv**: `template` (**default**, o de hoje — JSON do item inteiro com o campo
+  trocado), `template_parcial` (só o campo alterado volta ao cofre) e `documento`
+  (`op document edit <doc> <arquivo>`, com a ref apontando para um documento). O default só muda
+  quando a prova real com o cofre decidir.
+- Testes: **morte simulada depois da ação de cada passo 2..7** (`hooks.aposPasso`) e a retomada
+  tem de terminar no **mesmo estado final** do caminho feliz — mais as três estratégias com stub.
+
+**Manipulação segura de segredos (S2b) — `tars-secrets-ops.mjs` (novo), ainda dentro de dev.9:**
+- **Um parser de endereço só** (`parseEndereco`), e o **tipo** que ele decide é o que o resto do
+  módulo consulta: `op://cofre/item/campo`, `file:<caminho>`, `env:<NOME>` e `cache:<NOME>`.
+  Endereço malformado **não é ecoado** — o argumento pode ser o segredo no lugar errado.
+- `compare <a> <b>`: **tempo constante** (`crypto.timingSafeEqual` sobre os dois lados
+  preenchidos até o maior deles; o comprimento entra no veredito **depois** do compare, nunca
+  como atalho antes). Imprime só `igual`/`diferente`; exit 0/1.
+- `fingerprint <a>`: só **identidade pública** — `age-keygen -y` para uma chave age,
+  `ssh-keygen -lf` da pública derivada para uma SSH; qualquer outra coisa recusa com
+  `sem identidade publica; use compare` (não existe impressão de senha). Origem no cofre passa
+  por `op read --out-file` num tmp 0600 — **nunca stdout**.
+- `set <op://...>` é **do dono** (`source=owner`, TTY, ator humano): o valor vem do **stdin
+  oculto**, de `--from-file <arq 600>` ou de `--from <endereco>` — **nunca por argv**. A escrita
+  reusa a estratégia `age_key_write` da S2 (`template` completo por default) e o comando **relê e
+  compara em memória** antes do ok.
+- `copy`/`move`: leem, gravam e **confirmam com `compare`**; o `move` só apaga a origem **depois**
+  da confirmação — compare falho preserva a origem, que é o único lugar onde o valor existe.
+- `rm <a>` com `[s/N]` mostrando só o endereço: cofre **arquiva** (`op item delete --archive`,
+  nunca apaga de vez); `file:` apaga; `env:` remove a **linha** persistente do rc/profile
+  indicado (`--em <arquivo>`, mostrando `arquivo:linha`) ou `reg delete HKCU\Environment` no
+  Windows, com cópia de segurança 0600 ao lado que some no fim.
+- **Destino `env:` e `cache:` são RECUSADOS** em copy/move/set, cada um com a saída certa na
+  mensagem: ambiente persistente (rc/profile/HKCU/runtime.env) vira segunda fonte de verdade que
+  ninguém revoga, e o cache é **derivado** — o caminho é gravar no cofre e rodar `refresh`.
+  Os dois valem como **origem**, e `env:` como origem de `rm` e de `scan`.
+- `scan [--onde ...]`: procura segredo no ambiente do processo (`AMBIENTE_ACUSADO` + nomes do
+  template), em rc/profile, em `HKCU\Environment`, no histórico de shell, nos transcripts de IA
+  (`~/.claude/projects/**/*.jsonl`, sessões do opencode — **em streaming**, um `.jsonl` passa de
+  100MB), no histórico do git via **`gitleaks git`** (com relatório JSON num tmp 0600: a saída
+  verbosa do gitleaks imprime o segredo) e nos templates (`op://` fora do valor inteiro de
+  `KEY=`, `{{ }}` em `*_REF`/`*_FILE`). Detecção = `secrets-patterns.mjs` (a MESMA lista do
+  pre-commit) + os **valores do cache decifrados uma vez** e comparados em memória. Reporta só
+  `arquivo:linha` (ou `local`) + o **id** do padrão; **o trecho achado nunca aparece, nem
+  truncado**; exit ≠ 0 quando acha.
+- `import <arquivo .env>` é **do dono**: cada `NOME=VALOR` vira **campo** do `--item
+  op://cofre/item` (`partesRef` + `criar`, porque ali o campo novo **é** o trabalho), conferido
+  um a um com `compare`, e imprime `NOME=op://cofre/item/NOME`. Comentário e linha de **template**
+  (`op://`, `{{ }}`) ficam de fora — gravar `op://x/y/z` como valor faria do cofre um eco do
+  template. A origem **não é tocada**.
+- **Redação no `exec`**: fora de TTY, ou com `--redact`, a saída do filho passa por um **pipe com
+  buffer rolante** do tamanho do maior valor, e todo valor do cache com ≥ 8 caracteres vira
+  `***`. TTY sem `--redact` herda como sempre. O corte é sobre o **fluxo**, não sobre o pedaço:
+  um valor partido entre dois `data` continua inteiro na concatenação do que o dono vê, então o
+  redator só emite o que **não começa** um valor — e, quando o valor inteiro está em mãos,
+  mascara e **consome** o trecho (senão o buffer ficaria preso nele, crescendo sem emitir).
+- **Auditoria**: `<dir>/audit.log` JSONL **0600** com `ts`, `ator`, `comando`, endereços/nomes e
+  resultado — **sem valor nem fingerprint** (um fingerprint seria um oráculo de conferência do
+  segredo em cima de um arquivo que pode ir para o git por engano).
+- `secrets-patterns.mjs` ganha **`findSecretsIds`** (o `id` estável, para máquina) e
+  `findSecrets` passa a ser a projeção dele em rótulos: uma varredura, duas projeções — a lista
+  de padrões continua sendo uma só para o hook e para o `--doctor`.
+
+**`tars doctor` de segredos (S3), ainda dentro de dev.9:**
+- O `doctor` de um projeto que declara `[secrets]` **ou** `[identity]` no `.ai/tars.toml` passa a
+  incluir: (1) **tudo do `tars secrets check`** (chave, token, template, recipient, decifra,
+  ambiente, refs com a camada de origem, vencimento) — o julgamento continua em **um** lugar
+  (R3), o `doctor` só anexa; (2) a **idade do cache**: acima de `cache_max_dias` (default 30, novo
+  campo da tabela) é **aviso** "rode `tars secrets refresh`", não falha; (3) o **transporte por
+  ator** (lição 7): ator agente com remote `ssh://`/`git@`, ou `SSH_AUTH_SOCK` apontando para o
+  agente do 1Password, ou `oauth_token:` em texto no `~/.config/gh/hosts.yml` (WSL/Linux sem
+  keyring — só a **presença** da chave é lida, nunca o valor) **reprova**; (4) o **push por ator**
+  (lição 9): ator agente com commit local não empurrado (`git rev-list @{u}..HEAD` > 0) ou **sem
+  upstream** reprova; ator humano **não** é acusado; (5) um **scan rápido** (só `env` e rc —
+  transcripts e git continuam no `scan` explícito). A lição 8 (identidade do bot) fica para dev.10.
+- Cada linha reprovada vira uma FALHA nomeada (`segredos/<nome>`) na mesma lista de `faltando` das
+  doutrinas — o exit code e o `--json` do `doctor` não precisaram de um caminho novo. Config
+  inválida (ex.: `source` ausente com `[secrets]` declarado) vira **linha** de falha, não exceção:
+  o `doctor` é onde o erro precisa aparecer.
+- `cache_max_dias` entra na tabela `CAMPOS` (merge campo a campo, como `token_expires`).
+- Testes: `tars-doctor-secrets.test.mjs` (novo) — um caso **verde** e um **vermelho** por item.
+
+> **Antes do release de dev.9**: o dev.9 não fecha sem esta fatia (S3).
+
+### Por que
+Cada projeto consumidor vinha reinventando o próprio cofre (caminho fixo, variável de ambiente,
+token no `.env`), e as variantes divergiam nas partes que importam: onde mora a chave, quem pode
+abrir o cofre, e o que o filho herda do ambiente. Regra que existe em N lugares não é regra —
+é onde o furo mora.
+
+### Arquivos impactados no consumidor
+- `tools/framework/tars-secrets.mjs` (novo) e `tars.mjs` (despacho fino do subcomando).
+- Nada é criado no consumidor que não declare `[secrets]` no `.ai/tars.toml`: sem a tabela, o
+  `lerConfig` recebe `{}` e o comando falha alto nomeando o `source` obrigatório.
+
+### O que o consumidor faz
+Põe o `age_key_ref_pattern` no perfil (`~/.config/tars/profile.toml`) uma vez por máquina, declara
+`[secrets]` no `.ai/tars.toml` (`source` obrigatório; `key_scope="project"`), roda
+`tars secrets refresh` uma vez para gravar a chave e o cache, e usa
+`tars secrets exec -- <cmd>` como entrypoint dos processos que precisam dos segredos.
+`tars secrets check` julga o estado sem abrir o cofre.
+
 ## 0.0.1-dev.8
 
 ### O que mudou

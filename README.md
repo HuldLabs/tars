@@ -87,7 +87,79 @@ tars hooks <pre-commit|commit-msg|pre-push|local> [args]   # roda os gates do ho
 tars promote --area <memory|skill|gate> --item <nome>      # sobe item do projeto ao catálogo
 tars doctor [--json]                                       # confere doutrina × gate × prova
 tars verify <arquivo>                                      # roda os `verify` de um bloco de claims
+tars secrets refresh                                       # abre o cofre (1Password) e regrava o cache cifrado
+tars secrets exec -- <cmd...>                              # roda <cmd> com o cache decifrado no env SO do filho
+tars secrets check                                         # julga chave/template/cache/ambiente SEM abrir o cofre
 ```
+
+#### `tars secrets` — o cofre do projeto
+
+O que antes era reinventado por consumidor (caminho fixo, token no `.env`) mora aqui, uma vez.
+O **1Password é a fonte canônica**; o dia a dia lê um **cache local cifrado** (sops+age) fora do
+repo.
+
+**Três camadas, merge campo a campo** (a mais forte que declara o campo vence):
+
+| camada | onde | o que carrega |
+| --- | --- | --- |
+| **embutido** | no Tars | só estrutura, nomes de campo e **caminhos locais** `~/.config/tars/<projeto>/` (Windows `%APPDATA%\tars\<projeto>\`). **Nenhuma ref `op://` e nenhuma identidade** — identidade não viaja no catálogo. |
+| **perfil** | `~/.config/tars/profile.toml` (Windows `%APPDATA%\tars\profile.toml`), **fora do repo** | as refs **pessoais**: `age_key_ref` (a chave age — ref pronta ou `age_key_ref_pattern`), `bot`, `allowed_signers` — dentro de `[secrets]`. Um perfil por máquina. |
+| **projeto** | `.ai/tars.toml` `[secrets]` | sobrescreve o perfil **campo a campo** (o que o projeto não declara segue vindo do perfil). |
+
+Comando que precisa de uma ref que **nenhuma** camada declarou falha alto **nomeando o campo** —
+nada de fallback mudo. `tars secrets check` mostra a **camada de origem** de cada ref
+(`refs  age_key_ref=perfil(padrao) bot=nenhum allowed_signers=projeto`), nunca o valor.
+
+**Ref por projeto (o padrão).** A chave age é **de cada projeto**, então o perfil declara um
+**padrão** com o único placeholder `{projeto}` — resolvido pelo nome do diretório do projeto —
+em vez de uma ref fixa por máquina:
+
+```toml
+# ~/.config/tars/profile.toml — refs do usuário (fora de repo; o projeto nunca o versiona)
+[secrets]
+age_key_ref_pattern = "op://secrets/{projeto}/age/age.key"  # `{projeto}` OBRIGATÓRIO: sem ele todos dividem a chave
+# bot / allowed_signers são POR PESSOA: seguem como ref pronta
+```
+
+O padrão **sem `{projeto}`** falha alto (senão todos os projetos dividem a mesma chave). Um
+`age_key_ref` **pronto** — no perfil ou no `.ai/tars.toml` — vence o padrão.
+
+```toml
+# .ai/tars.toml — o projeto sobrescreve campo a campo
+[secrets]
+key_scope = "project"                  # "project" (chave vem do cofre) | "machine" (gerada aqui)
+source    = "automation"               # OBRIGATÓRIO: "automation" (token em arquivo) | "owner" (sessão do app 1Password)
+# age_key_ref = "op://tars/age-key/ref"  # ref `op://` PRONTA da chave age — vence o padrão do perfil; obrigatório com key_scope="project", proibido com "machine"
+# sops_config = ".sops.yaml"           # versionado: o `check` exige o recipient da chave nele
+# age_key_file / cache_file / template / token_file — defaults em <dir do projeto>
+```
+
+`source="automation"` força `OP_BIOMETRIC_UNLOCK_ENABLED=false` no env do spawn do `op`: nesse
+caminho não há dono nem leitor biométrico. Com `owner` nada é forçado — a sessão do app é do dono.
+
+- O **template** é um env-file (`KEY=op://cofre/item/campo`) — o formato que o `op run
+  --env-file` resolve. Só a ref como **valor inteiro** de `KEY=` vale: `{{ op://… }}`, `# op://…`
+  e `export KEY=…` reprovam no `check` (o `op run` resolve qualquer `op://` do arquivo).
+- `refresh` é o **único** que abre o cofre: `op read --out-file` (nunca pelo stdout) para a chave
+  — relida a **cada** refresh com `key_scope="project"` (a chave no cofre pode ter rodado) —,
+  `op run --env-file` do template (o helper serializa o env resolvido em JSON, então valor
+  **multilinha** sobrevive), `sops` para o recipient → cache. Erros do `op`/`sops` **aparecem**
+  (redigidos: valor de segredo conhecido vira `***`), nunca `>/dev/null`.
+- No início do `refresh`, texto claro deixado por um refresh **morto** em `os.tmpdir()` é
+  reapeado — por **PID**, então o dir de um processo vivo é preservado.
+- `exec -- <cmd>` decifra **em memória** e roda o filho por **argv, sem shell** — um `;` no
+  argumento é dado, não sintaxe. Remove `OP_*`/`SOPS_AGE_KEY` do env do filho e exporta só
+  `SOPS_AGE_KEY_FILE` (o caminho).
+- `check` **não** abre o cofre: julga chave (0600/ACL) × recipient do cache × `.sops.yaml`, o
+  **token** (`source="automation"`: existe, não vazio, `0400`/`0600`/ACL — o conteúdo nunca é
+  lido além de "está vazio"), o template (cada `op://` **só** como valor inteiro de `KEY=op://…`
+  — nem em comentário, nem no meio, nem em `{{ }}`, nem `export` — porque o `op run` resolve
+  qualquer `op://` do arquivo), se o cache decifra e se o ambiente já está sujo. A linha `ambiente` acusa só
+  o que aponta para a fonte (`OP_SERVICE_ACCOUNT_TOKEN`, `OP_CONNECT_TOKEN`, `OP_CONNECT_HOST`,
+  `OP_SESSION_*`, `SOPS_AGE_KEY`), sempre imprimindo só **nomes**. A linha `refs` mostra a
+  **camada** de cada ref (`embutido | perfil | projeto`), nunca o valor.
+- A ref da chave age vem **só das camadas** (perfil/projeto) — nunca do template; `check` reprova
+  se o template a citar. Nenhuma saída carrega valor de segredo, nem em erro.
 
 ### Sem Node — o binário `tars`
 
