@@ -81,6 +81,14 @@ n_atrib="$(printf '%s\n' "$LC" | grep -Eo '(^|[;&|[:space:]])(export[[:space:]]+
 n_ok="$(printf '%s\n' "$LC" | grep -Eo "(^|[;&|[:space:]])(export[[:space:]]+)?(tars_actor|claudecode)[[:space:]]*=[[:space:]]*['\"]?(agent|1)['\"]?([[:space:];&|)]|\$)" | wc -l | tr -d '[:space:]')"
 [ "$n_atrib" -gt "$n_ok" ] && block "'TARS_ACTOR='/'CLAUDECODE=' com valor vazio ou diferente de 'agent'/'1' se declara para pular a licao — o harness ja' declara 'agent'; quem escreve nao decide isso sobre si."
 
+# --- wsl.exe com `$` inline ------------------------------------------------------------
+# O `wsl.exe` expande `$VAR` do lado WINDOWS antes de o bash do Linux ver a linha, mesmo
+# entre aspas simples: `$HOME`, `$PATH` e um `$TOKEN` chegam vazios ou com o valor do
+# Windows, e o comando "funciona" com o valor errado (Incident 08/10: um askpass gravado
+# com senha vazia levou a concluir que o token estava invalido). O comando com `$` vai
+# num arquivo de script: `wsl.exe -d <distro> -- bash /mnt/c/.../script.sh`.
+printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])wsl(\.exe)?[[:space:]][^;&|]*[[:space:]]-(l?c|ic)[[:space:]][^;&|]*\$' && block "'wsl.exe ... -c' com \`\$\` inline: o wsl.exe expande a variavel do lado Windows antes do bash ver. Ponha o comando num script e rode 'wsl.exe -d <distro> -- bash <arquivo>'."
+
 # git clean -fdx / reset --hard: avisa (nao bloqueia)
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+clean[[:space:]]+-[a-z]*f[a-z]*d[a-z]*x([[:space:]]|$)' && warn "'git clean -fdx' remove todo arquivo nao rastreado — verifique 'git status'."
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)' && warn "'git reset --hard' descarta mudancas nao commitadas — verifique 'git status'."
