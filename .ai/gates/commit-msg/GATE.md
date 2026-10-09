@@ -16,8 +16,24 @@ e reprova como `causa raiz` e como `correcao`.
 
 **Stacks** — `any` (precisa de `node` no PATH).
 
-**Parametros** — nenhum. Tipos/emoji e o limite do sujeito moram em `emoji.mjs`, ao lado do
-`validate-commit.mjs` (SSOT: o motor so' chama, nao reimplementa o padrao).
+**Parametros** — `lesson` (default `always`).
+
+- `lesson = "agent"` — a exigencia de licao/incidente vale so' para o **agente**; commit de
+  humano (sem trailer `Co-Authored-By:` de modelo e sem marcador de harness) nao paga
+  `Lesson:`/`Incident:`. Emoji, tipo, 72 chars e a regra do teste vermelho do `fix`
+  (TARS-RED-1) continuam valendo para os dois — a prova da correcao nao e' licao.
+- `always` (ou o param ausente) — cobra de todo mundo, como antes.
+
+O ator e' decidido pelo MOTOR (`tools/framework/tars-actor.mjs`): `TARS_ACTOR` no env, ou o
+trailer da mensagem. O gate nao recalcula — so' julga pelo que veio.
+
+```toml
+[gates.params.commit-msg]
+lesson = "agent"
+```
+
+Tipos/emoji e o limite do sujeito moram em `emoji.mjs`, ao lado do `validate-commit.mjs`
+(SSOT: o motor so' chama, nao reimplementa o padrao).
 
 **Proveniencia** — portado do segtools (`.githooks/commit-msg` + `tools/framework/githooks/validate-commit.mjs`,
 leituras de 07/10). As mensagens do validador sao em portugues: o gate fala a lingua do canal do projeto.

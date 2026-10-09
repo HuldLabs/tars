@@ -18,11 +18,11 @@
 // Saida: uma linha por doutrina, `STATUS id  fonte  gate`, e exit != 0 quando ha PHANTOM ou
 // DRIFT (`--ci` e' o mesmo exit, explicito para o leitor do pipeline). SEM GATE e' aviso:
 // doutrina orfa declarada e' divida nomeada, nao esquecimento — nao derruba o build.
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findTars, parseToml, NONINTERACTIVE_ENV, effectiveHooksPath, usesGitHooks, GIT_HOOKS } from './tars-sync.mjs'
+import { findTars, parseToml, NONINTERACTIVE_ENV, effectiveHooksPath, usesGitHooks, GIT_HOOKS, hookVivo } from './tars-sync.mjs'
 // TARS-REC-1: a classe que repetiu no ledger e' cobrada pelo doctor (a camada "acusa o estado
 // errado" da doutrina incidente-vira-prevencao). A CONTAGEM mora no ai-memory — aqui so' se le'.
 import { classesRecorrentes, readJsonl } from './ai-memory.mjs'
@@ -243,7 +243,10 @@ export function gitHooksCheck(project) {
   for (const hook of declaredGitHooks(project)) {
     const f = join(dir, hook)
     if (!existsSync(f)) faltando.push(`${hooksPath}/${hook}`)
-    else if (!(statSync(f).mode & 0o111)) faltando.push(`${hooksPath}/${hook} (sem bit executavel)`)
+    // "Vivo" e' a mesma pergunta para o doctor e para o sync: bit de execucao no POSIX, e
+    // `#!` no win32 (onde o NTFS nao guarda bit algum — ler `mode & 0o111` reprovava TODO
+    // hook Windows). SSOT: a testemunha mora em `hookVivo` (tars-sync.mjs).
+    else if (!hookVivo(f)) faltando.push(`${hooksPath}/${hook} (nao executavel/sem shebang)`)
   }
   return faltando.length
     ? { ok: false, detalhe: `HOOKS MORTOS: ${faltando.join('; ')} ausente/nao executavel — nenhum gate roda (rode \`tars sync\`)` }

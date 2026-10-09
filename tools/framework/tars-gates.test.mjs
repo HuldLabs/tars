@@ -3,13 +3,16 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Testes dos GATES do catalogo (fatia 4) e da ponta CLI do motor. Cada gate e' um
 // programa: prova-se pelo exit code e pela mensagem, com o payload/arquivo real — nao
 // pela leitura do codigo. O gate `commit-msg` e' o unico que depende do app (mensagem de
 // commit); `gitleaks` sai 0 avisando quando o binario falta; `no-add-all` julga o payload
 // do PreToolUse.
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+// `new URL(...).pathname` no win32 devolve `/C:/...` — `fileURLToPath` e' o disco certo
+// nas duas plataformas (mesma classe do incident de paridade).
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GATE = (nome, arquivo) => path.join(HERE, "..", "..", ".ai", "gates", nome, arquivo);
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "tars-gate-"));
@@ -164,6 +167,74 @@ describe("gate commit-msg", () => {
     const r = rodar([gate], { env: { TARS_PROJECT: os.tmpdir() } });
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/arquivo da mensagem/);
+  });
+});
+
+// dev.8 fatia 2: `lesson = "agent"` torna a exigencia de licao/incidente CONDICIONAL ao
+// ator. Quem escreve e' o motor (TARS_ACTOR no env); sem ele, o gate deriva da propria
+// mensagem. O default (`always`) continua cobrando de todo mundo — afrouxar e' opt-in.
+describe("gate commit-msg — licao condicional por ator (lesson=agent)", () => {
+  const gate = GATE("commit-msg", "gate.mjs");
+  // CLAUDECODE/TARS_ACTOR zerados: a fixture deste repo roda DENTRO de um harness de
+  // agente, e herdar isso faria todo caso "humano" virar agente.
+  const valida = (msg, params, env = {}) => {
+    const dir = tmp();
+    const f = path.join(dir, "COMMIT_EDITMSG");
+    fs.writeFileSync(f, msg);
+    return rodar([gate, f], {
+      env: { TARS_PROJECT: dir, TARS_GATE_PARAMS: params ?? "", TARS_ACTOR: "", CLAUDECODE: "", ...env },
+    });
+  };
+  const FEAT = "✨ feat(hub): mexe no motor\n";
+  const AGENTE = JSON.stringify({ lesson: "agent" });
+
+  it("humano SEM trailer + lesson=agent: dispensa a Lesson", () => {
+    const r = valida(FEAT, AGENTE);
+    expect(r.status).toBe(0);
+  });
+
+  it("humano + lesson=agent: fix tambem dispensa o Incident", () => {
+    expect(valida("🐛 fix(hub): conserta o parser\n", AGENTE).status).toBe(0);
+  });
+
+  it("trailer Co-Authored-By: Claude COBRA a Lesson (agente registra)", () => {
+    const r = valida(`${FEAT}\nCo-Authored-By: Claude <noreply@anthropic.com>\n`, AGENTE);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/licao|Lesson/i);
+  });
+
+  it("TARS_ACTOR=agent vindo do motor COBRA a Lesson mesmo sem trailer", () => {
+    const r = valida(FEAT, AGENTE, { TARS_ACTOR: "agent" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/licao|Lesson/i);
+  });
+
+  // O atalho do env so' vale para `agent` (o valor que AFROUXA o gate). Valor nenhum outro
+  // prova o ator: `TARS_ACTOR=human` no ambiente — do operador, herdado, esquecido — nao
+  // pode isentar o commit do agente, que o harness ja' denunciou por CLAUDECODE/trailer.
+  it("TARS_ACTOR=human NAO atalha: com CLAUDECODE=1 o agente ainda COBRA a Lesson", () => {
+    const r = valida(FEAT, AGENTE, { TARS_ACTOR: "human", CLAUDECODE: "1" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/licao|Lesson/i);
+  });
+
+  it("TARS_ACTOR=0 NAO atalha: trailer de IA ainda COBRA a Lesson", () => {
+    const r = valida(`${FEAT}\nCo-Authored-By: Claude <noreply@anthropic.com>\n`, AGENTE, {
+      TARS_ACTOR: "0",
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/licao|Lesson/i);
+  });
+
+  it("SEM o param lesson (default always) COBRA de humano tambem", () => {
+    expect(valida(FEAT).status).not.toBe(0);
+    expect(valida(FEAT, JSON.stringify({})).status).not.toBe(0);
+    expect(valida(FEAT, JSON.stringify({ lesson: "always" })).status).not.toBe(0);
+  });
+
+  it("lesson=agent NAO afrouxa emoji/tipo/72 chars", () => {
+    expect(valida("sem emoji nem tipo\n", AGENTE).status).not.toBe(0);
+    expect(valida(`✨ feat(hub): ${"x".repeat(80)}\n`, AGENTE).status).not.toBe(0);
   });
 });
 

@@ -34,6 +34,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// Caminho de ITEM (chave de lock, drift, poda) e' identificador: sempre `/`, nunca o
+// separador da plataforma — senao o lock do Windows divergiria do Linux (tars-paths.mjs).
+import { joinPosix, posix } from './tars-paths.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
 export const AREAS = ['skills', 'rules', 'memory', 'gates', 'guards', 'governance']
@@ -266,7 +269,7 @@ export async function listFiles(dir, base = dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name)
     if (entry.isDirectory()) out.push(...(await listFiles(full, base)))
-    else if (entry.isFile()) out.push(relative(base, full).split('\\').join('/'))
+    else if (entry.isFile()) out.push(posix(relative(base, full)))
   }
   return out.sort((a, b) => a.localeCompare(b))
 }
@@ -298,19 +301,19 @@ export async function hashSource(dest) {
 // `memory/agent/<nome>.md`). O manifesto declara o NOME, sem extensao e sem pasta — quem
 // sabe onde o item mora e' este mapa (SSOT).
 const LAYOUT = {
-  skills: (item) => ({ path: join('skills', item), ext: '' }),
-  rules: (item) => ({ path: join('rules', item), ext: '.md' }),
+  skills: (item) => ({ path: joinPosix('skills', item), ext: '' }),
+  rules: (item) => ({ path: joinPosix('rules', item), ext: '.md' }),
   // Fato de memoria: o manifesto declara o nome do ARQUIVO como ele e' (`db` -> `db.md`);
   // `.jsonl` ja' vem com a extensao no nome (o manifesto nao a inventa).
-  memory: (item) => ({ path: join('memory', 'agent', item), ext: item.endsWith('.jsonl') ? '' : '.md' }),
-  gates: (item) => ({ path: join('gates', item), ext: '' }),
+  memory: (item) => ({ path: joinPosix('memory', 'agent', item), ext: item.endsWith('.jsonl') ? '' : '.md' }),
+  gates: (item) => ({ path: joinPosix('gates', item), ext: '' }),
   // Guard e' ARQUIVO (`.ai/guards/<nome>.<ext>`): o manifesto declara o nome COM a extensao
   // quando ela nao e' `.sh` (o `ensure_memory_link.py` e' guard de verdade, nao sobra); sem
   // extensao assume `.sh`. O modo executavel vem junto (o `cp` preserva) — guard que nao
   // executa nao guarda.
-  guards: (item) => ({ path: join('guards', item), ext: /\.[a-z0-9]+$/.test(item) ? '' : '.sh' }),
+  guards: (item) => ({ path: joinPosix('guards', item), ext: /\.[a-z0-9]+$/.test(item) ? '' : '.sh' }),
   // Governanca e' ARQUIVO markdown solto (`.ai/governance/<nome>.md`), igual a regra.
-  governance: (item) => ({ path: join('governance', item), ext: '.md' }),
+  governance: (item) => ({ path: joinPosix('governance', item), ext: '.md' }),
 }
 
 /** Fonte do item no Tars, relativa a `.ai/`. */
@@ -507,12 +510,24 @@ export function preToolUseFor(manifest) {
  * ssh) bloqueia sem TTY ate' o timeout — foi o `git fetch` de 8 min em 07/10. `GIT_TERMINAL_PROMPT=0`
  * faz o git FALHAR ALTO em vez de perguntar; `BatchMode` corta a senha no ssh; `GCM_INTERACTIVE=never`
  * idem no credential manager. Um passo do sync fecha a CLASSE inteira para todo consumidor.
+ *
+ * Cuidado ao estender: a LISTA DE CHAVES daqui e' o contrato do `wiring/settings` do doctor
+ * (`tars-doctrines.mjs` cobra exatamente estas). Coisa que nao seja "nao travar esperando
+ * prompt" vai numa constante propria — e' o caso do `ACTOR_ENV`.
  */
 export const NONINTERACTIVE_ENV = {
   GIT_TERMINAL_PROMPT: '0',
   GCM_INTERACTIVE: 'never',
   GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=15',
 }
+
+/**
+ * QUEM escreve o commit. O harness do agente se declara ATOR ('agent'); o motor le' esse env
+ * (`tars-actor.mjs`) para decidir se cobra a licao do gate condicional `[gates.params.<g>].when`.
+ * Sem isso o gate nao distingue o commit do agente do commit humano — e o agente que nao se
+ * declara e' tratado como humano por omissao, que e' o lado errado do erro.
+ */
+export const ACTOR_ENV = { TARS_ACTOR: 'agent' }
 
 /**
  * Hooks que NAO dependem do manifesto: os da base. `guards` declara os do PROJETO e
@@ -544,7 +559,7 @@ export function resolveGuardFile(project, file) {
 export function guardRelPath(project, file) {
   const full = resolveGuardFile(project, file)
   if (!full) return null
-  const rel = relative(join(project, '.ai'), full).split('\\').join('/')
+  const rel = posix(relative(join(project, '.ai'), full))
   return `.ai/${rel}`
 }
 
@@ -592,7 +607,11 @@ export function claudeSettings(manifest, project = null, atual = null) {
   return {
     ...(atual ?? {}),
     $schema: 'https://json.schemastore.org/claude-code-settings.json',
-    env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}) },
+    // `ACTOR_ENV` por ULTIMO de proposito: o harness e' quem sabe que o comando vem de um
+    // agente. Um `[env]` de consumidor que declare `TARS_ACTOR='human'` isentaria o commit
+    // da licao — que e' exatamente o que o guard barra na linha de comando; aqui a mesma
+    // classe fecha no arquivo.
+    env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}), ...ACTOR_ENV },
     hooks: {
       ...(atual?.hooks ?? {}),
       PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest))],
@@ -719,20 +738,30 @@ export async function pruneOrphans(project, orphans) {
 
 /**
  * Corpo do hook: chama o motor `tars hooks <hook>` com `$@` (o git passa o arquivo da
- * mensagem no commit-msg). O binario e' preferido (`dist/tars`), senao o fonte — o
- * consumidor nao precisa de Node quando tem o binario.
+ * mensagem no commit-msg). As tres fontes, na ordem — a mais portatil primeiro:
+ *
+ *   1. `$TARS_HOME/dist/tars` — o binario do catalogo. E' o unico caminho que NAO depende
+ *      de PATH nem de Node no consumidor, e o `TARS_HOME` ja' e' a variavel de contrato do
+ *      Tars (tars.mjs a le primeiro). Antes o corpo citava `$root/dist/tars` — o binario do
+ *      PROPRIO consumidor, que nao existe em quem so' consome o catalogo.
+ *   2. `tars` no PATH — instalacao global, tambem sem Node.
+ *   3. `node "$root/tools/framework/tars.mjs"` — o consumidor que tem o fonte do Tars.
+ *
+ * Falha ALTA nomeando as tres: hook que sai 0 calado e' o commit sem gate que a R4 proibe.
  */
-function hookBody(project, hook) {
+export function hookBody(hook) {
   return (
     '#!/usr/bin/env sh\n' +
     `# Gerado por \`tars sync\` (${hook}) — nao edite a mao: o proximo sync sobrescreve.\n` +
     '# Os gates vem de `[gates]` do .ai/tars.toml (catalogo em .ai/base/gates/, locais do projeto).\n' +
     'set -e\n' +
     'root="$(git rev-parse --show-toplevel)"\n' +
-    'if [ -x "$root/dist/tars" ]; then exec "$root/dist/tars" hooks ' + hook + ' "$@"; fi\n' +
+    'if [ -n "$TARS_HOME" ] && [ -x "$TARS_HOME/dist/tars" ]; then exec "$TARS_HOME/dist/tars" hooks ' + hook + ' "$@"; fi\n' +
     'if command -v tars >/dev/null 2>&1; then exec tars hooks ' + hook + ' "$@"; fi\n' +
     'if [ -f "$root/tools/framework/tars.mjs" ]; then exec node "$root/tools/framework/tars.mjs" hooks ' + hook + ' "$@"; fi\n' +
-    'echo "hook ' + hook + ': nao achei o motor do Tars (dist/tars, tars ou tools/framework/tars.mjs) — rode `tars sync`" >&2\n' +
+    // Aspas SIMPLES no texto citado: crase dentro de `"..."` e' substituicao de comando —
+    // o `sh` EXECUTARIA `tars sync` ao so' MONTAR a mensagem de erro (Incident: hook mudo).
+    'echo "hook ' + hook + ': nao achei o motor do Tars — procurei $TARS_HOME/dist/tars, \'tars\' no PATH e $root/tools/framework/tars.mjs (rode \'tars sync\')" >&2\n' +
     'exit 1\n'
   )
 }
@@ -764,7 +793,7 @@ export async function writeGitHooks(
   const alheios = []
   for (const hook of alvos) {
     const file = join(dir, hook)
-    const body = hookBody(project, hook)
+    const body = hookBody(hook)
     const existe = existsSync(file)
     const atual = existe ? await readFile(file, 'utf8') : null
     if (existe && atual === body) continue // idempotente: ja' e' o nosso
@@ -794,6 +823,26 @@ export async function writeGitHooks(
 }
 
 /**
+ * O hook esta' VIVO — o git consegue executa-lo? O bit de execucao e' a prova no POSIX.
+ *
+ * No win32 ele NAO EXISTE: o NTFS guarda so' o atributo de leitura, e o `statSync().mode`
+ * volta 0666 para todo mundo — exigir `0o111` reprovava TODO hook do consumidor Windows
+ * dizendo "nao executavel" e o `tars sync` morria logo depois de escrever os hooks certos
+ * (Incident: `HOOKS MORTOS` com o hook no lugar). La' quem executa o hook e' o `sh` do
+ * Git for Windows, e o que faz o arquivo ser um script — nao um binario qualquer — e' o
+ * shebang. Mesma cobertura, outra testemunha: existe + `#!`.
+ */
+export function hookVivo(file, { win32 = process.platform === 'win32' } = {}) {
+  if (!existsSync(file) || !statSync(file).isFile()) return false
+  if (!win32) return Boolean(statSync(file).mode & 0o111)
+  try {
+    return readFileSync(file, 'utf8').startsWith('#!')
+  } catch {
+    return false
+  }
+}
+
+/**
  * O consumidor USA hooks proprios mas nenhum hook do manifesto esta' VIVO no disco: o git
  * engole o commit calado (foi a falha do proprio Tars, 07/10 — `.githooks` apontado mas
  * inexistente). Devolve a mensagem de erro (R4) ou `null` quando esta' tudo certo.
@@ -804,10 +853,7 @@ export function deadHooks(project, manifest, hooksPath = effectiveHooksPath(proj
   if (!esperados.length) return null
   const dir = join(project, hooksPath)
   if (!existsSync(dir)) return `HOOKS MORTOS: core.hooksPath=${hooksPath} nao existe — nenhum gate roda (rode \`tars sync\`)`
-  const faltando = esperados.filter((h) => {
-    const f = join(dir, h)
-    return !existsSync(f) || !(statSync(f).mode & 0o111)
-  })
+  const faltando = esperados.filter((h) => !hookVivo(join(dir, h)))
   return faltando.length
     ? `HOOKS MORTOS: ${faltando.map((h) => `${hooksPath}/${h}`).join('; ')} ausente/nao executavel — nenhum gate roda (rode \`tars sync\`)`
     : null

@@ -62,6 +62,25 @@ printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit[^;&|]*[[:s
 # `--no-verify` em commit/push: pula os hooks. Nunca.
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])(git[[:space:]]+(commit|push)|git[[:space:]]+-c[^;&|]*commit)[^;&|]*--no-verify([[:space:]]|$)' && block "'--no-verify' pula os hooks de commit/push — nunca use (o gate e' o ponto)."
 
+# --- ator: o agente NAO se declara humano --------------------------------------------
+# O gate condicional pode isentar a licao de quem escreve (`[gates.params.<g>].when`, o
+# `tars-actor.mjs`): o valor do marcador no comando zera a cobranca. O harness JA' declara
+# `agent` no `.claude/settings.json`; mexer no marcador na mao e' pular a licao por dentro —
+# o mesmo buraco que o `--no-verify` abre, noutro lugar. Sao tres as saidas, e as tres
+# fecham: APAGAR o marcador (unset/env -u), ou ESCREVER nele valor que nao seja o do
+# harness (`agent` para `TARS_ACTOR`, `1` para `CLAUDECODE`).
+# Vale para `export` e para aspas.
+# 1) `unset <marcador>` (ou `unset -v ...`): apaga o marcador no meio do comando.
+printf '%s' "$LC" | grep -Eq "(^|[;&|[:space:]])unset([[:space:]]+-[a-z]+)*[[:space:]]+[^;&|]*(tars_actor|claudecode)([[:space:];&|)]|\$)" && block "'unset tars_actor|claudecode' apaga o marcador de ator no meio do comando — o gate leria o ator errado (o harness ja' declara 'agent')."
+# 2) `env -u <marcador>` (ou `env i -u`, `--unset`): remove o marcador so' para aquele cmd.
+printf '%s' "$LC" | grep -Eq "(^|[;&|[:space:]])env([[:space:]]+-[^;&|[:space:]]+)*[[:space:]]+--?u(nset)?[[:space:]]*(tars_actor|claudecode)([[:space:];&|)]|\$)" && block "'env -u tars_actor|claudecode' remove o marcador de ator do comando — o agente nao decide isso sobre si."
+# 3) `tars_actor=`/`claudecode=` com valor que NAO e' o do harness: `=human`, `=`, `=0`,
+#    `=""` — todos zeram a cobranca da licao por dentro. Conta as atribuicoes e as que tem
+#    valor permitido: sobra atribuicao sem valor bom => bloqueia (pega a mistura tambem).
+n_atrib="$(printf '%s\n' "$LC" | grep -Eo '(^|[;&|[:space:]])(export[[:space:]]+)?(tars_actor|claudecode)[[:space:]]*=' | wc -l | tr -d '[:space:]')"
+n_ok="$(printf '%s\n' "$LC" | grep -Eo "(^|[;&|[:space:]])(export[[:space:]]+)?(tars_actor|claudecode)[[:space:]]*=[[:space:]]*['\"]?(agent|1)['\"]?([[:space:];&|)]|\$)" | wc -l | tr -d '[:space:]')"
+[ "$n_atrib" -gt "$n_ok" ] && block "'TARS_ACTOR='/'CLAUDECODE=' com valor vazio ou diferente de 'agent'/'1' se declara para pular a licao — o harness ja' declara 'agent'; quem escreve nao decide isso sobre si."
+
 # git clean -fdx / reset --hard: avisa (nao bloqueia)
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+clean[[:space:]]+-[a-z]*f[a-z]*d[a-z]*x([[:space:]]|$)' && warn "'git clean -fdx' remove todo arquivo nao rastreado — verifique 'git status'."
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)' && warn "'git reset --hard' descarta mudancas nao commitadas — verifique 'git status'."

@@ -252,13 +252,15 @@ describe('doctor — hooks do git (core.hooksPath)', () => {
     expect(r.faltando.map((i) => i.id)).toContain('wiring/settings')
   })
 
-  it('hook presente mas SEM bit executavel = FALHA (o git nao roda o que nao executa)', () => {
+  it('hook presente mas NAO executavel (sem shebang/bit) = FALHA (o git nao roda o que nao executa)', () => {
     const tars = comGitHooks()
+    // Sem `#!` E sem bit: e' o unico estado que reprova nas DUAS plataformas — no win32 o
+    // `mode` nao guarda bit nenhum e a testemunha e' o shebang (docs do `hookVivo`).
     for (const h of ['pre-commit', 'commit-msg', 'pre-push'])
-      fs.writeFileSync(path.join(tars, '.githooks', h), '#!/usr/bin/env sh\n', { mode: 0o644 })
+      fs.writeFileSync(path.join(tars, '.githooks', h), 'tars gate pre-commit\n', { mode: 0o644 })
     const r = doctor({ tars, project: tars })
     expect(r.wiring.ok).toBe(false)
-    expect(r.wiring.git.detalhe).toMatch(/sem bit executavel/)
+    expect(r.wiring.git.detalhe).toMatch(/nao executavel\/sem shebang/)
   })
 
   it('os 3 hooks executaveis = OK', () => {

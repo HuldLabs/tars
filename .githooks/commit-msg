@@ -3,8 +3,8 @@
 # Os gates vem de `[gates]` do .ai/tars.toml (catalogo em .ai/base/gates/, locais do projeto).
 set -e
 root="$(git rev-parse --show-toplevel)"
-if [ -x "$root/dist/tars" ]; then exec "$root/dist/tars" hooks commit-msg "$@"; fi
+if [ -n "$TARS_HOME" ] && [ -x "$TARS_HOME/dist/tars" ]; then exec "$TARS_HOME/dist/tars" hooks commit-msg "$@"; fi
 if command -v tars >/dev/null 2>&1; then exec tars hooks commit-msg "$@"; fi
 if [ -f "$root/tools/framework/tars.mjs" ]; then exec node "$root/tools/framework/tars.mjs" hooks commit-msg "$@"; fi
-echo "hook commit-msg: nao achei o motor do Tars (dist/tars, tars ou tools/framework/tars.mjs) — rode `tars sync`" >&2
+echo "hook commit-msg: nao achei o motor do Tars — procurei $TARS_HOME/dist/tars, 'tars' no PATH e $root/tools/framework/tars.mjs (rode 'tars sync')" >&2
 exit 1

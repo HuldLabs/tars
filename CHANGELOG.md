@@ -4,6 +4,58 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.8
+
+### O que mudou
+- **Paridade Windows** (4ede873): a chave do lock e a geracao dos `.githooks/` normalizam o
+  separador. No win32 o `readdirSync` devolve `gates\commit-msg` e um sync **correto** era
+  reprovado (e o hook nascia com caminho quebrado).
+- **Gate condicional por ator** (7b546a2): `[gates.params.<gate>].when` aceita
+  `when = { actor = "agent" }` — o gate roda so' para quem escreve. Predicado desconhecido
+  GRITA em vez de devolver `true`/`false`: `when` com nome errado sumiria com o gate, calado.
+- `commit-msg` aceita **`lesson = "agent"`** (7b546a2): `Lesson:`/`Incident:` passa a ser
+  cobrado so' do **agente**; commit de humano nao paga a licao. Emoji, tipo, sujeito de 72
+  chars e a prova de teste vermelho do `fix` continuam valendo para os dois.
+- `tars sync` declara **`TARS_ACTOR=agent`** no `env` do `.claude/settings.json` (59f0955):
+  o harness diz quem escreve. Um `[env]` do consumidor **nao** rebaixa o ator.
+- `block-destructive-commands.sh` **barra `TARS_ACTOR=human`** no comando (ec3c8f8) — o
+  agente nao se declara humano para isentar o proprio commit da licao.
+- `tars doctor` julga o hook "vivo" pelo **`hookVivo`** (o mesmo do `tars-sync.mjs`):
+  bit de execucao no POSIX, `#!` no win32 — onde o NTFS nao guarda bit e o doctor acusava
+  `HOOKS MORTOS` com o hook no lugar certo (paridade Windows com o `tars sync`).
+- **AVISO — o dogfood do Tars nao acha mais o binario sozinho.** O hook gerado perdeu o
+  `$root/dist/tars` (o caminho do clone deixou de ser adivinhado); o hook passa a depender
+  do **`TARS_HOME`**, de um **`tars` no `PATH`** ou do **`node`** com o modulo do catalogo.
+  Clone do Tars que use o proprio hook: exporte `TARS_HOME` (ou ponha `tars` no PATH) antes
+  de commitar, senao o hook nao roda.
+
+### Por que
+- Gate que reprova o certo (Windows) ensina a desligar o gate; gate que some calado e' pior
+  que gate nenhum.
+- A licao obrigatoria existe para forcar o AGENTE a registrar o que aprendeu — quem escreve a
+  mao ja' pensa antes de commitar, e cobrar o mesmo bloco do humano so' ensina a inventar
+  licao. Sem ator isso viraria politica espalhada dentro de cada gate; com `when`, e' dado.
+- Isencao por ator so' vale se o ator nao puder se autodeclarar: o mesmo buraco que o
+  `No-Release`/`--no-verify` abrem, fechado na borda em que o ator se declara.
+
+### Arquivos impactados no consumidor
+- `.ai/base/guards/block-destructive-commands.sh` (nova regra do ator)
+- `.ai/base/gates/commit-msg/` (`GATE.md` + validador: `when` e `lesson`)
+- `.claude/settings.json` (novo `env.TARS_ACTOR=agent`, regravado pelo sync)
+- `.ai/VERSION`, `CHANGELOG.md`, `tars.lock` (versao do catalogo)
+
+### O que o consumidor faz
+Para isentar o commit **humano** da licao, declare:
+```toml
+[gates.params.commit-msg]
+lesson = "agent"
+```
+```
+tars sync           # regrava o settings.json com TARS_ACTOR=agent
+tars upgrade-notes  # le as notas entre a versao do lock e a atual
+tars doctor         # deve passar; se acusar wiring, e' o conserto que o sync faz
+```
+
 ## 0.0.1-dev.7
 
 ### O que mudou

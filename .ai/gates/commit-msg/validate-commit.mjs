@@ -12,9 +12,17 @@
 //   node validate-commit.mjs --validate-tag <tag>
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TYPES, EMOJI, SUBJECT_RE, MAX_SUBJECT } from './emoji.mjs';
 
 const [mode, arg] = [process.argv[2], process.argv[3]];
+
+// dev.8, fatia 2: `[gates.params.commit-msg] lesson = "agent"` torna a exigencia de
+// licao/incidente CONDICIONAL ao AUTOR — o agente registra o que aprendeu, o humano que
+// escreve a mao nao inventa licao. Default `always`: cobra de todo mundo (o de sempre).
+// Emoji, tipo e os 72 chars NAO dependem do param — valem sempre.
+const PARAMS = JSON.parse(process.env.TARS_GATE_PARAMS || '{}');
 
 const SEMVER_RE = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const PRERELEASE_ROOTS = new Set(['dev', 'alpha', 'beta', 'rc', 'preview', 'pre', 'canary']);
@@ -217,6 +225,35 @@ function exigeTesteVermelho(msg, tr) {
   process.exit(1);
 }
 
+/**
+ * QUEM escreveu o commit — a decisao e' do motor (`TARS_ACTOR`, calculado por
+ * `tools/framework/tars-actor.mjs`), que ve' o env E a mensagem. Rodando o validador
+ * SOZINHO (teste, uso direto), o modulo do ator e' carregado do catalogo; num consumidor
+ * ele nao existe (o sync copia os gates, nao o `tools/framework/`), e por isso o import e'
+ * dinamico. Sem modulo nenhum o default e' 'human' — o lado que COBRA a licao: um fallback
+ * que afrouxa seria o gate que passa calado.
+ *
+ * `TARS_ACTOR` so' ATALHA quando diz `agent` — o valor que AFROUXA o gate (o agente paga a
+ * licao) e' o unico que se pode acreditar sozinho. Qualquer outro valor (`human`, `0`,
+ * vazio) nao prova nada: cai no motor, que le' env E mensagem. Ate' dev.8 o valor do env
+ * era devolvido cru, e um `TARS_ACTOR=human` esquecido no ambiente do operador isentava o
+ * AGENTE da licao sem que ninguem tivesse declarado nada.
+ */
+async function atorDaMensagem(msg) {
+  if (process.env.TARS_ACTOR === 'agent') return 'agent';
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidatos = [
+    join(here, '..', '..', '..', 'tools', 'framework', 'tars-actor.mjs'),
+    join(process.env.TARS_PROJECT ?? process.cwd(), 'tools', 'framework', 'tars-actor.mjs'),
+  ];
+  for (const p of candidatos) {
+    if (!fs.existsSync(p)) continue;
+    const { actor } = await import(pathToFileURL(p).href);
+    return actor({ env: process.env, msg });
+  }
+  return 'human';
+}
+
 // --validate-branch / --validate-tag sao independentes de arquivo.
 if (mode === '--validate-branch') {
   const b = (arg || '').trim();
@@ -281,8 +318,15 @@ if (mode === '--validate') {
       process.exit(1);
     }
   }
-  if (INCIDENT_TYPES.has(ctype)) { requireTrailer(ctype, trailers(body), blocos, 'incident'); exigeTesteVermelho(msg, trailers(body)); }
-  if (LESSON_TYPES.has(ctype)) requireTrailer(ctype, trailers(body), blocos, 'lesson');
+  // `lesson = "agent"`: quem escreve a mao (sem trailer, sem CLAUDECODE) nao paga licao —
+  // o registro e' do agente. O TARS-RED-1 (fix sem teste) fica FORA do condicional: a prova
+  // da correcao nao e' licao, e vale para os dois autores.
+  const cobraLicao = PARAMS.lesson !== 'agent' || (await atorDaMensagem(msg)) === 'agent';
+  if (INCIDENT_TYPES.has(ctype)) {
+    if (cobraLicao) requireTrailer(ctype, trailers(body), blocos, 'incident');
+    exigeTesteVermelho(msg, trailers(body));
+  }
+  if (LESSON_TYPES.has(ctype) && cobraLicao) requireTrailer(ctype, trailers(body), blocos, 'lesson');
   process.exit(0);
 }
 
