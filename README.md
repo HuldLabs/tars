@@ -322,7 +322,11 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
 
 `agent-coordination` · `app-extraction` · `security-testing` · `segtools-frontend` ·
 `segtools-database` · `segtools-sdd` · `segtools-content` · `segtools-writing` ·
-`shadcn` · `migrate-radix-to-base` · e os `fabber-*` (front/api/nextjs/debug, transitórios).
+`shadcn` · `migrate-radix-to-base` · `daneel` (identidade de automação do ecossistema) ·
+e os `fabber-*` (front/api/nextjs/debug, transitórios).
+
+O inventário de acessos da Daneel é **gerado**: `tars acessos daneel [--out <arquivo.md>]`
+(GitHub, 1Password por nome, hosts SSH, ferramentas) — read-only e barrado por padrão de segredo.
 
 ### Regras, governança e guardas
 

@@ -283,6 +283,19 @@ aponte `TARS_HOME` para o catálogo quando ele não estiver em `/projects/tars`.
 
 > **Antes do release de dev.9**: o dev.9 não fecha sem esta fatia (S3).
 
+### Daneel — identidade de automação como skill
+- **`.ai/skills/daneel/SKILL.md`** (novo): a persona e o contrato do **ator de automação** do
+  ecossistema. Fonte única — runtimes (Hermes Agent e outros) **consomem** a skill, nunca
+  redefinem a persona. Traz identidade (ela/dela, voz curta, assinatura), missão e o que NUNCA
+  faz, a ficha verificável `ação → permitida | proibida | exige aprovação`, condições de parada
+  e como "vestir" a Daneel (git identity, leitura de credencial sem imprimir, POPs).
+- **`tars acessos daneel [--out <arquivo.md>]`** (novo, `tars-acessos.mjs`): **gera** o inventário
+  de acessos — GitHub (API: orgs/repos com pull/push/admin, convites pendentes), 1Password (cofres
+  e **nomes** de item/campo, nunca valor), hosts SSH (entra? sudo?) e versões de ferramenta.
+  **Read-only** e **barrado por padrão de segredo** (reusa `secrets-patterns.mjs`); falta de
+  credencial vira `(indisponivel)`, nunca inventário mentiroso. A skill **aponta** para o
+  inventário gerado — nunca lista acesso à mão (mata o drift por construção).
+
 ### Por que
 Cada projeto consumidor vinha reinventando o próprio cofre (caminho fixo, variável de ambiente,
 token no `.env`), e as variantes divergiam nas partes que importam: onde mora a chave, quem pode
