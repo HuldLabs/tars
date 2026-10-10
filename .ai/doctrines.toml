@@ -243,3 +243,42 @@ gate = ".githooks/pre-commit"
 prova = "git grep -q '_tmp_' -- .githooks/pre-commit"
 onde = "pre-commit"
 escopo = "segtools"
+
+# --- Identidade de automacao (Daneel) — SKILL.md e' a prosa; aqui, a regra como dado -----
+
+[[doctrine]]
+id = "daneel/hermes-perfil-padrao"
+titulo = "A Daneel e' o perfil PADRAO do Hermes (persona no boot, sem chamada explicita)"
+fonte = ".ai/skills/daneel/SKILL.md:3"
+gate = "nenhum"
+motivo = "o Hermes e' runtime CONSUMIDOR ainda nao migrado; sem gate possivel aqui ate' ele apontar para a skill"
+prova = "test -f .ai/skills/daneel/SKILL.md"
+onde = "ci"
+
+[[doctrine]]
+id = "daneel/tars-fonte-unica"
+titulo = "O Tars e' a fonte unica; nenhum runtime redefine a persona"
+fonte = ".ai/skills/daneel/SKILL.md:8-10"
+gate = "../../.ai/guards/block-destructive-commands.sh"
+prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push --no-verify\"}}' | bash .ai/guards/block-destructive-commands.sh"
+onde = "pre-commit"
+
+[[doctrine]]
+id = "daneel/autoedicao-desligada"
+titulo = "Autoedicao/curator desligados no perfil da Daneel; credencial nenhuma dentro do Hermes"
+fonte = ".ai/skills/daneel/SKILL.md:38-39"
+gate = "nenhum"
+motivo = "a persona roda no Hermes (fora deste repo); a regra vale la', nao ha' arquivo local para cobrar"
+prova = "test -f .ai/skills/daneel/SKILL.md"
+onde = "ci"
+
+[[doctrine]]
+id = "daneel/stop-conditions"
+titulo = "Parar e reportar: apagar, force-push, repo publico e cofre exigem ordem do dono"
+fonte = ".ai/skills/daneel/SKILL.md:52-61"
+gate = "../../.ai/guards/block-destructive-commands.sh"
+prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push --no-verify\"}}' | bash .ai/guards/block-destructive-commands.sh"
+onde = "pre-commit"
+# Divida NOMEADA: so' `--no-verify` e `git add -f` tem guarda hoje. `force-push`, push em
+# repo publico e escrita no cofre ainda NAO tem gate — parar continua sendo ordem escrita
+# na skill, sem prova que reprove. Fechar quando o guard ganhar as tres regras.
