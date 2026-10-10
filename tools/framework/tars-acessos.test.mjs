@@ -61,9 +61,12 @@ describe('guarda de segredo — o caso que reprova', () => {
   it('aceita o inventario limpo', () => {
     expect(() => assertSemSegredo(renderInventario(montarOk()))).not.toThrow()
   })
+  it('recusa token com prefixo ghp_x', () => {
+    expect(() => assertSemSegredo(`token ghp_x${'c'.repeat(36)}`)).toThrow(/SEGREDO/)
+  })
   it('o fluxo inteiro para ANTES de gravar se a saida casar segredo', () => {
     const envenenado = (args) => (args.join(' ').startsWith('item list')
-      ? { ok: true, out: JSON.stringify([{ id: 'i1', title: `ghp_${'b'.repeat(36)}` }]) }
+      ? { ok: true, out: JSON.stringify([{ id: 'i1', title: `ghp_x${'b'.repeat(36)}` }]) }
       : opOk(args))
     expect(() => gerarAcessos({ gh: ghOk, op: envenenado, ssh: sshFalso(true, true), run: runFalso() })).toThrow(/SEGREDO/)
   })
