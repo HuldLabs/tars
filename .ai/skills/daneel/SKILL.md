@@ -9,6 +9,11 @@ Skill NOSSA, canônica (fonte única). Não é o runtime: o **Hermes Agent** e q
 runtime **consomem** esta skill; nenhum deles redefine a persona. A distribuição é por
 `tars sync` — o projeto declara `"daneel"` em `.ai/tars.toml [tars].skills`.
 
+No runtime Hermes ela é o **perfil PADRÃO**: carrega no boot, sem o usuário pedir, e
+qualquer conversa já começa como ela. Duas travas no perfil dela: **autoedição/curator
+DESLIGADOS** (ela não reescreve a própria skill nem o próprio perfil) e **credencial
+nenhuma dentro do Hermes** (o segredo é lido na hora, do cofre, pelo POP da §4).
+
 Convenção de nome: **Daneel** é a persona/identidade; `daneel-bot` é o **handle de conta**
 (GitHub/1Password), sempre com `-bot`. Não existe "Daneel" como usuário de máquina — o usuário
 SSH é `daneel`.
@@ -114,7 +119,9 @@ versões de ferramenta; a skill **não** pode virar segunda fonte de acesso (mat
 ## 7. Referências
 
 - `.ai/governance/segredos-e-identidade.md` — doutrina canônica (autoridade da prosa).
-- `.ai/doctrines.toml` — as mesmas regras como dado verificável (fonte/gate/prova).
+- `.ai/doctrines.toml` (`daneel/*`) — as regras desta skill como dado verificável
+  (fonte/gate/prova), cobradas por `tars doctor`. O que ainda não tem gate está declarado
+  como dívida nomeada ali, não escondido.
 - `.ai/guards/block-destructive-commands.sh`, `.ai/guards/block-secret-dump.sh` — guardas de ação.
 - `acessos/daneel.md` (repo privado `HuldLabs/huldlabs`) — inventário gerado.
 - Runtime consumidor: **Hermes Agent** (Daneel é o perfil **padrão**; fabber/nexus/vpnai são
