@@ -43,6 +43,9 @@ import * as secretsMod from './tars-secrets.mjs'
 // As operacoes do dia a dia (compare/fingerprint/set/copy/move/rm/scan/import) moram no
 // modulo proprio e reusam as primitivas do dono — aqui so' se escolhe QUEM despacha (R3).
 import * as secretsOps from './tars-secrets-ops.mjs'
+// `tars acessos daneel` (fase 3 da identidade de automacao): GERA o inventario de acessos da
+// Daneel. Read-only e sem valor de segredo; o julgamento mora no modulo dono (R3).
+import * as acessosMod from './tars-acessos.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -124,6 +127,9 @@ const USAGE = [
   '  secrets copy|move <a> <b>  le`, grava e CONFIRMA; move so` apaga a origem apos o compare',
   '  secrets rm <a>             [s/N]: cofre ARQUIVA (--archive), file: apaga, env: tira a linha',
   '                             persistente (--em <arquivo> ou HKCU\\Environment no Windows)',
+  '  acessos daneel             GERA o inventario de acessos da Daneel (--out <arquivo.md>): so',
+  '                             nomes (cofres/campos/repos/hosts), nunca valor de segredo',
+  '',
   '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
   '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
   '  secrets import <env>       DONO: grava cada NOME=VALOR como campo do --item op://cofre/item',
@@ -330,6 +336,13 @@ async function secretsCommand(rest, project) {
   process.exit(r.status ?? 0)
 }
 
+/** `tars acessos daneel` — despacho fino: o julgamento mora no modulo dono (tars-acessos). */
+function acessosCommand(rest) {
+  const mod = acessosMod
+  const r = mod.runAcessos({ sub: rest[0], rest: rest.slice(1) })
+  process.exit(r ? 0 : 1)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -374,6 +387,7 @@ const COMMANDS = {
   memory: memoryCommand,
   incident: incidentCommand,
   secrets: secretsCommand,
+  acessos: acessosCommand,
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,
