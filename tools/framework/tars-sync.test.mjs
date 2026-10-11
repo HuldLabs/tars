@@ -56,6 +56,12 @@ function scaffold({ manifest = MANIFEST } = {}) {
 }
 
 const readLock = (lock) => JSON.parse(fs.readFileSync(lock, "utf8"));
+
+/** O modo do arquivo no INDICE do git (`100644`/`100755`) — e' o que o git usa, nao o disco. */
+function modeNoIndice(project, rel) {
+  const out = execFileSync("git", ["-C", project, "ls-files", "-s", "--", rel], { encoding: "utf8" });
+  return out.trim().split(/\s+/)[0];
+}
 // A arvore e' um conjunto de CHAVES do catalogo, nao caminho de disco: no win32 o
 // `readdirSync` devolve `gates\commit-msg` e a comparacao com o esperado (sempre `/`)
 // reprovaria um sync correto. Mesma regua do `tars-paths.mjs`.
@@ -602,6 +608,29 @@ describe("tars-sync — hooks do git (fatia 3b)", () => {
 
     expect(r.hooks).toEqual([".minha-hooks/pre-commit"]);
     expect(fs.existsSync(path.join(project, ".minha-hooks", "pre-commit"))).toBe(true);
+  });
+
+  it("hook JA' versionado como 644 volta a 755 no INDICE do git (sem isso o git ignora o hook)", async () => {
+    const { tars, project } = scaffold();
+    const dir = path.join(project, ".githooks");
+    fs.mkdirSync(dir, { recursive: true });
+    execFileSync("git", ["-C", project, "init", "-q"]);
+    execFileSync("git", ["-C", project, "config", "user.email", "t@t"]);
+    execFileSync("git", ["-C", project, "config", "user.name", "t"]);
+    // O consumidor real: o hook foi commitado SEM o bit de execucao (100644), ja' com o
+    // corpo GERADO por um sync anterior. O git le o modo do INDICE, nao do disco —
+    // reescrever o conteudo no disco nao o torna executavel para o git
+    // ("was ignored because it's not set as executable"), e o corpo identico faz o sync
+    // pular o arquivo na idempotencia.
+    const f = path.join(dir, "pre-commit");
+    fs.writeFileSync(f, hookBody("pre-commit"));
+    execFileSync("git", ["-C", project, "add", ".githooks/pre-commit"]);
+    execFileSync("git", ["-C", project, "update-index", "--chmod=-x", ".githooks/pre-commit"]);
+    expect(modeNoIndice(project, ".githooks/pre-commit")).toBe("100644");
+
+    await sync({ tars, project, log: () => {} });
+
+    expect(modeNoIndice(project, ".githooks/pre-commit")).toBe("100755");
   });
 });
 
