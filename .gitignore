@@ -2,5 +2,8 @@
 node_modules/
 .cache/
 
+# Worktrees do proprio repo (uma por frente; o checkout principal fica fora daqui)
+.worktrees/
+
 # O binario compilado (`bun run build`) vai para Release, nao para o Git
 dist/
