@@ -4,6 +4,33 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.12
+
+### O que mudou
+- **Os hooks gerados pelo `tars sync` nascem executáveis também no INDICE do git.** O git
+  decide se roda um hook pelo modo do arquivo no indice, nao pelo disco. Um consumidor que
+  tinha `.githooks/prepare-commit-msg` versionado como `100644` continuava com o hook
+  IGNORADO ("was ignored because it's not set as executable") mesmo depois de o sync
+  reescrever o conteudo: o `checkout`/clone restaurava o `100644`.
+- O gerador agora conserta as duas testemunhas: `chmod 0o755` no disco e
+  `git update-index --chmod=+x` no indice, quando o hook ja' esta' rastreado e o modo esta'
+  errado. Hook ainda nao rastreado, ou projeto fora de um repo git, ficam como estavam
+  (o disco basta) — sem falha.
+- A idempotencia deixou de ser cega ao modo: conteudo identico mas bit de execucao errado
+  agora e' corrigido em vez de pulado.
+
+### Por quê
+O modo do INDICE e' o que o git consulta para executar o hook; alinhar so' o disco deixava o
+consumidor com o gate morto calado — exatamente o que a R4 proibe.
+
+### Arquivos impactados no consumidor
+- `.githooks/pre-commit`, `.githooks/commit-msg`, `.githooks/prepare-commit-msg` (modo
+  corrigido no disco e no indice; conteudo inalterado).
+
+### O que o consumidor faz
+Rodar **`tars sync`** num checkout com `.githooks/` rastreado: os hooks passam a `100755` no
+indice. Confirme com `git ls-files -s .githooks` (deve mostrar `100755` nas tres linhas).
+
 ## 0.0.1-dev.11
 
 ### O que mudou

@@ -792,6 +792,38 @@ export function hookBody(hook) {
  */
 export const OWNED = '# Gerado por `tars sync`'
 
+/**
+ * Garante o bit de execucao do hook TAMBEM no INDICE do git (`100755`), quando o arquivo ja'
+ * esta' versionado. O git decide se roda o hook pelo modo do INDICE, nao do disco: um
+ * consumidor que commitou `.githooks/prepare-commit-msg` como `100644` continua com o commit
+ * engolido calado ("was ignored because it's not set as executable") mesmo depois de o sync
+ * reescrever o conteudo e o disco ficar executavel — o `checkout` restaura o `100644`.
+ *
+ * Fora de um repositorio git, ou com o hook ainda nao rastreado, nao ha' o que consertar (o
+ * disco ja' basta): silencio, nao falha — `git ls-files` devolve vazio nesses casos.
+ */
+async function writeGitHookMode(project, hooksPath, hook, file) {
+  const rel = posix(join(hooksPath, hook))
+  let tracked = ''
+  try {
+    tracked = execFileSync('git', ['-C', project, 'ls-files', '-s', '--', rel], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'], // fora de repo: o git grita no stderr; aqui e' so' a sonda
+    })
+  } catch {
+    return // fora de um repo git: o disco e' a unica testemunha
+  }
+  if (!tracked.trim()) return // nao rastreado: quem versiona decide o modo depois
+  if (tracked.trim().split(/\s+/)[0] === '100755') return // ja' esta' certo
+  try {
+    execFileSync('git', ['-C', project, 'update-index', '--chmod=+x', '--', rel], { stdio: 'ignore' })
+  } catch {
+    // Indice somente-leitura ou git ausente no PATH: o disco ja' esta' executavel e o
+    // `deadHooks` (POSIX) nao reprova. Nao viramos erro para nao quebrar o sync inteiro.
+    await chmod(file, 0o755)
+  }
+}
+
 /** Gera os hooks do git declarados; idempotente (mesmo conteudo, nada muda). */
 export async function writeGitHooks(
   project,
@@ -814,7 +846,16 @@ export async function writeGitHooks(
     const body = hookBody(hook)
     const existe = existsSync(file)
     const atual = existe ? await readFile(file, 'utf8') : null
-    if (existe && atual === body) continue // idempotente: ja' e' o nosso
+    if (existe && atual === body) {
+      // Idempotente no CONTEUDO — mas o bit de execucao pode estar errado (o consumidor
+      // commitou o hook como 644, ou o disco perdeu o bit). Sem consertar AQUI, o `continue`
+      // deixa o hook morto e o `deadHooks` reprova logo abaixo; e o git engole o commit
+      // calado ("was ignored because it's not set as executable"). Conserta o disco E o
+      // indice: sao duas testemunhas, e o git so' olha a do indice.
+      if (!hookVivo(file)) await chmod(file, 0o755)
+      await writeGitHookMode(project, hooksPath, hook, file)
+      continue
+    }
     if (existe && !atual.includes(OWNED)) {
       // Arquivo do dono: so' escreve com `--adopt` (e guarda o original em `.bak`).
       if (!adopt.includes(hook)) {
@@ -827,6 +868,7 @@ export async function writeGitHooks(
     // `writeFile` com `mode` NAO muda o bit de quem JA' existe: adotar um hook do projeto
     // (0644) sem chmod deixaria o hook morto e o `deadHooks` reprovaria o sync logo abaixo.
     await chmod(file, 0o755)
+    await writeGitHookMode(project, hooksPath, hook, file)
     wrote.push(`${hooksPath}/${hook}`)
   }
   // R4: falha alta nomeando cada arquivo e as duas saidas — adotar, ou declarar o gate como local.
