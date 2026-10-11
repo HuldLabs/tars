@@ -2,9 +2,11 @@
 # Gerado por `tars sync` (commit-msg) — nao edite a mao: o proximo sync sobrescreve.
 # Os gates vem de `[gates]` do .ai/tars.toml (catalogo em .ai/base/gates/, locais do projeto).
 set -e
-root="$(git rev-parse --show-toplevel)"
-if [ -n "$TARS_HOME" ] && [ -x "$TARS_HOME/dist/tars" ]; then exec "$TARS_HOME/dist/tars" hooks commit-msg "$@"; fi
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+tars_home="${TARS_HOME:-/projects/tars}"
+if [ -x "$tars_home/dist/tars" ]; then exec "$tars_home/dist/tars" hooks commit-msg "$@"; fi
 if command -v tars >/dev/null 2>&1; then exec tars hooks commit-msg "$@"; fi
+if [ -f "$tars_home/tools/framework/tars.mjs" ]; then exec node "$tars_home/tools/framework/tars.mjs" hooks commit-msg "$@"; fi
 if [ -f "$root/tools/framework/tars.mjs" ]; then exec node "$root/tools/framework/tars.mjs" hooks commit-msg "$@"; fi
-echo "hook commit-msg: nao achei o motor do Tars — procurei $TARS_HOME/dist/tars, 'tars' no PATH e $root/tools/framework/tars.mjs (rode 'tars sync')" >&2
+echo "hook commit-msg: nao achei o motor do Tars — procurei $tars_home/dist/tars, 'tars' no PATH, $tars_home/tools/framework/tars.mjs e $root/tools/framework/tars.mjs (rode 'tars sync')" >&2
 exit 1

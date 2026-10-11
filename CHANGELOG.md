@@ -4,6 +4,33 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.10
+
+### O que mudou
+- **O hook `prepare-commit-msg` gerado pelo `tars sync` volta a rodar no consumidor.** Ele
+  procurava o motor em `$root/tools/framework/tars.mjs` — a raiz do CONSUMIDOR, que nunca tem
+  esse arquivo (o sync copia só `.githooks/` e `.ai/`). Em qualquer consumidor o hook saía com
+  **exit 1 e quebrava TODO commit**; no próprio Tars funcionava por acidente (lá o fonte existe).
+- Agora o hook resolve o motor como o `.githooks/pre-commit` já fazia:
+  `${TARS_HOME:-/projects/tars}` — (1) `$TARS_HOME/dist/tars`, (2) `tars` no PATH,
+  (3) `$TARS_HOME/tools/framework/tars.mjs`, (4) `node "$root/tools/framework/tars.mjs"`.
+  **Sem fallback calado**: motor ausente sai != 0 nomeando os quatro caminhos procurados.
+- `tars hooks` deixou de exigir `TARS_PROJECT`: sem argumento, o cwd do hook **é** o projeto
+  quando tem `.ai/tars.toml` (o hook roda com o cwd na raiz do consumidor).
+
+### Por quê
+O consumidor recebe do catálogo só o que o `sync` copia. Supor o motor dentro dele contradiz
+o contrato: o motor mora no catálogo e o `TARS_HOME` é a variável de contrato que o aponta.
+
+### Arquivos impactados no consumidor
+- `.githooks/prepare-commit-msg` (regravado), `.githooks/pre-commit` e `.githooks/commit-msg`
+  (mesmo corpo de geração: `$TARS_HOME` com default e a fonte do catálogo).
+
+### O que o consumidor faz
+Rodar **`tars sync`** de novo (e `tars upgrade-notes`, se quiser as notas): os hooks são
+regravados e os commits voltam a funcionar. Sem a variável `TARS_HOME` valem os defaults, mas
+aponte `TARS_HOME` para o catálogo quando ele não estiver em `/projects/tars`.
+
 ## 0.0.1-dev.9
 
 ### O que mudou

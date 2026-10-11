@@ -164,6 +164,12 @@ async function runHooksCommand(rest, project) {
   const at = rawArgs.indexOf('--project')
   const hookArgs = at === -1 ? rawArgs : rawArgs.filter((_, i) => i !== at && i !== at + 1)
   let start = (at === -1 ? null : rawArgs[at + 1]) ?? project ?? process.env.TARS_PROJECT
+  if (!start) {
+    // O hook do GIT cai aqui: ele roda com o cwd do consumidor e nao exporta projeto nenhum
+    // (incident 11/10: o `prepare-commit-msg` gerado pelo sync morria com "nao achei o
+    // projeto"). O cwd E' o projeto quando tem manifesto; fora disso, erro alto como antes.
+    if (existsSync(join(process.cwd(), '.ai', 'tars.toml'))) start = process.cwd()
+  }
   if (!start) throw new Error('nao achei o projeto (use --project <dir> ou TARS_PROJECT=<dir>)')
   if (existsSync(join(start, 'tars.toml'))) start = dirname(start)
   const found = mod.findProject(start)

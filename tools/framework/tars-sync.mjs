@@ -738,16 +738,24 @@ export async function pruneOrphans(project, orphans) {
 
 /**
  * Corpo do hook: chama o motor `tars hooks <hook>` com `$@` (o git passa o arquivo da
- * mensagem no commit-msg). As tres fontes, na ordem — a mais portatil primeiro:
+ * mensagem no commit-msg). As quatro fontes, na ordem — a mais portatil primeiro:
  *
  *   1. `$TARS_HOME/dist/tars` — o binario do catalogo. E' o unico caminho que NAO depende
  *      de PATH nem de Node no consumidor, e o `TARS_HOME` ja' e' a variavel de contrato do
  *      Tars (tars.mjs a le primeiro). Antes o corpo citava `$root/dist/tars` — o binario do
  *      PROPRIO consumidor, que nao existe em quem so' consome o catalogo.
  *   2. `tars` no PATH — instalacao global, tambem sem Node.
- *   3. `node "$root/tools/framework/tars.mjs"` — o consumidor que tem o fonte do Tars.
+ *   3. `$TARS_HOME/tools/framework/tars.mjs` — o fonte do motor NO CATALOGO. O consumidor
+ *      NAO tem `tools/framework/`: so' o que o `sync` copiou (`.githooks/`, `.ai/`). Sem
+ *      esta fonte o hook so' funcionava em quem tem o fonte do Tars (incident 11/10: o
+ *      `prepare-commit-msg` do segtools morria com exit 1 e quebrava TODO commit).
+ *   4. `node "$root/tools/framework/tars.mjs"` — o proprio catalogo (modo self) e o
+ *      consumidor que por acaso tenha o fonte.
  *
- * Falha ALTA nomeando as tres: hook que sai 0 calado e' o commit sem gate que a R4 proibe.
+ * `TARS_HOME` cai em `/projects/tars` (o mesmo default do `.githooks/pre-commit`): e' por
+ * la' que o hook acha o catalogo quando o git nao exporta a variavel.
+ *
+ * Falha ALTA nomeando as quatro: hook que sai 0 calado e' o commit sem gate que a R4 proibe.
  */
 export function hookBody(hook) {
   return (
@@ -755,13 +763,17 @@ export function hookBody(hook) {
     `# Gerado por \`tars sync\` (${hook}) — nao edite a mao: o proximo sync sobrescreve.\n` +
     '# Os gates vem de `[gates]` do .ai/tars.toml (catalogo em .ai/base/gates/, locais do projeto).\n' +
     'set -e\n' +
-    'root="$(git rev-parse --show-toplevel)"\n' +
-    'if [ -n "$TARS_HOME" ] && [ -x "$TARS_HOME/dist/tars" ]; then exec "$TARS_HOME/dist/tars" hooks ' + hook + ' "$@"; fi\n' +
+    'root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n' +
+    // O default mora numa variavel porque a mensagem de erro cita o caminho PROCURADO:
+    // com `$TARS_HOME` cru ela sairia vazia justo quando a variavel nao existe.
+    'tars_home="${TARS_HOME:-/projects/tars}"\n' +
+    'if [ -x "$tars_home/dist/tars" ]; then exec "$tars_home/dist/tars" hooks ' + hook + ' "$@"; fi\n' +
     'if command -v tars >/dev/null 2>&1; then exec tars hooks ' + hook + ' "$@"; fi\n' +
+    'if [ -f "$tars_home/tools/framework/tars.mjs" ]; then exec node "$tars_home/tools/framework/tars.mjs" hooks ' + hook + ' "$@"; fi\n' +
     'if [ -f "$root/tools/framework/tars.mjs" ]; then exec node "$root/tools/framework/tars.mjs" hooks ' + hook + ' "$@"; fi\n' +
     // Aspas SIMPLES no texto citado: crase dentro de `"..."` e' substituicao de comando —
     // o `sh` EXECUTARIA `tars sync` ao so' MONTAR a mensagem de erro (Incident: hook mudo).
-    'echo "hook ' + hook + ': nao achei o motor do Tars — procurei $TARS_HOME/dist/tars, \'tars\' no PATH e $root/tools/framework/tars.mjs (rode \'tars sync\')" >&2\n' +
+    'echo "hook ' + hook + ': nao achei o motor do Tars — procurei $tars_home/dist/tars, \'tars\' no PATH, $tars_home/tools/framework/tars.mjs e $root/tools/framework/tars.mjs (rode \'tars sync\')" >&2\n' +
     'exit 1\n'
   )
 }

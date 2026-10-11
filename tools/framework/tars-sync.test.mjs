@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   deadHooks,
@@ -842,22 +842,28 @@ describe("tars-sync — paridade Windows", () => {
     expect(deadHooks(project, await readManifest(project))).toBeNull();
   });
 
-  it("o corpo do hook procura nesta ordem: $TARS_HOME/dist/tars, `tars` no PATH, node do repo", () => {
+  it("o corpo do hook procura nesta ordem: binario, PATH, fonte do catalogo, node do repo", () => {
     const b = hookBody("pre-commit");
-    const home = b.indexOf("$TARS_HOME/dist/tars");
+    const home = b.indexOf("$tars_home/dist/tars");
     const path = b.indexOf("command -v tars");
+    const catalogo = b.indexOf("node \"$tars_home/tools/framework/tars.mjs\"");
     const node = b.indexOf("node \"$root/tools/framework/tars.mjs\"");
     expect(home).toBeGreaterThan(-1);
     expect(path).toBeGreaterThan(home);
-    expect(node).toBeGreaterThan(path);
+    expect(catalogo).toBeGreaterThan(path);
+    expect(node).toBeGreaterThan(catalogo);
     expect(b.startsWith("#!/usr/bin/env sh")).toBe(true);
   });
 
-  it("o hook sem motor FALHA ALTO nomeando os tres caminhos procurados", () => {
+  it("o hook sem motor FALHA ALTO nomeando os caminhos procurados", () => {
     const b = hookBody("pre-commit");
     const erro = b.split("\n").find((l) => l.startsWith("echo \"hook pre-commit"));
-    expect(erro).toContain("$TARS_HOME/dist/tars");
+    // O caminho do catalogo e' o DEFAULT de `$TARS_HOME` (`/projects/tars`): citar a
+    // variavel crua deixaria a mensagem vazia no caso que importa (variavel inexistente).
+    expect(b).toContain('tars_home="${TARS_HOME:-/projects/tars}"');
+    expect(erro).toContain("$tars_home/dist/tars");
     expect(erro).toContain("'tars' no PATH");
+    expect(erro).toContain("$tars_home/tools/framework/tars.mjs");
     expect(erro).toContain("$root/tools/framework/tars.mjs");
     expect(b).toContain("exit 1");
   });
@@ -882,5 +888,54 @@ describe("tars-sync — paridade Windows", () => {
       if (!fs.existsSync(f)) continue; // `pre-push` so' existe se declarado
       expect(fs.readFileSync(f, "utf8")).toBe(hookBody(h));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O hook do catalogo NUNCA supoe o motor dentro do consumidor (incident 11/10).
+// O consumidor so' tem o que o `tars sync` copiou: `.githooks/` e `.ai/`. O motor
+// (`tools/framework/tars.mjs`) mora no CATALOGO — antes o hook o procurava em
+// `$root` (a raiz do consumidor) e morria com exit 1 no primeiro commit. A prova
+// roda o script de verdade, nao o texto.
+// ---------------------------------------------------------------------------
+describe("tars-sync — hook do catalogo roda em consumidor sem o motor (incident 11/10)", () => {
+  const consumidor = () => {
+    const raiz = fs.mkdtempSync(path.join(os.tmpdir(), "tars-hook-"));
+    // Um consumidor de verdade tem `.ai/tars.toml` (e' o que o hook procura para achar o
+    // projeto) e NAO tem `tools/framework/` — so' o que o sync copiou.
+    fs.mkdirSync(path.join(raiz, ".ai"), { recursive: true });
+    fs.writeFileSync(path.join(raiz, ".ai", "tars.toml"), "[tars]\nversion = \"v0.3\"\n");
+    fs.writeFileSync(path.join(raiz, "prepare-commit-msg"), hookBody("prepare-commit-msg"));
+    fs.writeFileSync(path.join(raiz, "msg.txt"), "chore: nada\n");
+    return raiz;
+  };
+
+  it("fora do catalogo: acha o motor (no $TARS_HOME ou no catalogo de onde veio) e sai 0", () => {
+    const raiz = consumidor();
+    // A worktree do proprio Tars faz as vezes de `$TARS_HOME` (o consumidor node tem Node,
+    // entao o motor aqui pode ser o `.mjs` do catalogo).
+    const tarsHome = path.join(here, "..", "..");
+    const r = spawnSync("sh", [path.join(raiz, "prepare-commit-msg"), path.join(raiz, "msg.txt")], {
+      encoding: "utf8",
+      env: { ...process.env, TARS_HOME: tarsHome },
+      cwd: raiz,
+    });
+    expect(r.stderr).not.toContain("nao achei o motor");
+    expect(r.status).toBe(0);
+  });
+
+  it("sem motor em lugar nenhum: exit != 0 e a mensagem cita os caminhos procurados", () => {
+    const raiz = consumidor();
+    const vazio = path.join(raiz, "sem-motor");
+    fs.mkdirSync(vazio);
+    const r = spawnSync("sh", [path.join(raiz, "prepare-commit-msg"), path.join(raiz, "msg.txt")], {
+      encoding: "utf8",
+      env: { ...process.env, TARS_HOME: vazio },
+      cwd: raiz,
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("nao achei o motor do Tars");
+    // A mensagem NOMEIA o caminho: e' o que faz o dono achar o problema sem ler o script.
+    expect(r.stderr).toContain(path.join(vazio, "tools", "framework", "tars.mjs"));
   });
 });
