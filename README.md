@@ -343,6 +343,12 @@ O inventário de acessos da Daneel é **gerado**: `tars acessos daneel [--out <a
 - `.ai/hooks.jsonc` · `.ai/mcp.jsonc` · `.ai/permissions.jsonc` — config fonte dos hooks, MCP
   e permissões; o `rulesync` traduz para cada ferramenta (ADR-019).
 
+**Bug do Tars reportado vira release.** A regra vale para todo consumidor e mora em
+`.ai/rules/principles.md` (boot): quem achar um bug no Tars (ou no `tars sync`/hook/gate)
+**reporta** no `BACKLOG` do tars com **repo, data e reprodução** — o bug **entra na próxima
+release** e o `CHANGELOG` **lista os reportados que fechou**. Contorno local é temporário e fica
+como dívida nomeada; report sem reprodução vira "a confirmar", nunca dívida infinita.
+
 ## Como um projeto novo começa
 
 Ponha o `tars` no PATH (o binário de Release, o script do catálogo ou `$TARS_HOME/dist/tars`) —
