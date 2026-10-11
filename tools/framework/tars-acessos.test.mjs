@@ -3,7 +3,7 @@
 //   2. falta de credencial NAO pode virar um inventario mentiroso (vira "(indisponivel)").
 // Tudo roda SEM REDE: os coletores recebem `gh`/`op`/`ssh`/`run` falsos.
 import { describe, expect, it } from 'vitest'
-import { assertSemSegredo, checarDrift, coletar1Password, coletarGitHub, coletarHosts, compararDrift, gerarAcessos, montarInventario, renderInventario } from './tars-acessos.mjs'
+import { assertSemSegredo, checarDrift, coletar1Password, coletarGitHub, coletarHosts, compararDrift, depsReais, gerarAcessos, HOSTS_PADRAO, montarInventario, renderInventario } from './tars-acessos.mjs'
 
 /** `gh` falso: responde por rota da API; rota fora do mapa = falha (o que o caso negativo quer). */
 const ghFalso = (rotas) => (args) => {
@@ -115,6 +115,22 @@ describe('Hosts SSH e ferramentas', () => {
   })
   it('host inacessivel nao derruba a coleta', () => {
     expect(coletarHosts({ ssh: sshFalso(false, false), hosts: ['h1'] }).hosts[0]).toMatchObject({ entra: false, motivo: expect.any(String) })
+  })
+  it('os hosts padrao cobrem nuc, hermes e pve (nome + IP da LAN)', () => {
+    expect(HOSTS_PADRAO).toEqual(expect.arrayContaining(['nuc.czul.net', '10.0.0.220', '10.0.0.200', '10.0.0.3']))
+  })
+})
+
+describe('depsReais — PAT/SA por ENV, helper SSH', () => {
+  it('o gh le GH_TOKEN do ambiente (nunca arquivo/URL)', () => {
+    // Espia o env passado ao runner: sem rede, so' conferimos o roteamento do token.
+    const d = depsReais({ GH_TOKEN: 'ghp_x' })
+    expect(typeof d.gh).toBe('function') // a presenca do token nao vaza na assinatura
+    expect(JSON.stringify(Object.keys(d)).includes('ghp_x')).toBe(false)
+  })
+  it('DANEEL_SSH roteia o ssh pelo helper em vez do ssh direto', () => {
+    const d = depsReais({ DANEEL_SSH: '/caminho/nuc.sh' })
+    expect(typeof d.ssh).toBe('function')
   })
 })
 

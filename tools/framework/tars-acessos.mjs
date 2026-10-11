@@ -28,8 +28,12 @@ import { findSecrets } from './secrets-patterns.mjs'
 
 /** Orgs que a Daneel atende hoje (fonte: `.cache/gh-daneel-push.sh`). Configuravel pelo caller. */
 export const ORGS_PADRAO = ['HuldLabs', 'growthsbr', 'FabberLabs']
-/** Hosts SSH do homelab (fonte: `.cache/hi/hosts/nuc.py`). Configuravel pelo caller. */
-export const HOSTS_PADRAO = ['nuc.czul.net']
+/**
+ * Hosts SSH do homelab. O nome resolve por DNS (`nuc.czul.net`) e o IP e' o da LAN
+ * (`10.0.0.x`) — os dois entram porque a resolucao muda conforme a rede. Fonte:
+ * `daneel-arquitetura.md` (`nuc` 10.0.0.220, `hermes` 10.0.0.200, `pve` 10.0.0.3).
+ */
+export const HOSTS_PADRAO = ['nuc.czul.net', '10.0.0.220', '10.0.0.200', '10.0.0.3']
 /** Ferramentas cuja versao entra no inventario. */
 export const FERRAMENTAS_PADRAO = ['op', 'gh', 'git', 'docker', 'uv']
 
@@ -240,13 +244,26 @@ export function gerarAcessos({ gh, op, ssh, run, hosts, ferramentas, out, log = 
   return { inv, md }
 }
 
-/** As dependencias de verdade (falam com o mundo) — os testes injetam as suas. */
+/**
+ * As dependencias de verdade (falam com o mundo) — os testes injetam as suas.
+ * O PAT do GitHub entra por ENV (`GH_TOKEN`/`GITHUB_TOKEN`), nunca em arquivo de config nem
+ * na URL do remote: o `gh` le' a variavel sozinho. O token da SA do 1Password idem. Nenhum
+ * valor e' impresso — o `gh`/`op` autenticam por dentro.
+ * SSH: o caminho padrao e' o helper `nuc.sh`/`daneel-ssh.sh` da sessao (lê a chave pela SA,
+ * `IdentityAgent=none`); `DANEEL_SSH` aponta o helper quando ele nao esta' no cwd do projeto.
+ * Sem o helper, cai num `ssh daneel@host` simples — que so' funciona se a chave ja' estiver
+ * no ssh-agent, o que NAO e' o POP da Daneel (por isso o helper existe).
+ */
 export function depsReais(env = process.env) {
   const opEnv = env.OP_SERVICE_ACCOUNT_TOKEN ? { OP_SERVICE_ACCOUNT_TOKEN: env.OP_SERVICE_ACCOUNT_TOKEN } : undefined
+  const ghEnv = env.GH_TOKEN ? { GH_TOKEN: env.GH_TOKEN } : env.GITHUB_TOKEN ? { GITHUB_TOKEN: env.GITHUB_TOKEN } : undefined
+  const helper = env.DANEEL_SSH
   return {
-    gh: (args) => runnerDefault('gh', args),
+    gh: (args) => runnerDefault('gh', args, { env: ghEnv }),
     op: (args) => runnerDefault('op', args, { env: opEnv }),
-    ssh: (host, cmd) => runnerDefault('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', `daneel@${host}`, ...cmd]),
+    ssh: helper
+      ? (host, cmd) => runnerDefault('bash', [helper, host, ...cmd])
+      : (host, cmd) => runnerDefault('ssh', ['-o', 'BatchMode=yes', '-o', 'IdentityAgent=none', '-o', 'ConnectTimeout=8', `daneel@${host}`, ...cmd]),
     run: (cmd, args) => runnerDefault(cmd, args),
   }
 }
