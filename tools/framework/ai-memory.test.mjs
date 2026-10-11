@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir, loadTags, resolveTag } from "./ai-memory.mjs";
+import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir, loadTags, resolveTag, assertNotClobberingEmpty } from "./ai-memory.mjs";
 
 // Gate da memoria operacional (regra sem teste = sugestao). Portado da ideia do
 // contract test do Fabber, adaptado ao nosso schema reduzido. NEGATIVO (as regras
@@ -274,6 +274,32 @@ describe("SEG-869 — indices do boot (operacional e ledger em arquivos separado
   });
 });
 
+// A4 (530455d8/3f5245fa): o indice COM conteudo nunca e' sobrescrito por um
+// `(vazio)` calado — 314 linhas se perderam assim quando a fonte veio vazia.
+describe("TARS-MEM-3 — indice nao sobrescreve conteudo por (vazio)", () => {
+  const comN = ["- [mem-a] fato A", "- [mem-b] fato B", "- [mem-c] fato C"];
+  it("falha alto nomeando a contagem e deixa o arquivo intacto", () => {
+    const f = fixture("INDEX.md", comN.join("\n") + "\n");
+    const antes = fs.readFileSync(f, "utf8");
+    expect(() => assertNotClobberingEmpty(f, "(vazio)\n")).toThrow(/recusaria apagar 3 linha/);
+    expect(fs.readFileSync(f, "utf8")).toBe(antes);
+  });
+  it("indice de destino inexistente ou ja vazio nao trava", () => {
+    const vazio = fixture("INDEX.md", "");
+    expect(() => assertNotClobberingEmpty(vazio, "(vazio)\n")).not.toThrow();
+    const novo = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-")), "INDEX.md");
+    expect(() => assertNotClobberingEmpty(novo, "- [mem-a] x\n")).not.toThrow();
+  });
+  it("--force esvazia de proposito", () => {
+    const f = fixture("INDEX.md", comN.join("\n") + "\n");
+    expect(() => assertNotClobberingEmpty(f, "(vazio)\n", { force: true })).not.toThrow();
+  });
+  it("indice com entrada nova (nao vazio) nunca dispara", () => {
+    const f = fixture("INDEX.md", comN.join("\n") + "\n");
+    expect(() => assertNotClobberingEmpty(f, "- [mem-z] outro\n")).not.toThrow();
+  });
+});
+
 // SOFON-MEM-1: a memoria federada (7 repos) nao cabe no boot — o INDEX corta
 // pelo teto do `.ai/boot-budget.json` e o resto fica sob demanda.
 describe("SOFON-MEM-1 — teto do boot no indice e mescla federada", () => {
@@ -311,7 +337,7 @@ describe("SOFON-MEM-1 — teto do boot no indice e mescla federada", () => {
       JSON.stringify({ ...base, id: "mem-z", repo: "segtools", statement: "fato da casa nao re-importa" }),
     ].join("\n") + "\n");
     const dest = fixture("dest.jsonl", `${mem({ id: "mem-a" })}\n`);
-    const { entradas, report } = mergeFederated({ memoryFile: dest, ledgerFile: fixture("led.jsonl", ""), sourceFile: src, sourceLedger: fixture("src-led.jsonl", "") });
+    const { entradas, report } = mergeFederated({ memoryFile: dest, ledgerFile: fixture("led.jsonl", ""), indexFile: fixture("idx.md", ""), ledgerIndexFile: fixture("lid.md", ""), sourceFile: src, sourceLedger: fixture("src-led.jsonl", "") });
     expect(entradas).toBe(1);
     expect(report.dup).toBe(1);
     const linhas = fs.readFileSync(dest, "utf8").trim().split("\n").map((l) => JSON.parse(l));
@@ -323,7 +349,7 @@ describe("SOFON-MEM-1 — teto do boot no indice e mescla federada", () => {
   it("traduz os enums da origem (operational -> ephemeral, sem confidence -> medium)", () => {
     const src = fixture("src.jsonl", JSON.stringify({ ...base, id: "mem-w", repo: "farmega", durability: "operational", confidence: undefined, statement: "fato operacional importado" }) + "\n");
     const dest = fixture("dest.jsonl", "");
-    mergeFederated({ memoryFile: dest, ledgerFile: fixture("led.jsonl", ""), sourceFile: src, sourceLedger: fixture("src-led.jsonl", "") });
+    mergeFederated({ memoryFile: dest, ledgerFile: fixture("led.jsonl", ""), indexFile: fixture("idx.md", ""), ledgerIndexFile: fixture("lid.md", ""), sourceFile: src, sourceLedger: fixture("src-led.jsonl", "") });
     const e = JSON.parse(fs.readFileSync(dest, "utf8").trim());
     expect(e.durability).toBe("ephemeral");
     expect(e.confidence).toBe("medium");
@@ -333,7 +359,7 @@ describe("SOFON-MEM-1 — teto do boot no indice e mescla federada", () => {
   it("descarta entrada vazia de teste em vez de gravar lixo", () => {
     const src = fixture("src.jsonl", JSON.stringify({ ...base, id: "mem-v", repo: "farmega", statement: "ok" }) + "\n");
     const dest = fixture("dest.jsonl", "");
-    const { entradas, report } = mergeFederated({ memoryFile: dest, ledgerFile: fixture("led.jsonl", ""), sourceFile: src, sourceLedger: fixture("src-led.jsonl", "") });
+    const { entradas, report } = mergeFederated({ memoryFile: dest, ledgerFile: fixture("led.jsonl", ""), indexFile: fixture("idx.md", ""), ledgerIndexFile: fixture("lid.md", ""), sourceFile: src, sourceLedger: fixture("src-led.jsonl", "") });
     expect(entradas).toBe(0);
     expect(report.vazias).toBe(1);
   });
