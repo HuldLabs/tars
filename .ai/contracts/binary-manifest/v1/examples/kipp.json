@@ -1,0 +1,53 @@
+{
+  "contract": "1",
+  "name": "kipp",
+  "version": "0.0.1",
+  "title": "Kipp",
+  "description": "Como o trabalho anda: quadro, itens e comentarios.",
+  "capabilities": ["messaging"],
+  "tools": [
+    {
+      "name": "issue-create",
+      "title": "Criar item",
+      "description": "Cria um item no quadro do projeto e devolve a chave dele.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string" },
+          "title": { "type": "string" }
+        },
+        "required": ["project", "title"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "menu": [
+    { "label": "Kipp", "href": "/kipp/board", "order": 10, "icon": "board" }
+  ],
+  "routes": [
+    { "path": "/kipp/board", "method": "GET", "permission": "kipp-read", "page": "board" }
+  ],
+  "settings": [
+    { "key": "board.wipLimit", "type": "number", "default": 5, "description": "Quantos itens podem ficar em andamento ao mesmo tempo." }
+  ],
+  "permissions": [
+    { "scope": "kipp-read", "description": "Ler o quadro e os itens do projeto." }
+  ],
+  "events": {
+    "emits": [{ "point": "issue.created" }],
+    "subscribes": [{ "point": "project.archived" }]
+  },
+  "tablePrefix": "kipp_",
+  "pages": [
+    {
+      "id": "board",
+      "title": "Quadro",
+      "layout": "board",
+      "permission": "kipp-read",
+      "blocks": [
+        { "kind": "table", "source": "issues.list", "fields": ["key", "title", "status"] },
+        { "kind": "action", "label": "Criar item", "source": "issue-create" }
+      ]
+    }
+  ]
+}
