@@ -4,6 +4,36 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.13
+
+### O que mudou
+- **Nova governanca `novo-repo`**: o **método único de nascer um repo/app** do ecossistema,
+  em 8 passos — criar no GitHub (org certa, privado), README com papel e **origem do nome**,
+  `BACKLOG.md` no commit inicial (decisões com fonte, fila com aceite, armadilhas, em
+  aberto), `tars init` + `tars sync`, versão `0.0.1-dev.1` + CHANGELOG, ADRs, registro no
+  README do `huldlabs` e repo irmão em `~/projects`.
+- **Modelos em `templates/`**: `README.tpl.md` e `BACKLOG.tpl.md` (o esqueleto a preencher),
+  com `templates/README.md` apontando o molde real (`HuldLabs/morse` `e1acf06`).
+- A doutrina declara a **prova** (o `tars doctor` cobra por repo que a executou: README com a
+  origem do nome, BACKLOG com as 4 seções, `.ai/tars.toml`, `CHANGELOG` em `0.0.1-dev.1`,
+  `docs/adr/*.md`).
+
+### Por quê
+Decisões tomadas em conversa se perdem quando o repo nasce só com um README e a próxima
+sessão recomeça do zero (`app-novo-nasce-com-backlog`, dono 10/10). O método congela o que
+foi decidido no commit inicial, com a fonte de cada decisão, e faz o repo nascer consumidor
+do Tars. Primeiro uso: o SELD (`HuldLabs/seld`, 11/10/2026).
+
+### Arquivos impactados no consumidor
+- Nenhum arquivo é reescrito no consumidor por esta versão: `governance/novo-repo` só chega a
+  quem **declarar** `novo-repo` na lista `governance` do `.ai/tars.toml`. Quem declarar recebe
+  `.ai/base/governance/novo-repo.md` no próximo `tars sync`.
+
+### O que o consumidor faz
+Nada é obrigatório. Para ter o método ao lado dos outros: adicione `"novo-repo"` à lista
+`governance` do `.ai/tars.toml` e rode **`tars sync`**. Os modelos em `templates/` moram no
+catálogo (o consumidor os consulta em `$TARS_HOME/templates/`) e não são copiados.
+
 ## 0.0.1-dev.12
 
 ### O que mudou

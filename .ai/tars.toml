@@ -11,6 +11,10 @@
 [tars]
 version = "0.0.1-dev.7"
 
+# Governanca que o PROPRIO Tars usa (o catalogo E' a fonte; o `doctor` cobra doutrina x
+# gate x prova). `novo-repo` (dev.13) e' o metodo de nascer repo — prova no consumidor.
+governance = ["novo-repo"]
+
 # Guards do agente: os que o `.claude/settings.json` do proprio Tars roda (PreToolUse).
 guards = [
   "block-destructive-commands",
