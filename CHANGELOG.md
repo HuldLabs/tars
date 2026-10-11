@@ -4,6 +4,42 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.14
+
+### O que mudou
+- **O gerador do indice de memoria nunca sobrescreve um indice CHEIO por um `(vazio)`
+  calado** (bug A4). Quando a fonte vinha vazia ou ilegivel, `ai-memory.mjs index`
+  gravava o `INDEX.md`/`LEDGER-INDEX.md` com `(vazio)` e as linhas ja' commitadas sumiam
+  (caso real: 314 linhas, 530455d8). Agora `assertNotClobberingEmpty` RECUSA apagar N
+  linhas por um indice vazio, nomeia o arquivo e a contagem, e so' esvazia com `--force`.
+- **Nova doutrina `operacao/nada-em-prod-sem-ordem` (B1.4)**: nada em producao
+  (`docker compose up/down`, `systemctl restart`, `kubectl apply`, `helm upgrade`, `git
+  push --force`) muda sem a ORDEM DIRETA DO DONO. O gate `.ai/gates/prod-guard` barra a
+  MUDANCA no `PreToolUse`; a ordem viaja na linha (`TARS_PROD_ORDER=<data/motivo> <cmd>`).
+  Leitura (`ps`, `status`, `get`, `curl`) passa livre. Regra tambem no guard de todo
+  consumidor (`.ai/guards/block-destructive-commands.sh`) e na regra de boot
+  (`.ai/rules/principles.md`).
+- **O aceite do worker e' a PROVA reproduzida pelo coordenador** (B3.3): o modelo de prompt
+  (`.ai/skills/agent-coordination/worker-prompt-vivo.md`) passa a exigir o teste
+  comportamental — nao o atalho `--check` nem assercao de string — e a regra "doc oficial
+  citada antes de criar/ajustar receita".
+
+### Por quê
+A4: um indice apagado calado custa a memoria inteira do projeto (o boot perde a
+operacional). B1.4: um `compose up` sem ordem derruba a stack que o dono administra e o
+agente nao sabe reerguer. B3.3: "verde no `--check`" nao prova o comportamento; o aceite
+so' vale com a prova que o coordenador reproduz.
+
+### Arquivos impactados no consumidor
+- `.ai/guards/block-destructive-commands.sh` e `.ai/rules/principles.md` (via `tars sync`)
+  passam a carregar a regra B1.4. O gate `prod-guard` chega ao `PreToolUse` do harness.
+- O gerador de indice (`ai-memory.mjs`) recusa clobber vazio: quem rodava `index` sobre uma
+  fonte vazia passa a ver erro em vez de perder o indice.
+
+### O que o consumidor faz
+Rode **`tars sync`** para receber a regra de boot e o guard atualizados. Se de proposito
+precisar esvaziar um indice, use `node ai-memory.mjs index --force`.
+
 ## 0.0.1-dev.13
 
 ### O que mudou

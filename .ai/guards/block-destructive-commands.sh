@@ -89,6 +89,21 @@ n_ok="$(printf '%s\n' "$LC" | grep -Eo "(^|[;&|[:space:]])(export[[:space:]]+)?(
 # num arquivo de script: `wsl.exe -d <distro> -- bash /mnt/c/.../script.sh`.
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])wsl(\.exe)?[[:space:]][^;&|]*[[:space:]]-(l?c|ic)[[:space:]][^;&|]*\$' && block "'wsl.exe ... -c' com \`\$\` inline: o wsl.exe expande a variavel do lado Windows antes do bash ver. Ponha o comando num script e rode 'wsl.exe -d <distro> -- bash <arquivo>'."
 
+# --- B1.4: nada em producao muda sem a ORDEM DIRETA DO DONO --------------------------
+# DOUTRINA (plano de release 11/10): quem muda estado em producao e' o dono, nao o agente.
+# Vale para todo consumidor do Tars (por isso mora aqui, no guard que todos trazem — mesma
+# razao do no-add-all). A LEITURA nao e' bloqueada; so' a MUDANCA. A ordem viaja na linha
+# do comando: `TARS_PROD_ORDER=<data/motivo> <comando>`. O gate de agente `.ai/gates/
+# prod-guard/` traz a versao Node (com teste); aqui fica a regra do guard de todo consumidor.
+if ! printf '%s' "$CMD" | grep -Eq 'TARS_PROD_ORDER[[:space:]]*=[[:space:]]*[^[:space:]]'; then
+  printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])docker([[:space:]]+compose|-compose)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(up|down|restart|rm|stop|kill)([[:space:]]|$)' && block "'docker compose up/down/restart/...' muda producao — sem a ordem direta do dono. Reenvie com 'TARS_PROD_ORDER=<data/motivo> docker compose up -d'."
+  printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])docker[[:space:]]+stack[[:space:]]+deploy([[:space:]]|$)' && block "'docker stack deploy' muda producao — sem a ordem direta do dono. Reenvie com 'TARS_PROD_ORDER=<data/motivo> docker stack deploy ...'."
+  printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])systemctl[[:space:]]+(restart|stop|start|reload|disable|mask|kill)([[:space:]]|$)' && block "'systemctl restart/stop/...' muda servico do host — sem a ordem direta do dono. Reenvie com 'TARS_PROD_ORDER=<data/motivo> systemctl restart ...' (leitura: 'status', 'is-active')."
+  printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])kubectl[[:space:]]+(apply|delete|replace|patch|scale|drain|cordon|rollout[[:space:]]+restart)([[:space:]]|$)' && block "'kubectl apply/delete/...' muda o cluster — sem a ordem direta do dono. Reenvie com 'TARS_PROD_ORDER=<data/motivo> kubectl ...'."
+  printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])helm[[:space:]]+(upgrade|install|uninstall|rollback)([[:space:]]|$)' && block "'helm upgrade/install/...' muda o release — sem a ordem direta do dono. Reenvie com 'TARS_PROD_ORDER=<data/motivo> helm upgrade ...'."
+  printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+push[^;&|]*[[:space:]](-f|--force(-with-lease)?)([[:space:]]|$)' && block "'git push --force' reescreve o remoto — sem a ordem direta do dono. Reenvie com 'TARS_PROD_ORDER=<data/motivo> git push --force ...'."
+fi
+
 # git clean -fdx / reset --hard: avisa (nao bloqueia)
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+clean[[:space:]]+-[a-z]*f[a-z]*d[a-z]*x([[:space:]]|$)' && warn "'git clean -fdx' remove todo arquivo nao rastreado — verifique 'git status'."
 printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)' && warn "'git reset --hard' descarta mudancas nao commitadas — verifique 'git status'."

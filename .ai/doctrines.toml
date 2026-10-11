@@ -118,6 +118,15 @@ prova = "node .ai/gates/release-guard/gate.mjs --forca-reprova 2>/dev/null; test
 onde = "pre-commit"
 escopo = "catalogo"
 
+[[doctrine]]
+id = "operacao/nada-em-prod-sem-ordem"
+titulo = "Nada em producao muda (compose/systemctl/kubectl/helm/force-push) sem a ordem direta do dono"
+fonte = ".ai/gates/prod-guard/GATE.md:1-14"
+gate = ".ai/gates/prod-guard"
+prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"docker compose up -d\"}}' | node .ai/gates/prod-guard/gate.mjs"
+onde = "pre-commit"
+escopo = "catalogo"
+
 # ---------------------------------------------------------------------------
 # Segtools — a prova roda no projeto dele; entram no `.ai/tars.toml` de la'
 # ---------------------------------------------------------------------------

@@ -12,6 +12,10 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-secret-dump.sh\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.ai/gates/prod-guard/gate.mjs\""
           }
         ]
       }

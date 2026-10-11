@@ -16,7 +16,7 @@ check() {
 }
 check "compose down -v"            "docker compose down -v"                          block
 check "compose -f x down --volumes" "docker compose -f infra/compose.yaml down --volumes" block
-check "compose down (sem -v)"      "docker compose down"                             allow
+check "compose down (sem -v)"      "docker compose down"                             block
 check "volume rm"                  "docker volume rm segtools-pg-data"               block
 check "volume prune"               "docker volume prune"                             block
 check "system prune --volumes"     "docker system prune --volumes"                   block
@@ -77,4 +77,18 @@ check "wsl.exe -c com \$HOME"      "wsl.exe -d ubuntu-24.04 -- bash -c 'cd \$HOM
 check "wsl -lc com \$PATH"         "wsl -d ubuntu-24.04 -- bash -lc 'export PATH=\$HOME/x:\$PATH'" block
 check "wsl.exe com script"         "wsl.exe -d ubuntu-24.04 -- bash /mnt/c/tmp/s.sh"        allow
 check "wsl.exe -c sem \$"          "wsl.exe -d ubuntu-24.04 -- bash -c 'ls ~/projects'"     allow
+
+# --- B1.4: nada em producao muda sem a ORDEM DIRETA DO DONO ---
+check "compose up sem ordem"       "docker compose up -d"                            block
+check "compose restart sem ordem"  "docker compose restart api"                      block
+check "stack deploy sem ordem"     "docker stack deploy -c x.yml app"                block
+check "systemctl restart sem ordem" "systemctl restart nginx"                        block
+check "kubectl rollout restart"    "kubectl rollout restart deploy/api"              block
+check "helm upgrade sem ordem"     "helm upgrade app ./chart"                        block
+check "git push --force sem ordem" "git push --force origin main"                    block
+check "compose up COM ordem"       "TARS_PROD_ORDER=2026-10-11 docker compose up -d" allow
+check "systemctl status (leitura)" "systemctl status nginx"                          allow
+check "kubectl get (leitura)"      "kubectl get pods"                                allow
+check "compose ps (leitura)"       "docker compose ps"                               allow
+check "git push normal"            "git push origin main"                            allow
 exit $fail

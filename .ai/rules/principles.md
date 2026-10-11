@@ -72,6 +72,12 @@ como atende cada uma**:
   `.ai/governance/versionamento-de-extracao.md`.
 - **Estado:** serviço com estado não sobe sobre volume vazio; o preflight exige o marcador do
   datadir, salvo init explícito — `.ai/governance/estado-exige-datadir.md`.
+- **Nada em produção muda sem a ordem direta do dono.** Reapply, rollback, imagem, config,
+  `docker compose up/down`, `systemctl restart`, `kubectl apply`, `helm upgrade`, `git push
+  --force`: o agente **não** executa por conta própria — a ordem viaja na linha do comando
+  (`TARS_PROD_ORDER=<data/motivo> <comando>`). Leitura (`ps`, `status`, `get`, `curl`) é
+  livre; só a MUDANÇA é barrada — `.ai/gates/prod-guard/GATE.md` (doutrina
+  `operacao/nada-em-prod-sem-ordem`).
 
 ## Ao fechar trabalho
 
