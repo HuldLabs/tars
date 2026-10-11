@@ -127,6 +127,16 @@ prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\"
 onde = "pre-commit"
 escopo = "catalogo"
 
+[[doctrine]]
+id = "metodo/aceite-real"
+titulo = "O aceite e' a PROVA reproduzida pelo coordenador (comportamento, nao `--check`/string); doc oficial citada antes de ajustar receita"
+fonte = ".ai/skills/agent-coordination/worker-prompt-vivo.md:12-22"
+gate = "nenhum"
+motivo = "o gate vive no harness do consumidor (fast.py reprova PHANTOM ao ler o prompt); no catalogo o que da' para cobrar e' o TEXTO do modelo existir — doutrina orfa nomeada (B3.3)"
+prova = "git grep -q 'O aceite e a PROVA' -- .ai/skills/agent-coordination/worker-prompt-vivo.md && exit 1"
+onde = "ci"
+escopo = "catalogo"
+
 # ---------------------------------------------------------------------------
 # Segtools — a prova roda no projeto dele; entram no `.ai/tars.toml` de la'
 # ---------------------------------------------------------------------------
