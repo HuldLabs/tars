@@ -14,13 +14,15 @@
 //   3. Falta credencial = seccao vira "(indisponivel: <motivo>)", nunca um inventario mentiroso.
 //
 // Uso:
-//   tars acessos daneel [--out <arquivo.md>] [--json]
+//   tars acessos daneel [--out <arquivo.md>] [--json]   GERA o inventario
+//   tars acessos check  [--out <arquivo.md>]            testa cada acesso e compara com o
+//                                                       commitado (drift); != 0 quando diverge
 //   node tools/framework/tars-acessos.mjs daneel --out /tmp/acessos/daneel.md
 //
 // Testes rodam SEM REDE: os coletores recebem `run`/`gh`/`op` injetados (o default fala com o
 // mundo de verdade). Ver `tars-acessos.test.mjs`.
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { findSecrets } from './secrets-patterns.mjs'
 
@@ -249,12 +251,61 @@ export function depsReais(env = process.env) {
   }
 }
 
-/** `tars acessos daneel` — despacho fino; o julgamento mora nas funcoes acima. */
+/**
+ * DRIFT: a geracao nova contra a COMMITADA. A DATA de geracao e' ruido (muda toda vez) e sai
+ * da comparacao — o que importa e' a lista de acessos. Devolve `null` quando nao ha' o que
+ * comparar (arquivo commitado ausente = primeiro commit, nao e' drift), senao a lista de
+ * linhas que divergem (com o sinal `+`/`-`), na ordem do arquivo novo.
+ */
+export function compararDrift({ commitado, novo }) {
+  if (commitado == null) return null
+  const limpa = (s) => String(s).split('\n').filter((l) => !/^Gerado em /.test(l))
+  const a = limpa(commitado)
+  const b = limpa(novo)
+  if (a.join('\n') === b.join('\n')) return []
+  const setA = new Set(a)
+  const setB = new Set(b)
+  const divergentes = []
+  for (const l of a) if (!setB.has(l)) divergentes.push(`- ${l}`)
+  for (const l of b) if (!setA.has(l)) divergentes.push(`+ ${l}`)
+  return divergentes
+}
+
+/** Le o inventario commitado no caminho dado (ou `null` quando o arquivo ainda nao existe). */
+export function lerCommitado(arquivo) {
+  if (!arquivo || !existsSync(resolve(arquivo))) return null
+  return readFileSync(resolve(arquivo), 'utf8')
+}
+
+/**
+ * `tars acessos check [--out <arquivo.md>]` — TESTA cada acesso de verdade (mesma coleta do
+ * `daneel`) e compara com o inventario COMMITADO. Divergencia = drift: alguem mudou acesso
+ * (org/repo/host/cofre) sem regenerar. Saida != 0 quando ha' drift (R4 — falha alta).
+ * Sem arquivo commitado, o check nao inventa drift: reporta "nada a comparar".
+ */
+export function checarDrift({ commitado, novo } = {}) {
+  const divergentes = compararDrift({ commitado, novo })
+  if (divergentes === null) return { ok: true, motivo: 'sem inventario commitado para comparar (rode `tars acessos daneel --out <arquivo>`)', divergentes: [] }
+  return { ok: divergentes.length === 0, motivo: divergentes.length ? `${divergentes.length} linha(s) divergem do commitado` : 'inventario em dia (nenhum drift)', divergentes }
+}
+
+/** `tars acessos <sub>` — despacho fino; o julgamento mora nas funcoes acima. */
 export function runAcessos({ sub, rest = [], env = process.env, log = console.log } = {}) {
-  if (sub !== 'daneel') throw new Error(`use \`tars acessos daneel [--out <arquivo.md>]\` (recebi '${sub ?? ''}')`)
   const i = rest.indexOf('--out')
   const out = i === -1 ? null : rest[i + 1]
-  const { md } = gerarAcessos({ ...depsReais(env), out, log })
-  if (!out || rest.includes('--json')) log(md)
-  return { md }
+  if (sub === 'daneel') {
+    const { md } = gerarAcessos({ ...depsReais(env), out, log })
+    if (!out || rest.includes('--json')) log(md)
+    return { md }
+  }
+  if (sub === 'check') {
+    const { md } = gerarAcessos({ ...depsReais(env) })
+    const commitado = out ? lerCommitado(out) : null
+    const r = checarDrift({ commitado, novo: md })
+    log(`tars acessos check — ${r.motivo}`)
+    for (const d of r.divergentes) log(`  ${d}`)
+    if (!r.ok) process.exitCode = 1
+    return r
+  }
+  throw new Error(`use \`tars acessos daneel|check [--out <arquivo.md>]\` (recebi '${sub ?? ''}')`)
 }

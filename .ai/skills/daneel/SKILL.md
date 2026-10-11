@@ -103,6 +103,11 @@ Esta skill **aponta** para o inventário; **não** lista acesso. Ele é gerado p
 (API), 1Password (nomes de cofre/item/campo, **nunca valores**), hosts SSH configurados e
 versões de ferramenta; a skill **não** pode virar segunda fonte de acesso (mataria o drift).
 
+**Drift (`tars acessos check --out <acessos/daneel.md>`):** regenera, testa cada acesso de
+verdade e compara com o inventário **commitado** — divergência (org/repo/host/cofre mudou) sai
+nomeada e o comando retorna ≠ 0. É o fecho do passo 6 do §4: sem ele o inventário era uma foto
+que envelhecia calada.
+
 ## 6. Lições já aprendidas (com fonte)
 
 - **Checar visibilidade antes de enviar.** Commit indevido foi parar em `HuldLabs/.github`
@@ -120,9 +125,10 @@ versões de ferramenta; a skill **não** pode virar segunda fonte de acesso (mat
 
 - `.ai/governance/segredos-e-identidade.md` — doutrina canônica (autoridade da prosa).
 - `.ai/doctrines.toml` (`daneel/*`) — as regras desta skill como dado verificável
-  (fonte/gate/prova), cobradas por `tars doctor`. O que ainda não tem gate está declarado
-  como dívida nomeada ali, não escondido.
+  (fonte/gate/prova), cobradas por `tars doctor`. As 4 têm gate.
+- `.ai/gates/daneel-acoes/` — o gate das 3 condições de parada (force-push, repo público,
+  escrita no cofre): `PreToolUse` que bloqueia o comando antes do dano.
 - `.ai/guards/block-destructive-commands.sh`, `.ai/guards/block-secret-dump.sh` — guardas de ação.
-- `acessos/daneel.md` (repo privado `HuldLabs/huldlabs`) — inventário gerado.
+- `acessos/daneel.md` (repo privado `HuldLabs/huldlabs`) — inventário gerado; `tars acessos check` aponta o drift.
 - Runtime consumidor: **Hermes Agent** (Daneel é o perfil **padrão**; fabber/nexus/vpnai são
   contextos que ela atende, nunca definições paralelas).

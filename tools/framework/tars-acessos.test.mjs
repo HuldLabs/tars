@@ -3,7 +3,7 @@
 //   2. falta de credencial NAO pode virar um inventario mentiroso (vira "(indisponivel)").
 // Tudo roda SEM REDE: os coletores recebem `gh`/`op`/`ssh`/`run` falsos.
 import { describe, expect, it } from 'vitest'
-import { assertSemSegredo, coletar1Password, coletarGitHub, coletarHosts, gerarAcessos, montarInventario, renderInventario } from './tars-acessos.mjs'
+import { assertSemSegredo, checarDrift, coletar1Password, coletarGitHub, coletarHosts, compararDrift, gerarAcessos, montarInventario, renderInventario } from './tars-acessos.mjs'
 
 /** `gh` falso: responde por rota da API; rota fora do mapa = falha (o que o caso negativo quer). */
 const ghFalso = (rotas) => (args) => {
@@ -127,5 +127,38 @@ describe('render — estavel para o diff de drift', () => {
   it('falta de credencial aparece como indisponivel na secao', () => {
     const md = renderInventario(montarInventario({ gh: ghSemCredencial(), op: () => ({ ok: false, out: '' }), ssh: sshFalso(false, false), run: runFalso() }))
     expect(md).toContain('indisponivel')
+  })
+})
+
+describe('check — drift (gerado x commitado)', () => {
+  const mdOk = () => renderInventario(montarOk())
+
+  it('a DATA de geracao nao conta como drift', () => {
+    const a = mdOk().replace(/^Gerado em .*/m, 'Gerado em 2026-01-01 — x')
+    const b = mdOk().replace(/^Gerado em .*/m, 'Gerado em 2026-12-31 — y')
+    expect(compararDrift({ commitado: a, novo: b })).toEqual([])
+  })
+
+  it('repo novo visivel = drift (nomeado com +)', () => {
+    const commitado = mdOk()
+    const novo = commitado.replace('| `HuldLabs/tars` |', '| `HuldLabs/novo-repo` | privado | admin |\n| `HuldLabs/tars` |')
+    const d = compararDrift({ commitado, novo })
+    expect(d.some((l) => l.startsWith('+') && l.includes('novo-repo'))).toBe(true)
+  })
+
+  it('sem commitado = nao inventa drift (ok, "nada a comparar")', () => {
+    const r = checarDrift({ commitado: null, novo: mdOk() })
+    expect(r.ok).toBe(true)
+    expect(r.motivo).toMatch(/sem inventario commitado/)
+  })
+
+  it('commitado igual = em dia', () => {
+    expect(checarDrift({ commitado: mdOk(), novo: mdOk() }).ok).toBe(true)
+  })
+
+  it('commitado divergente = ok:false com as linhas', () => {
+    const r = checarDrift({ commitado: mdOk().replace('HuldLabs/tars', 'HuldLabs/removido'), novo: mdOk() })
+    expect(r.ok).toBe(false)
+    expect(r.divergentes.length).toBeGreaterThan(0)
   })
 })

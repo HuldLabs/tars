@@ -129,6 +129,8 @@ const USAGE = [
   '                             persistente (--em <arquivo> ou HKCU\\Environment no Windows)',
   '  acessos daneel             GERA o inventario de acessos da Daneel (--out <arquivo.md>): so',
   '                             nomes (cofres/campos/repos/hosts), nunca valor de segredo',
+  '  acessos check [--out <f>]  TESTA cada acesso e compara com o inventario commitado;',
+  '                             divergencia = drift (exit != 0)',
   '',
   '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
   '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
@@ -336,11 +338,12 @@ async function secretsCommand(rest, project) {
   process.exit(r.status ?? 0)
 }
 
-/** `tars acessos daneel` — despacho fino: o julgamento mora no modulo dono (tars-acessos). */
+/** `tars acessos daneel|check` — despacho fino: o julgamento mora no modulo dono (tars-acessos). */
 function acessosCommand(rest) {
   const mod = acessosMod
   const r = mod.runAcessos({ sub: rest[0], rest: rest.slice(1) })
-  process.exit(r ? 0 : 1)
+  // `check` marca `ok:false` no retorno; o modulo ja' setou `process.exitCode = 1`.
+  process.exit(r ? (r.ok === false ? 1 : 0) : 1)
 }
 
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
