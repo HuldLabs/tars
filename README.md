@@ -328,7 +328,11 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
 
 - `.ai/rules/` — `overview.md` e `claude.md` (regras de topo por alvo).
 - `.ai/governance/` — autoridade, precedência, `EVOLUTION.md` (auto-evolução de sessão),
-  `source-of-truth.md`, `perdas-por-alvo.md`.
+  `source-of-truth.md`, `perdas-por-alvo.md`, `novo-repo.md` (o **método de nascer repo**).
+- `.ai/governance/novo-repo.md` — **como nasce um repo/app novo do ecossistema** (8 passos:
+  criar no GitHub, README com papel + origem do nome, BACKLOG no commit inicial, `tars init`
+  + `tars sync`, `0.0.1-dev.1` + CHANGELOG, ADRs, registro no `huldlabs`, repo irmão).
+  Modelos em `templates/` (`README.tpl.md`, `BACKLOG.tpl.md`).
 - `.ai/guards/` — guardas de runtime (`block-secret-dump`, `block-destructive-commands`,
   `ensure-memory-link`, `precompact-persist-state`, `sessionstart-context-digest`,
   `stop-unfinished-work`), em `.sh` com testes.
