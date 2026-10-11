@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url'
 import { joinPosix, posix } from './tars-paths.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
-export const AREAS = ['skills', 'rules', 'memory', 'gates', 'guards', 'governance']
+export const AREAS = ['skills', 'rules', 'memory', 'gates', 'guards', 'governance', 'contracts']
 /** Nomes que o manifesto pode declarar em `[gates]` (docs/TARS.md §Modelo). */
 export const HOOKS = ['pre-commit', 'commit-msg', 'pre-push', 'local']
 
@@ -170,6 +170,9 @@ export async function readManifest(project) {
     memory: tars.memory ?? [],
     guards: tars.guards ?? [],
     governance: tars.governance ?? [],
+    // `[tars.contracts]` — os contratos do ADR-0002 (ex.: `binary-manifest/v1`) que o consumidor
+    // puxa para `.ai/base/contracts/`. Area como as outras: o catalogo declara, o consumidor escolhe.
+    contracts: tars.contracts ?? [],
     // `[tars.env]` — ambiente extra do agente (o sync sempre injeta o NAO INTERATIVO).
     env: cfg.env ?? {},
     gates,
@@ -314,6 +317,9 @@ const LAYOUT = {
   guards: (item) => ({ path: joinPosix('guards', item), ext: /\.[a-z0-9]+$/.test(item) ? '' : '.sh' }),
   // Governanca e' ARQUIVO markdown solto (`.ai/governance/<nome>.md`), igual a regra.
   governance: (item) => ({ path: joinPosix('governance', item), ext: '.md' }),
+  // Contrato (ADR-0002 D8.3) e' PASTA com versao no nome (`contracts/binary-manifest/v1/`): o
+  // item ja' traz a versao no proprio caminho, entao o manifesto declara `binary-manifest/v1`.
+  contracts: (item) => ({ path: joinPosix('contracts', item), ext: '' }),
 }
 
 /** Fonte do item no Tars, relativa a `.ai/`. */

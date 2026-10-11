@@ -4,6 +4,34 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.11
+
+### O que mudou
+- **O item `contracts/binary-manifest/v1` entra no catalogo** (ADR-0002 D3, D7, D8.3): o
+  **JSON Schema draft 2020-12** do manifesto que um binario publica em `GET /manifest` e
+  `<bin> manifest --json` — contrato, capacidades, tools de MCP, menu, rotas, configuracoes,
+  permissoes, eventos/hooks e `tablePrefix`. A tela e **modelo de pagina** (`layout` +
+  `blocks[].kind`), nunca HTML: o schema recusa `html`/`template`. Vem com um
+  **teste de conformidade** (`conformance.mjs`, sem dependencia) e o exemplo minimo do Kipp.
+- **A area `contracts` no `tars sync`**: o consumidor declara `contracts = ["binary-manifest/v1"]`
+  no `.ai/tars.toml` e o item chega em `.ai/base/contracts/binary-manifest/v1`, com sha256 no
+  `.ai/tars.lock`.
+- **A conformidade de prefixo (D7)** como funcao reutilizavel (`prefix-conformance.mjs`): dado o
+  cliente e o prefixo, lista os objetos do schema pelo `pg_catalog` (tabela, indice, sequencia,
+  view, matview, tipo, constraint) e reprova qualquer um sem o prefixo.
+
+### Por quê
+O ADR-0002 diz que o schema do manifesto e o teste de conformidade moram no catalogo — terreno
+neutro que o binario e o hospedeiro ja consomem: nenhum dos dois depende do outro. Faltava o item.
+
+### Arquivos impactados no consumidor
+- `.ai/base/contracts/binary-manifest/v1/**` (novo), depois de declarar `contracts` no `.ai/tars.toml`.
+- `.ai/tars.lock` (entra a chave `contracts/binary-manifest/v1`).
+
+### O que o consumidor faz
+Rodar **`tars sync`** com `contracts = ["binary-manifest/v1"]` no `.ai/tars.toml`. O teste de
+conformidade roda na suite do Tars; nada muda para quem nao declara a area.
+
 ## 0.0.1-dev.10
 
 ### O que mudou

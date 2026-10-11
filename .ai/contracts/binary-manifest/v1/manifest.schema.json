@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://huldlabs.dev/tars/contracts/binary-manifest/v1/manifest.schema.json",
+  "title": "Manifesto do binario do ecossistema HuldLabs (contrato 1)",
+  "description": "O que um binario publica em GET /manifest e em <bin> manifest --json (ADR-0002 D3). O hospedeiro le este DADO e materializa menu, rotas, tools de MCP, hooks, permissoes e telas — regra nenhuma duplicada por stack. As telas vem como MODELO DE PAGINA (referencia ao catalogo do DS do hospedeiro), nunca como HTML.",
+  "type": "object",
+  "required": ["contract", "name", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "$ref": "#/$defs/version",
+      "description": "Versao do CONTRATO do manifesto (ADR-0002 regra 3: '1' hoje). O adaptador diante de versao que nao conhece FALHA ALTO — este campo e o manifesto inteiro sao versionados juntos."
+    },
+    "name": {
+      "$ref": "#/$defs/id",
+      "description": "id estavel do binario (minimo 2 caracteres, minusculas/digitos/-, sem comecar ou terminar em -). E o MESMO `name` do protocolo MCP."
+    },
+    "version": {
+      "$ref": "#/$defs/version",
+      "description": "Versao do binario (SemVer). Muda a cada release do produto, nao a cada mudanca de contrato — essa e o `contract`."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Nome de exibicao, na lingua de quem usa (o `name` e' identificador; o `title` e' texto de tela)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Uma linha sobre o que o binario faz, para o menu do hospedeiro e a listagem do admin."
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" },
+      "description": "O que o binario OFERECE ao hospedeiro (ex.: 'search', 'billing', 'messaging'). Vocabulario aberto: quem consome decide o que sabe materializar; o que nao conhece fica inerte, nunca quebra o boot."
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tool" },
+      "description": "Tools de MCP que o hospedeiro expoe como PROXY (ADR-0002 D4). O nome tem de ser unico."
+    },
+    "menu": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/menuItem" },
+      "description": "Itens de menu que o hospedeiro acrescenta a propria navegacao. `href` aponta para uma `path` declarada em `routes`."
+    },
+    "routes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/route" },
+      "description": "Rotas e paginas: o hospedeiro REGISTRA e ENCAMINHA ao binario (proxy). O caminho carrega o produto para nao colidir com rotas do hospedeiro."
+    },
+    "settings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/setting" },
+      "description": "Configuracoes que o binario aceita. O hospedeiro so as EDITA — quem valida o valor e o binario."
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/permission" },
+      "description": "Permissoes que o binario usa, mapeadas para o IAM do hospedeiro (ADR-0002 D4). O binario declara o ESCOPO; a policy fica no IAM."
+    },
+    "events": {
+      "$ref": "#/$defs/events",
+      "description": "Eventos que o binario EMITE e ASSINA (ADR-0002 D3/D5). A fronteira transacional fica no hospedeiro: ele grava no proprio outbox e o binario consome."
+    },
+    "tablePrefix": {
+      "$ref": "#/$defs/prefix",
+      "description": "Prefixo dos objetos que o binario cria no SGBD compartilhado (ADR-0002 D7). Vale para TUDO: tabelas, indices, sequencias, tipos e a tabela de controle de migrations. Ausente = o binario nao cria objeto proprio (ou nao compartilha SGBD)."
+    },
+    "pages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/page" },
+      "description": "Telas como MODELO DE PAGINA (dado), nunca HTML (ADR-0002 D3). O hospedeiro desenha com o DS dele."
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
+      "description": "Identificador: minusculas, digitos e '-', sem comecar ou terminar em '-'."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+(\\.\\d+)*([-+][0-9A-Za-z.-]+)?$",
+      "description": "Versao: '1' (contrato) ou '2.14.0' (binario)."
+    },
+    "prefix": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*_$",
+      "maxLength": 32,
+      "description": "Prefixo de objeto do SGBD: comeca por letra, minusculas/digitos/_ e TERMINA em '_' (ex.: 'kipp_'). O '_' final e o que separa o produto do nome do objeto."
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Obrigatoria: e o texto que o modelo le para decidir usar a tool — sem ela a tool existe e ninguem a chama."
+        },
+        "inputSchema": {
+          "type": "object",
+          "description": "JSON Schema do input (o mesmo vocabulario das operacoes do Sofon). Ausente = sem argumentos."
+        }
+      }
+    },
+    "menuItem": {
+      "type": "object",
+      "required": ["label", "href"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "href": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Caminho DECLARADO em routes[].path — o menu nao inventa destino."
+        },
+        "order": { "type": "integer", "description": "A posicao no menu do hospedeiro; empate desempata pelo nome." },
+        "icon": { "type": "string", "description": "Nome do icone NO DS DO HOSPEDEIRO — o binario nao manda SVG." }
+      }
+    },
+    "route": {
+      "type": "object",
+      "required": ["path", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Caminho no hospedeiro (ex.: '/kipp/board'). Use o prefixo do produto para nao colidir."
+        },
+        "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "permission": {
+          "$ref": "#/$defs/id",
+          "description": "Permissao exigida (das declaradas em `permissions`) — o proxy so encaminha depois do IAM."
+        },
+        "page": {
+          "$ref": "#/$defs/id",
+          "description": "Id da pagina (das declaradas em `pages`) que o hospedeiro desenha nesta rota."
+        }
+      }
+    },
+    "setting": {
+      "type": "object",
+      "required": ["key", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9-]*(?:\\.[a-z][A-Za-z0-9-]*)+$",
+          "description": "Caminho 'grupo.campo' (ex.: 'board.wipLimit'), unico no binario."
+        },
+        "type": { "enum": ["number", "boolean", "text", "rubric"] },
+        "default": { "type": ["number", "boolean", "string"] },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "O que o parametro faz, na lingua de quem ajusta — nao o nome da variavel."
+        },
+        "secret": {
+          "type": "boolean",
+          "description": "true = o valor vem do cofre do hospedeiro, nunca do formulario."
+        }
+      }
+    },
+    "permission": {
+      "type": "object",
+      "required": ["scope", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/id",
+          "description": "O escopo que o binario exige (ex.: 'projects:write'). Mapeado para o IAM do hospedeiro."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "hookRef": {
+      "type": "object",
+      "required": ["point"],
+      "additionalProperties": false,
+      "properties": {
+        "point": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nome do ponto no binario (ex.: 'issue.created'). O hospedeiro casa pelo nome declarado aqui, nunca por convencao."
+        },
+        "schema": { "type": "object", "description": "JSON Schema do payload." }
+      }
+    },
+    "events": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "emits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hookRef" },
+          "description": "Eventos que o binario publica."
+        },
+        "subscribes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hookRef" },
+          "description": "Eventos que o binario consome do hospedeiro — e por onde a fronteira transacional (D5) passa."
+        }
+      },
+      "description": "Bloco dos eventos: emitidos e assinados."
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "layout", "blocks"],
+      "additionalProperties": false,
+      "$comment": "D3: a tela e' MODELO DE PAGINA (dado), nunca HTML. O `$comment` acima documenta a regra para quem le o schema; os dois `not` abaixo a COBRAM (nenhuma chave de HTML no objeto).",
+      "not": {
+        "anyOf": [
+          { "required": ["html"] },
+          { "required": ["template"] }
+        ]
+      },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "layout": { "enum": ["list", "detail", "form", "board", "dashboard"] },
+        "permission": { "$ref": "#/$defs/id" },
+        "blocks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/block" }
+        }
+      },
+      "patternProperties": {
+        "^html": { "not": {} },
+        "^rawHtml$": { "not": {} },
+        "^markup$": { "not": {} }
+      }
+    },
+    "block": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["table", "fields", "form", "tabs", "metric", "chart", "markdown", "action"],
+          "description": "O TIPO de bloco que o DS do hospedeiro sabe desenhar — o binario escolhe o tipo, nao o markup."
+        },
+        "source": { "type": "string", "description": "De onde vem o dado (operacao/rota do proprio binario)." },
+        "fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Nomes de campo — dado, nao texto formatado."
+        },
+        "label": { "type": "string" },
+        "text": {
+          "type": "string",
+          "description": "Texto do bloco `markdown` (markdown, nao HTML)."
+        }
+      }
+    }
+  }
+}
