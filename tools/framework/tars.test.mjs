@@ -12,7 +12,8 @@ describe('tars — despacho', () => {
     // consumidor le' as notas entre a versao do `.ai/tars.lock` e a atual.
     // `incident` entrou com TARS-INCIDENTE-AUTO fatia 1 (o ledger deixa de ser escrito a mao).
     // `secrets` entrou com o dev.9: o cofre do PROJETO, declarado em `[secrets]` do `.ai/tars.toml`.
-    expect(Object.keys(COMMANDS).sort()).toEqual(['check', 'check-refs', 'doctor', 'git', 'handoff', 'hooks', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
+    // `acessos` entrou com a skill da Daneel (fase 3): o inventario de acesso GERADO.
+    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'check', 'check-refs', 'doctor', 'git', 'handoff', 'hooks', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {
