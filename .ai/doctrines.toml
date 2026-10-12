@@ -262,3 +262,48 @@ gate = ".githooks/pre-commit"
 prova = "git grep -q '_tmp_' -- .githooks/pre-commit"
 onde = "pre-commit"
 escopo = "segtools"
+
+# --- Identidade de automacao (Daneel) — SKILL.md e' a prosa; aqui, a regra como dado -----
+
+[[doctrine]]
+id = "daneel/hermes-perfil-padrao"
+titulo = "A Daneel e' o perfil PADRAO do Hermes (persona no boot, sem chamada explicita)"
+fonte = ".ai/skills/daneel/SKILL.md:3"
+gate = "tars doctor"
+# A prova REPROVA quando a skill perde a declaracao de "perfil PADRAO" — ou seja, quando
+# alguem edita a skill e a dupla perfil-padrao/sem-chamada-explicita some (o runtime passa a
+# exigir invocacao manual, contra a doutrina). `grep -q` sobre o texto: achou = regra viva,
+# nao achou = regressao. Nao usa caminho do projeto: a skill e' do CATALOGO.
+prova = "! grep -q 'perfil PADRÃO' .ai/skills/daneel/SKILL.md"
+onde = "ci"
+
+[[doctrine]]
+id = "daneel/tars-fonte-unica"
+titulo = "O Tars e' a fonte unica; nenhum runtime redefine a persona"
+fonte = ".ai/skills/daneel/SKILL.md:8-10"
+gate = "../../.ai/guards/block-destructive-commands.sh"
+prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push --no-verify\"}}' | bash .ai/guards/block-destructive-commands.sh"
+onde = "pre-commit"
+
+[[doctrine]]
+id = "daneel/autoedicao-desligada"
+titulo = "Autoedicao/curator desligados no perfil da Daneel; credencial nenhuma dentro do Hermes"
+fonte = ".ai/skills/daneel/SKILL.md:38-39"
+gate = "tars doctor"
+# A prova REPROVA (exit 1) enquanto a skill declara as DUAS travas; o dia em que alguem
+# apagar "autoedição/curator DESLIGADOS" ou "credencial nenhuma dentro do Hermes", o grep
+# nao acha, o `!` vira exit 0 e o doctor acusa PHANTOM. Negacao = prova que existe so'
+# enquanto a regra esta escrita.
+prova = "! grep -q 'Duas travas no perfil dela' .ai/skills/daneel/SKILL.md"
+onde = "ci"
+
+[[doctrine]]
+id = "daneel/stop-conditions"
+titulo = "Parar e reportar: apagar, force-push, repo publico e cofre exigem ordem do dono"
+fonte = ".ai/skills/daneel/SKILL.md:52-61"
+gate = ".ai/gates/daneel-acoes"
+# A prova alimenta um comando VIOLADOR (force-push) e exige o bloqueio (exit 2). Sem o gate,
+# o comando sai 0, a prova PASSA e o doctor acusa PHANTOM. Cobre as tres condicoes de parada
+# que antes so' existiam como prosa: force-push, push em repo publico e escrita no cofre.
+prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push --force origin main\"}}' | node .ai/gates/daneel-acoes/daneel-acoes.mjs"
+onde = "pre-commit"

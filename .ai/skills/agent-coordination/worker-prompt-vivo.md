@@ -55,6 +55,12 @@ não se repetir. Commit com `📝 docs(coord): prompt vivo — <erro>`.
   chegam como "MENSAGEM DO COORDENADOR" e têm prioridade.
 - **Fontes fora do container:** o devcontainer NÃO vê os repos do WSL (farmega, dotfiles, seo-expert). O
   coordenador cola no prompt os trechos necessários; nunca mandar o worker "ler" um caminho que ele não alcança.
+- **"Não tenho acesso" só com o caminho testado (ordem do dono 11/10).** Worker que declara falta de acesso sem
+  ter exercitado o caminho da **Daneel** (skill `.ai/skills/daneel/SKILL.md`) tem o bloqueio recusado: o acesso
+  de automação não é o seu — é o do bot. Antes de escrever `BLOQUEIO: sem acesso`, teste o caminho real e cole a
+  saída: `gh api user --jq .login` (tem de ser `daneel-bot`), `.cache/daneel-ssh.sh <host> true` (host do
+  inventário `acessos/daneel.md`), `op vault list`. Só depois de o caminho **falhar de verdade** o "não tenho
+  acesso" vale — e ele nomeia o comando e a saída, não a impressão.
 - **Ambiente do worktree:** o `node_modules` do worktree é **pasta REAL**, instalada pelo dispatch com `bun install --frozen-lockfile --backend=copyfile` — confira com `ls -la` ANTES do primeiro teste; **se for symlink, `BLOQUEIO:`** (symlink some o isolamento entre worktrees; não copie/mova centenas de MB — o dispatch reinstala). Teste lento ou falhando só no worktree: compare com o checkout base antes de mexer em código. **Nunca `sleep` de espera:** comando longo vai em segundo plano e você segue trabalhando;
   rodar tudo no container; commits dentro do worktree passam pelos hooks completos (inclui lint).
 - **Arquivos sob guarda:** `.ai/skills/**` e `.devcontainer/**` barram `Write`/`Edit`; o `block-secret-dump` casa o
@@ -104,3 +110,4 @@ Linha no Registro sem mudança no Esqueleto/Checklist é diário, não é conser
 | 2026-09-28 | worker | Crase (`) dentro de comentário SQL num template literal quebrou o hub (SEG-345; 2ª vez no mesmo arquivo) | Esqueleto: dentro de template literal (SQL), comentário nunca usa crase; conferir a página no navegador depois de salvar |
 | 2026-09-29 | worker | Entrou no hub com a sessão do dono na checagem de tela; o `move` virou `pablo` no evento #3877 (SEG-1, SEG-525) | Esqueleto: bloco "Sessão no hub = assinatura na auditoria" + a mesma regra no POP de tela do `fast.py` |
 | 2026-10-11 | coordenador (curadoria) | Aceite entregue como atalho `--check`/asserção de string e receita criada sem doc oficial; "verde" não reproduzível | Esqueleto: bloco "O aceite é a PROVA reproduzida pelo coordenador" + "Doc oficial citada antes de ajustar receita" (B3.3 do plano de release) |
+| 2026-10-11 | worker | Declarou "sem acesso" a host/GitHub sem testar o caminho da Daneel (o acesso não é o dele — é do bot) | Esqueleto: `BLOQUEIO: sem acesso` exige o caminho da Daneel exercitado (comando + saída) |

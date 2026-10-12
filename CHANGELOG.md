@@ -39,6 +39,49 @@ so' vale com a prova que o coordenador reproduz.
 ### O que o consumidor faz
 Rode **`tars sync`** para receber a regra de boot e o guard atualizados. Se de proposito
 precisar esvaziar um indice, use `node ai-memory.mjs index --force`.
+## 0.0.1-dev.14
+
+### O que mudou
+- **Identidade de automação (Daneel) entra fechada — os 3 furos da curadoria.** A branch
+  `feat/daneel-agente` (skill + `tars acessos` + doutrinas) ganha o que faltava para mergear:
+  - **As 4 doutrinas `daneel/*` têm gate.** `hermes-perfil-padrao` e `autoedicao-desligada`
+    passam a reprovar quando a skill perde a declaração (prova que REPROVA, não `test -f` que
+    sempre passa); `stop-conditions` aponta para o gate novo.
+  - **`.ai/gates/daneel-acoes/`** cobra as 3 condições de parada que só existiam como prosa:
+    **force-push**, **push em repo público** e **escrita no cofre** (`op item edit`, `tars
+    secrets set`). `PreToolUse` que bloqueia antes do dano; override só do operador por
+    `DANEEL_ALLOW=1`.
+  - **`tars acessos check [--out <arquivo>]`** implementa o **drift**: regenera, testa cada
+    acesso de verdade e compara com o inventário commitado — divergência sai nomeada e o exit
+    vira ≠ 0. A data de geração sai da comparação (ruído).
+- **`tars acessos daneel` cobre os hosts reais e o PAT por env.** Hosts por nome E IP da LAN
+  (`nuc.czul.net`/10.0.0.220, hermes 10.0.0.200, pve 10.0.0.3); PAT do GitHub por
+  `GH_TOKEN`/`GITHUB_TOKEN` (nunca arquivo/URL); SSH pelo helper da Daneel (`DANEEL_SSH` ->
+  `nuc.sh`/`daneel-ssh.sh`).
+- **Regra nova do dono (11/10): bug do Tars reportado vira release.** Entra em
+  `.ai/rules/principles.md` (boot de todo consumidor), no `README.md` (ponteiro) e no
+  `BACKLOG.md` novo (seção `## Bugs reportados por consumidores` com repo · data · reprodução).
+- **Prompt vivo de worker:** `BLOQUEIO: sem acesso` só vale com o caminho da **Daneel**
+  exercitado (comando + saída) — o acesso de automação não é do worker, é do bot.
+
+### Por que
+A branch da Daneel declarava as doutrinas `daneel/*` com `gate = "nenhum"` e uma prova `test -f`
+que **sempre passa** (nunca reprovava nada) — a dívida estava nomeada no próprio
+`.ai/doctrines.toml` ("Fechar quando o guard ganhar as tres regras") sem ninguém escrever o
+guard. O inventário era uma foto que envelhecia calada: gerava e ordenava para o diff, mas nunca
+comparava. E o "não tenho acesso" de worker virava bloqueio sem teste, contra a ordem do dono
+(o acesso de automação é do bot, não do humano atrás do agente).
+
+### Arquivos impactados no consumidor
+- `.ai/rules/principles.md` (regra nova) · `.ai/skills/agent-coordination/worker-prompt-vivo.md`
+  (regra nova) · as doutrinas e a skill chegadas pelo `tars sync`.
+- Novos no catálogo: `.ai/gates/daneel-acoes/`, `BACKLOG.md`.
+
+### O que o consumidor faz
+Rodar **`tars sync`** e, se declarou a skill `daneel`, registrar o gate `daneel-acoes` no
+`PreToolUse`/matcher `Bash` do harness (o `tars sync` gera o wiring; confira com `tars doctor` —
+as 4 doutrinas `daneel/*` devem sair `OK`, não `SEM GATE`). Quem usa `tars acessos daneel` ganha
+o `check` de drift e os hosts/PAT novos sem mudar nada.
 
 ## 0.0.1-dev.13
 
@@ -318,6 +361,19 @@ aponte `TARS_HOME` para o catálogo quando ele não estiver em `/projects/tars`.
 - Testes: `tars-doctor-secrets.test.mjs` (novo) — um caso **verde** e um **vermelho** por item.
 
 > **Antes do release de dev.9**: o dev.9 não fecha sem esta fatia (S3).
+
+### Daneel — identidade de automação como skill
+- **`.ai/skills/daneel/SKILL.md`** (novo): a persona e o contrato do **ator de automação** do
+  ecossistema. Fonte única — runtimes (Hermes Agent e outros) **consomem** a skill, nunca
+  redefinem a persona. Traz identidade (ela/dela, voz curta, assinatura), missão e o que NUNCA
+  faz, a ficha verificável `ação → permitida | proibida | exige aprovação`, condições de parada
+  e como "vestir" a Daneel (git identity, leitura de credencial sem imprimir, POPs).
+- **`tars acessos daneel [--out <arquivo.md>]`** (novo, `tars-acessos.mjs`): **gera** o inventário
+  de acessos — GitHub (API: orgs/repos com pull/push/admin, convites pendentes), 1Password (cofres
+  e **nomes** de item/campo, nunca valor), hosts SSH (entra? sudo?) e versões de ferramenta.
+  **Read-only** e **barrado por padrão de segredo** (reusa `secrets-patterns.mjs`); falta de
+  credencial vira `(indisponivel)`, nunca inventário mentiroso. A skill **aponta** para o
+  inventário gerado — nunca lista acesso à mão (mata o drift por construção).
 
 ### Por que
 Cada projeto consumidor vinha reinventando o próprio cofre (caminho fixo, variável de ambiente,

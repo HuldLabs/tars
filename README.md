@@ -322,7 +322,11 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
 
 `agent-coordination` · `app-extraction` · `security-testing` · `segtools-frontend` ·
 `segtools-database` · `segtools-sdd` · `segtools-content` · `segtools-writing` ·
-`shadcn` · `migrate-radix-to-base` · e os `fabber-*` (front/api/nextjs/debug, transitórios).
+`shadcn` · `migrate-radix-to-base` · `daneel` (identidade de automação do ecossistema) ·
+e os `fabber-*` (front/api/nextjs/debug, transitórios).
+
+O inventário de acessos da Daneel é **gerado**: `tars acessos daneel [--out <arquivo.md>]`
+(GitHub, 1Password por nome, hosts SSH, ferramentas) — read-only e barrado por padrão de segredo.
 
 ### Regras, governança e guardas
 
@@ -338,6 +342,12 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
   `stop-unfinished-work`), em `.sh` com testes.
 - `.ai/hooks.jsonc` · `.ai/mcp.jsonc` · `.ai/permissions.jsonc` — config fonte dos hooks, MCP
   e permissões; o `rulesync` traduz para cada ferramenta (ADR-019).
+
+**Bug do Tars reportado vira release.** A regra vale para todo consumidor e mora em
+`.ai/rules/principles.md` (boot): quem achar um bug no Tars (ou no `tars sync`/hook/gate)
+**reporta** no `BACKLOG` do tars com **repo, data e reprodução** — o bug **entra na próxima
+release** e o `CHANGELOG` **lista os reportados que fechou**. Contorno local é temporário e fica
+como dívida nomeada; report sem reprodução vira "a confirmar", nunca dívida infinita.
 
 ## Como um projeto novo começa
 

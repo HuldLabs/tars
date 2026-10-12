@@ -78,6 +78,11 @@ como atende cada uma**:
   (`TARS_PROD_ORDER=<data/motivo> <comando>`). Leitura (`ps`, `status`, `get`, `curl`) é
   livre; só a MUDANÇA é barrada — `.ai/gates/prod-guard/GATE.md` (doutrina
   `operacao/nada-em-prod-sem-ordem`).
+- **Bug do Tars é reportado e corrigido na próxima release.** Todo consumidor que encontrar um
+  bug no Tars (ou no `tars sync`/hook/gate) **reporta** no `BACKLOG` do tars com **repo, data e
+  reprodução** — e o bug **entra na próxima release**; contorno local só é temporário e fica
+  registrado como dívida nomeada. O `CHANGELOG` da release **lista os bugs reportados que
+  fechou**. Bug sem reprodução vira "a confirmar" — não vira dívida infinita.
 
 ## Ao fechar trabalho
 
