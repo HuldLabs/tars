@@ -402,6 +402,50 @@ describe("gate no-add-all", () => {
   });
 });
 
+// B1.4: nada em producao muda sem ordem direta do dono. A ordem viaja na linha do
+// comando (`TARS_PROD_ORDER=...`); sem ela o gate barra a MUDANCA e deixa a leitura.
+describe("gate prod-guard — ordem direta do dono (B1.4)", () => {
+  const gate = GATE("prod-guard", "gate.mjs");
+  const payload = (command) =>
+    JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } });
+
+  it.each([
+    "docker compose up -d",
+    "docker compose down",
+    "docker stack deploy -c x.yml app",
+    "systemctl restart nginx",
+    "kubectl rollout restart deploy/api",
+    "helm upgrade app ./chart",
+    "git push --force origin main",
+  ])("barra %s com exit 2", (cmd) => {
+    const r = rodar([gate], { input: payload(cmd) });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/PROD BARRADO/);
+  });
+
+  it.each([
+    "docker ps",
+    "docker compose config",
+    "systemctl status nginx",
+    "kubectl get pods",
+    "curl -s localhost:47000/health",
+    "git push origin main",
+  ])("deixa passar a leitura %s", (cmd) => {
+    const r = rodar([gate], { input: payload(cmd) });
+    expect(r.status).toBe(0);
+  });
+
+  it("a ordem direta do dono libera o comando", () => {
+    const r = rodar([gate], { input: payload("TARS_PROD_ORDER=2026-10-11 docker compose up -d") });
+    expect(r.status).toBe(0);
+  });
+
+  it("falha ABERTA em payload vazio/roto", () => {
+    expect(rodar([gate], { input: "" }).status).toBe(0);
+    expect(rodar([gate], { input: "{nao-e-json" }).status).toBe(0);
+  });
+});
+
 describe("gate release-guard", () => {
   const gate = GATE("release-guard", "gate.mjs");
   const V = "0.0.1-dev.6";

@@ -28,3 +28,8 @@ guards = [
 # no-add-all fica no guard de agente, nao no hook do git.
 pre-commit = ["gitleaks", "release-guard"]
 commit-msg = ["commit-msg"]
+
+# prod-guard (B1.4): o agente nao muda producao (compose/systemctl/kubectl/helm/force-push)
+# sem a ordem direta do dono. Fica no PreToolUse do harness (como o no-add-all), nao no hook
+# do git — o par doutrina->gate->prova esta' no `.ai/doctrines.toml`
+# (`operacao/nada-em-prod-sem-ordem`).

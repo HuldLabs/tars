@@ -12,6 +12,10 @@
       {
         "matcher": "Bash|PowerShell",
         "command": "bash \"./.ai/guards/block-destructive-commands.sh\""
+      },
+      {
+        "matcher": "Bash",
+        "command": "node \"./.ai/gates/prod-guard/gate.mjs\""
       }
     ],
     "preCompact": [

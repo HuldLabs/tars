@@ -525,13 +525,35 @@ export function renderLedgerIndex(ledgerFile = LEDGER_FILE) {
   return `# Indice do ledger de incidentes\n\nGerado por \`node tools/framework/ai-memory.mjs index\` — nao editar a mao.\n\n${rows.length ? rows.join("\n") : "(vazio)"}\n`;
 }
 
+/**
+ * TARS-MEM-3 (bug A4, 530455d8/3f5245fa): o gerador NUNCA sobrescreve um indice
+ * COM conteudo por um `(vazio)`. Caso real: 314 linhas perdidas quando a fonte
+ * foi lida vazia (arquivo ausente/caminho errado) e o `(vazio)` entrou calado.
+ * Aqui a perda falha ALTO nomeando o arquivo e a contagem — o operador decide
+ * (fonte corrompida? caminho errado?) em vez de perder o indice. `force` so'
+ * quando a intencao e' esvaziar de proposito.
+ */
+export function assertNotClobberingEmpty(file, md, { force = false } = {}) {
+  const linhas = (s) => s.split("\n").filter((l) => l.startsWith("- [")).length;
+  const novo = linhas(md);
+  const existentes = fs.existsSync(file) ? linhas(fs.readFileSync(file, "utf8")) : 0;
+  if (!force && existentes > 0 && novo === 0) {
+    throw new Error(`indice ${path.relative(REPO, file)}: recusaria apagar ${existentes} linha(s) por um indice (vazio) — a fonte (memoria/ledger) veio vazia ou ilegivel; use --force para esvaziar de proposito`);
+  }
+  return { existentes, novo };
+}
+
 /** Grava os DOIS indices + o mapa completo (`.ai/memory/memory.index.json`). */
 export function writeIndex(memoryFile = FILE, ledgerFile = LEDGER_FILE, opts = {}) {
   const count = (md) => md.split("\n").filter((l) => l.startsWith("- [")).length;
+  const indexFile = opts.indexFile ?? INDEX_FILE;
+  const ledgerIndexFile = opts.ledgerIndexFile ?? LEDGER_INDEX_FILE;
   const md = renderIndex(memoryFile, opts);
   const ledgerMd = renderLedgerIndex(ledgerFile);
-  fs.writeFileSync(INDEX_FILE, md);
-  fs.writeFileSync(LEDGER_INDEX_FILE, ledgerMd);
+  assertNotClobberingEmpty(indexFile, md, { force: opts.force });
+  assertNotClobberingEmpty(ledgerIndexFile, ledgerMd, { force: opts.force });
+  fs.writeFileSync(indexFile, md);
+  fs.writeFileSync(ledgerIndexFile, ledgerMd);
   const { entries } = readJsonl(memoryFile);
   const all = entries.filter((e) => e && typeof e === "object" && !Array.isArray(e));
   fs.writeFileSync(INDEX_SOURCE_FILE, JSON.stringify(compact({
@@ -540,7 +562,7 @@ export function writeIndex(memoryFile = FILE, ledgerFile = LEDGER_FILE, opts = {
     boot_cap: count(md),
     entries: all.map((e) => compact({ source_id: e.id, id: e.id, camada: e.camada, repo: e.repo, source: e.source, scope: e.scope, statement: e.statement, ts: e.ts })),
   }), null, 2) + "\n");
-  return { file: INDEX_FILE, lines: count(md), ledgerFile: LEDGER_INDEX_FILE, ledgerLines: count(ledgerMd), sourceFile: INDEX_SOURCE_FILE };
+  return { file: indexFile, lines: count(md), ledgerFile: ledgerIndexFile, ledgerLines: count(ledgerMd), sourceFile: INDEX_SOURCE_FILE };
 }
 
 /** Valida o arquivo inteiro; retorna { errors: string[], count } */
@@ -590,7 +612,7 @@ function norm(s) {
  * `source_refs` passa a apontar para o arquivo de origem, que e' onde a prova mora.
  * Devolve { entradas, ledgers, idx, report } — e' pura ate' o `writeIndex` final.
  */
-export function mergeFederated({ memoryFile = FILE, ledgerFile = LEDGER_FILE, sourceFile = path.join(REPO, ".cache", "sofon-memory", "operational-memory.jsonl"), sourceLedger = path.join(REPO, ".cache", "sofon-memory", "incident-ledger.jsonl") } = {}) {
+export function mergeFederated({ memoryFile = FILE, ledgerFile = LEDGER_FILE, indexFile = INDEX_FILE, ledgerIndexFile = LEDGER_INDEX_FILE, sourceFile = path.join(REPO, ".cache", "sofon-memory", "operational-memory.jsonl"), sourceLedger = path.join(REPO, ".cache", "sofon-memory", "incident-ledger.jsonl") } = {}) {
   // O `.cache/` e' descartavel e nao vai para o git: a prova aponta para o arquivo
   // de ORIGEM, no repo de origem, no formato `<repo>:<caminho>`.
   const refDe = (repo, nome) => `${repo}:.ai/memory/${nome}`;
@@ -652,7 +674,7 @@ export function mergeFederated({ memoryFile = FILE, ledgerFile = LEDGER_FILE, so
   const write = (file, linhas) => fs.writeFileSync(file, linhas.length ? linhas.map((e) => JSON.stringify(e)).join("\n") + "\n" : "");
   write(memoryFile, mem);
   write(ledgerFile, led);
-  const idx = writeIndex(memoryFile, ledgerFile);
+  const idx = writeIndex(memoryFile, ledgerFile, { indexFile, ledgerIndexFile });
   return { entradas: novas.length, ledgers: novosInc.length, idx, report };
 }
 
@@ -695,6 +717,11 @@ export function validateSchemaDocFile(doc = SCHEMA_DOC) {
 function flag(name) {
   const i = process.argv.indexOf(name);
   return i !== -1 ? process.argv[i + 1] : undefined;
+}
+
+/** Flag booleana (presenca): `--force` sem valor conta como ligada. */
+function boolFlag(name) {
+  return process.argv.includes(name);
 }
 
 // Incident: dist/tars procura `.ai/` na raiz `/`. No `bun build --compile` TODO modulo
@@ -741,7 +768,7 @@ if (isMain && process.argv.includes("--check")) {
 } else if (isMain && process.argv[2] === "index") {
   // TARS-MEM-2: `--base <dir>` aponta a camada base (configuracao, default e
   // `.ai/base/memory`). A escrita do indice continua so' no repo.
-  const idx = writeIndex(FILE, LEDGER_FILE, { baseDir: resolveBaseDir(REPO, flag("--base")) });
+  const idx = writeIndex(FILE, LEDGER_FILE, { baseDir: resolveBaseDir(REPO, flag("--base")), force: boolFlag("--force") });
   console.log(`ai-memory index ok (${path.relative(REPO, idx.file)}; ${idx.lines} no boot; ${path.relative(REPO, idx.ledgerFile)}; ${idx.ledgerLines} itens; mapa ${path.relative(REPO, idx.sourceFile)})`);
 } else if (isMain && process.argv[2] === "merge") {
   // SOFON-MEM-1: mescla a memoria federada (outros repos) na canonica do segtools.

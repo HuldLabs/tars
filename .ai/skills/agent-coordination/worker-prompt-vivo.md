@@ -9,6 +9,16 @@ não se repetir. Commit com `📝 docs(coord): prompt vivo — <erro>`.
 - **Contrato de progresso:** commit a cada passo provado (nunca um commit grande no fim); **prazo explícito**
   (**tarefa de 5–10 min**; maior = dividir; `até N min; se travar >5 min num erro, commite o provado e escreva PERGUNTA:`); registrar no corpo do commit
   o tempo gasto no passo.
+- **O aceite é a PROVA que o coordenador reproduz — não o atalho.** O `delivery` só vale com o comando
+  **completo** (`cd <pasta> && <cmd>` quando não roda da raiz) e a **saída real** (exit code + a linha que prova),
+  que o coordenador **reproduz antes de aceitar** (B3.3; "verde" que ninguém repete não é entrega). Reprova como
+  prova: `--check`/`--dry-run`/`--help` no lugar do fluxo real; asserção de **string** onde cabia **comportamento**
+  (ex.: grep no fonte em vez de exercitar a função); "rodei o teste" sem o comando; tela por `curl`/status HTTP em
+  vez do navegador. **Teste que reproduz o defeito primeiro, corrige depois** (R4) — e a prova mostra o ANTES
+  vermelho e o DEPOIS verde.
+- **Doc oficial citada ANTES de criar/ajustar receita.** Receita/procedimento de ferramenta externa (build, deploy,
+  migração, SDK, CLI) só entra depois de ler a **doc/CLI oficial da versão pinada** — não da memória nem de exemplo
+  de blog. O `delivery` cita o link/versão lida; sem isso a receita é suposição (B3.3).
 - **Check-in por relógio real:** linha `CHECK-IN:` a cada **≤5 min** e em todo marco/desvio/bloqueio.
 - **Board reflete o real (SDD, ordem do dono 26/09) — o worker opera a própria issue pelo MCP `projects`:**
   - **Puxar (fluxo puxado, nunca empurrado):** o despacho deixa sua issue em `ready`, sem dono. Quando começar de fato — antes de
@@ -99,4 +109,5 @@ Linha no Registro sem mudança no Esqueleto/Checklist é diário, não é conser
 | 2026-09-26 | coordenador | Symlink de `node_modules` no worktree compartilhava inodes com o checkout principal (backend hardlink: link count 3) e o worker não instalava dependência só da branch dele | Dispatch instala a árvore no worktree com `--frozen-lockfile --backend=copyfile`; symlink no worktree = `BLOQUEIO` para o worker |
 | 2026-09-28 | worker | Crase (`) dentro de comentário SQL num template literal quebrou o hub (SEG-345; 2ª vez no mesmo arquivo) | Esqueleto: dentro de template literal (SQL), comentário nunca usa crase; conferir a página no navegador depois de salvar |
 | 2026-09-29 | worker | Entrou no hub com a sessão do dono na checagem de tela; o `move` virou `pablo` no evento #3877 (SEG-1, SEG-525) | Esqueleto: bloco "Sessão no hub = assinatura na auditoria" + a mesma regra no POP de tela do `fast.py` |
+| 2026-10-11 | coordenador (curadoria) | Aceite entregue como atalho `--check`/asserção de string e receita criada sem doc oficial; "verde" não reproduzível | Esqueleto: bloco "O aceite é a PROVA reproduzida pelo coordenador" + "Doc oficial citada antes de ajustar receita" (B3.3 do plano de release) |
 | 2026-10-11 | worker | Declarou "sem acesso" a host/GitHub sem testar o caminho da Daneel (o acesso não é o dele — é do bot) | Esqueleto: `BLOQUEIO: sem acesso` exige o caminho da Daneel exercitado (comando + saída) |
