@@ -307,3 +307,31 @@ gate = ".ai/gates/daneel-acoes"
 # que antes so' existiam como prosa: force-push, push em repo publico e escrita no cofre.
 prova = "printf '%s' '{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push --force origin main\"}}' | node .ai/gates/daneel-acoes/daneel-acoes.mjs"
 onde = "pre-commit"
+
+# --- Operacao de host (B1.1/B1.2) — a doutrina como dado: o `esquema` e' o que a prova
+# reproduz. O linter que varre o HOST e' do consumidor (o Tars nao tem host); aqui mora a
+# REGRA e a prova que reprova o caso arquetipico. -------------------------------------
+
+[[doctrine]]
+id = "operacao/layout-srv"
+titulo = "Dado de app mora em `/srv/<amb>/<app>/{data,conf}`; bind mount, nunca volume nomeado"
+fonte = ".ai/gates/GATE-doutrina-operacao.md:1-24"
+gate = ".ai/gates/doutrina-operacao.mjs"
+esquema = "doutrina-operacao.mjs --str <caminho>"
+# A prova julga o caminho ARQUETIPICO fora do layout (`/data`) e exige reprovar. O linter do
+# host nao mora aqui: o consumidor declara a MESMA doutrina apontando `--path /srv`.
+prova = "node .ai/gates/doutrina-operacao.mjs --str /data"
+onde = "pre-commit"
+escopo = "catalogo"
+
+[[doctrine]]
+id = "operacao/ambiente-e-projeto-compose"
+titulo = "Ambiente = projeto Compose `name: <app>-<amb>` (profiles nao serve); bind sempre com `source:`"
+fonte = ".ai/gates/GATE-doutrina-operacao.md:26-34"
+gate = ".ai/gates/doutrina-operacao.mjs"
+esquema = "doutrina-operacao.mjs --name <app>-<amb>"
+# A prova julga o nome B1.2 arquetipico que declara volume NOMEADO (`profiles`-style) e exige
+# reprovar: e' o defeito que a doutrina existe para barrar.
+prova = "node .ai/gates/doutrina-operacao.mjs --name local"
+onde = "pre-commit"
+escopo = "catalogo"
