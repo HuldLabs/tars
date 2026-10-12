@@ -335,3 +335,58 @@ esquema = "doutrina-operacao.mjs --name <app>-<amb>"
 prova = "node .ai/gates/doutrina-operacao.mjs --name local"
 onde = "pre-commit"
 escopo = "catalogo"
+
+# --- ADRs da org (B4.3) — as decisoes transversais da HuldLabs entram no catalogo como
+# LINHAS, nao como outro documento: o manifesto e a prova sao dados. A fonte mora no repo
+# `huldlabs/adr/` (de onde elas vieram, 11/10/2026); o ADR-0002 manda ele proprio vir pro
+# Tars. Uma linha por decisao — a prova e' o grep que REPROVA quando a decisao sai do ar. ---
+
+[[doctrine]]
+id = "org/binario-portatil"
+titulo = "O produto e' o binario portatil (standalone ou plugado); o hospedeiro nao reimplementa"
+fonte = "/projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md:16"
+gate = "nenhum"
+motivo = "decisao de arquitetura da org: falta o gate de conformidade (o `tars sync` do manifesto); divida nomeada (B4.3)"
+prova = "grep -q 'O produto é o binário' /projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md"
+onde = "ci"
+escopo = "catalogo"
+
+[[doctrine]]
+id = "org/manifesto-como-dado"
+titulo = "O binario publica o PROPRIO manifesto como dado (`GET /manifest`, `<bin> manifest --json`)"
+fonte = "/projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md:24"
+gate = "nenhum"
+motivo = "o gate real e' o contrato binary-manifest (K0); ate' la' a prova e' o texto vivo no ADR (divida nomeada, B4.3)"
+prova = "grep -q 'publica o proprio manifesto, como dado' /projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md"
+onde = "ci"
+escopo = "catalogo"
+
+[[doctrine]]
+id = "org/sgbd-do-ambiente"
+titulo = "Quem fornece o SGBD e' o AMBIENTE, nao o binario (recebe DSN, nunca sobe SGBD)"
+fonte = "/projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md:57"
+gate = "nenhum"
+motivo = "doutrina de operacao; o gate vive no consumidor que sobe o banco — divida nomeada (B4.3)"
+prova = "grep -q 'quem fornece o SGBD é o ambiente' /projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md"
+onde = "ci"
+escopo = "catalogo"
+
+[[doctrine]]
+id = "org/outbox-na-transacao"
+titulo = "A intencao sai pelo outbox, NA MESMA transacao do efeito (canal caiu -> nao some)"
+fonte = "/projects/huldlabs/adr/0001-mensageria-e-jobs.md:34"
+gate = "nenhum"
+motivo = "o motor (BR-MSG-001/002) e' do CORE-SERVICES; falta o gate de conformidade por framework — divida nomeada (B4.3)"
+prova = "grep -q 'na mesma transação do efeito' /projects/huldlabs/adr/0001-mensageria-e-jobs.md"
+onde = "ci"
+escopo = "catalogo"
+
+[[doctrine]]
+id = "org/canal-indisponivel-degrada"
+titulo = "Canal indisponivel DEGRADA para o `default_channel` da surface (erro de operacao, nunca silencia)"
+fonte = "/projects/huldlabs/adr/0001-mensageria-e-jobs.md:27-33"
+gate = "nenhum"
+motivo = "doutrina do plano de comunicacao; o gate e' o teste de conformidade do contrato — divida nomeada (B4.3)"
+prova = "grep -q 'canal indisponivel' /projects/huldlabs/adr/0001-mensageria-e-jobs.md"
+onde = "ci"
+escopo = "catalogo"
