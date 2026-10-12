@@ -4,7 +4,7 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
-## 0.0.1-dev.14
+## 0.0.1-dev.15
 
 ### O que mudou
 - **O gerador do indice de memoria nunca sobrescreve um indice CHEIO por um `(vazio)`
