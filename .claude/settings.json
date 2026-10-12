@@ -7,12 +7,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-destructive-commands.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-secret-dump.sh\""
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-secret-dump.sh\""
-          },
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-destructive-commands.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.ai/gates/prod-guard/gate.mjs\""

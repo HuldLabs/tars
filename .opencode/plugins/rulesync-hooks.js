@@ -18,6 +18,12 @@ export const RulesyncHooksPlugin = async ({ $ }) => {
           await $`bash "./.ai/guards/block-destructive-commands.sh"`;
         }
       }
+      {
+        const __re = new RegExp("Bash");
+        if (__re.test(input.tool)) {
+          await $`node "./.ai/gates/prod-guard/gate.mjs"`;
+        }
+      }
     },
   };
 };
