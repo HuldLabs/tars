@@ -23,8 +23,10 @@ const arg = (nome, def) => {
   return i === -1 ? def : process.argv[i + 1]
 }
 
-/** Areas do catalogo que o binario precisa para `sync`/`doctor`/`hooks`. Tudo, menos lixo. */
-const AREAS = ['.ai', 'templates']
+/** Areas do catalogo que o binario precisa para `sync`/`doctor`/`hooks`. Tudo, menos lixo.
+ *  O `CHANGELOG.md` e' area tambem: sem ele o `tars upgrade-notes` do binario publicado
+ *  falhava com "CHANGELOG.md ausente no catalogo" (Kipp, 14/10). */
+const AREAS = ['.ai', 'templates', 'CHANGELOG.md']
 /** Nunca embutir: cache, lock e saida de build (nao sao asset; alguns sao do ambiente). */
 const EXCLUI = [/^\.ai\/memory\/operational-memory\.jsonl$/, /\.sops$/, /(^|\/)\.DS_Store$/, /(^|\/)\.cache\//, /(^|\/)__pycache__\//]
 
@@ -45,7 +47,9 @@ export function gerar({ tars, out }) {
   const arquivos = {}
   for (const area of AREAS) {
     try {
-      if (statSync(join(tars, area)).isDirectory()) varrer(join(tars, area), tars, arquivos)
+      const st = statSync(join(tars, area))
+      if (st.isDirectory()) varrer(join(tars, area), tars, arquivos)
+      else if (st.isFile()) arquivos[area] = readFileSync(join(tars, area), 'utf8')
     } catch {
       /* area ausente: segue (o catalogo pode nao ter `templates/`) */
     }

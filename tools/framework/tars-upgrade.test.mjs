@@ -86,6 +86,17 @@ describe('tars-upgrade — o comando contra a fixture', () => {
     expect(saida.join('\n')).not.toContain('primeira')
   })
 
+  it('lock em versao que o CHANGELOG nao conhece (esquema antigo `1.0.0`): mostra TUDO e avisa', () => {
+    // seo-brain, 14/10: lock `1.0.0` x motor `0.0.1-dev.19` dizia "ja' em dia" e escondia tudo.
+    const { tars, project } = fixture({ lockVersion: '1.0.0' })
+    const r = upgradeNotes({ tars, project })
+    expect(r.notas.map((n) => n.version)).toEqual(['0.0.1-dev.3', '0.0.1-dev.2', '0.0.1-dev.1'])
+    const saida = []
+    format(r, (l) => saida.push(l))
+    expect(saida.join('\n')).toMatch(/nao consta do CHANGELOG/)
+    expect(saida.join('\n')).not.toMatch(/ja' em dia/)
+  })
+
   it('lock na versao atual: nada entre elas', () => {
     const { tars, project } = fixture({ lockVersion: '0.0.1-dev.3' })
     const r = upgradeNotes({ tars, project })

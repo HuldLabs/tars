@@ -161,7 +161,7 @@ describe("tars-sync — so' o declarado e' copiado", () => {
   it("versao subiu desde o lock: o sync aponta `tars upgrade-notes`", async () => {
     // O lock grava a versao do MOTOR (`.ai/VERSION`), nunca a do manifesto. Motor != lock e'
     // a recusa do TARS-BUG-4 — quem atualiza de proposito passa pelo `--check` (que so' acusa)
-    // e pelo `tars upgrade`, nunca por um `sync` cego.
+    // e pelo `tars sync --upgrade`, nunca por um `sync` cego.
     const { tars, project } = scaffold({ manifest: MANIFEST.replace('version = "v0.3"\n', "") });
     await sync({ tars, project, log: () => {} });
     const l = path.join(project, ".ai", "tars.lock");
@@ -170,6 +170,23 @@ describe("tars-sync — so' o declarado e' copiado", () => {
     // `--check` nao recusa: acusa a divergencia e deixa a decisao para quem le.
     const r = await sync({ tars, project, check: true, log: () => {} });
     expect(r.lock?.tars?.version ?? "0.0.1-dev.2").toBe("0.0.1-dev.2");
+  });
+
+  it("a recusa aponta um comando QUE EXISTE e o `--upgrade` atualiza base + lock", async () => {
+    // dev.19: a recusa mandava rodar `tars upgrade`, que nao existia — nenhum consumidor
+    // conseguia atualizar (seo-brain, lock `1.0.0` x motor `0.0.1-dev.19`).
+    const { tars, project } = scaffold({ manifest: MANIFEST.replace('version = "v0.3"\n', "") });
+    await sync({ tars, project, log: () => {} });
+    const l = path.join(project, ".ai", "tars.lock");
+    fs.writeFileSync(l, JSON.stringify({ ...readLock(l), tars: { version: "1.0.0", commit: "x" } }, null, 2));
+    const err = await sync({ tars, project, log: () => {} }).catch((e) => e);
+    expect(String(err?.message)).toMatch(/tars sync --upgrade/);
+    expect(String(err?.message)).not.toMatch(/`tars upgrade`/);
+    expect(readLock(l).tars.version).toBe("1.0.0"); // recusou: nada escrito
+    const logs = [];
+    await sync({ tars, project, upgrade: true, log: (m) => logs.push(m) });
+    expect(readLock(l).tars.version).toBe(fs.readFileSync(path.join(tars, ".ai", "VERSION"), "utf8").trim());
+    expect(logs.join("\n")).toMatch(/upgrade declarado: Tars 1\.0\.0 ->/);
   });
 });
 

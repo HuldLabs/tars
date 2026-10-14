@@ -116,12 +116,15 @@ jobs:
   # Baixa os dois binarios, gera o `sha256sums` e anexa tudo a Release da tag.
   release:
     name: GitHub Release
-    needs: binario
+    # Por ULTIMO: so' publica depois dos binarios provados E da imagem provada pelo smoke.
+    needs: [binario, imagem, imagem-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # a tag anterior entra no link de comparacao das notas
 
       - name: Baixar os binarios
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -136,13 +139,26 @@ jobs:
           sha256sum tars-linux-amd64 tars-linux-arm64 tars-linux-amd64-musl tars-linux-arm64-musl > sha256sums
           cat sha256sums
 
+      - name: Gerar as notas da Release (tars release-notes)
+        run: |
+          set -euo pipefail
+          # As notas saem do CHANGELOG + artefatos (dono, 14/10): destaques, downloads com
+          # sha256, imagem por digest, instalar, a secao do CHANGELOG, verificacao, comparacao.
+          versao="${GITHUB_REF_NAME#v}"
+          prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          node tools/framework/tars.mjs release-notes --version "${versao}" --dist dist \
+            --image "${IMAGE}@${{ needs.imagem.outputs.digest }}" --repo "${GITHUB_REPOSITORY}" \
+            --run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            ${prev:+--prev "$prev"} --out notes.md
+          head -40 notes.md
+
       - name: Anexar a Release da tag
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           name: ${{ github.ref_name }}
-          # O corpo padrao do GitHub ("Full Changelog") basta: as notas do consumidor vivem no
-          # CHANGELOG.md (`tars upgrade-notes`). `generate_release_notes` acrescenta o diff.
-          generate_release_notes: true
+          body_path: notes.md
+          # Versao com `-` (ex.: 0.0.1-dev.20) e' pre-release: nao vira a "Latest" do repo.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/tars-linux-amd64
             dist/tars-linux-arm64
@@ -156,6 +172,9 @@ jobs:
   imagem:
     name: imagem OCI (ghcr.io/huldlabs/tars)
     needs: binario
+    # O digest vai para as notas da Release (`COPY --from=...@sha256:`), nunca a tag movel.
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -198,7 +217,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
-      - name: Build e push (multi-arch, FROM scratch)
+      - name: Build e push (multi-arch)
+        id: push
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .

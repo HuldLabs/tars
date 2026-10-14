@@ -4,6 +4,46 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.20
+
+### O que mudou
+- **Notas de release automáticas: `tars release-notes`.** Toda tag sai com notas de release
+  madura, geradas do `CHANGELOG.md` e dos artefatos: destaques, downloads (arquivo, para quem,
+  tamanho, sha256), imagem por digest, instalar, a seção inteira do CHANGELOG, verificação e
+  comparação com a tag anterior. Versão com `-` sai como pré-release. O `release.yml` do Tars
+  usa o comando e publica a Release **por último**, só depois dos binários e da imagem
+  provados. Qualquer repo do ecossistema usa o mesmo comando no seu workflow.
+- **`tars sync --upgrade` (correção que bloqueava todo consumidor).** Na dev.19 o `sync`
+  recusava, com razão, motor de versão diferente da do lock, mas mandava rodar `tars upgrade`,
+  um comando que não existe. Ninguém conseguia atualizar. Agora a recusa aponta o comando real,
+  e `tars sync --upgrade` é a troca de versão **declarada**: reescreve `.ai/base` e
+  `.ai/tars.lock` para o motor atual e registra `upgrade declarado: Tars X -> Y`.
+- `sync` sem `--upgrade` continua recusando a divergência (nada escrito) — o motivo da dev.19
+  (sync com o motor errado apagava item da base) segue valendo.
+- **`tars upgrade-notes` no binário publicado.** O catálogo embutido não trazia o
+  `CHANGELOG.md`, e o comando falhava com "CHANGELOG.md ausente no catalogo". Agora vem junto.
+- **Lock em versão que o CHANGELOG não conhece** (esquema antigo, ex.: `1.0.0`): o
+  `upgrade-notes` dizia "já em dia" e escondia tudo; agora mostra todas as notas até a atual
+  e avisa por quê.
+
+### Por que
+Achado pelo seo-brain e pelo Kipp ao atualizar para a dev.19: o lock vinha de `1.0.0`
+(esquema de versão antigo), a única saída citada pelo erro não existia e o `upgrade-notes`
+do binário não tinha o CHANGELOG.
+
+### Arquivos impactados
+`tools/framework/tars-sync.mjs`, `tars.mjs`, `tars-upgrade.mjs`, `tars-embed-catalog.mjs`,
+`tars-release-notes.mjs` (+ testes), `.github/workflows/release.yml`, `docs/adocao.md`.
+
+### O que o consumidor faz
+Repo que publica release: troque o corpo da Release por
+`tars release-notes --version <V> --dist <dir> --image <img@digest> --repo <Org/repo> --run <url> --prev <tag> --out notes.md`
+(o `release.yml` do Tars é o exemplo). Sem a seção da versão no CHANGELOG o comando falha — de propósito.
+
+Para sair de qualquer versão anterior (inclusive lock `1.0.0`): troque o binário e rode
+**`tars sync --upgrade`**, depois `tars upgrade-notes --from <versão antiga>`, `tars doctor` e
+`tars adopt`. Quem já está na versão do motor não muda nada.
+
 ## 0.0.1-dev.19
 
 ### O que mudou

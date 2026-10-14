@@ -126,8 +126,9 @@ Passo a passo, na ordem:
 # 1. troque o binário (seção 1) e confira
 tars --version
 
-# 2. ressincronize: o sync recusa motor de versão diferente da do lock em vez de apagar
-tars sync
+# 2. troque a versão de propósito: reescreve .ai/base e .ai/tars.lock para o motor novo
+#    (sem --upgrade o sync RECUSA motor de versão diferente da do lock, e nada é escrito)
+tars sync --upgrade
 
 # 3. leia só o que mudou entre a versão do seu lock e a nova
 tars upgrade-notes
@@ -141,8 +142,9 @@ O `upgrade-notes` imprime, de cada versão entre o lock e a atual, as quatro par
 CHANGELOG: o que mudou, por quê, arquivos impactados e **o que o consumidor faz**. Essa
 última parte é a lista de ações da atualização.
 
-Se o `sync` recusar por versão ("motor X, lock Y"), é o binário errado no PATH: troque o
-binário, não force o sync.
+Se o `sync` recusar por versão ("motor X != lock Y") **sem você ter trocado o binário**, é o
+binário errado no PATH: troque o binário, não use `--upgrade`. Se você trocou de propósito,
+o `--upgrade` é o caminho.
 
 ## 5. Quando algo dá errado
 

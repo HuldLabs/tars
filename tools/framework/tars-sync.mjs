@@ -531,7 +531,7 @@ async function copyItem(tars, project, entry) {
  */
 export const isSelf = (tars, project) => Boolean(tars) && resolve(tars) === resolve(project)
 
-export async function sync({ tars = findTars(), project = process.cwd(), check = false, adopt = [], log = console.log } = {}) {
+export async function sync({ tars = findTars(), project = process.cwd(), check = false, upgrade = false, adopt = [], log = console.log } = {}) {
   const manifest = await readManifest(project)
   const self = isSelf(tars, project)
   const lockPath = join(project, '.ai', 'tars.lock')
@@ -542,14 +542,17 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   const doLock = lock?.tars?.version ?? null
   const doMotor = readVersion(tars)
   const divergente = !self && doLock && doMotor && doLock !== doMotor
-  // `--check` NAO recusa: ele so' le e acusa (e' o que o `tars upgrade` roda para decidir).
-  if (divergente && !check) {
+  // `--check` NAO recusa: ele so' le e acusa. `--upgrade` e' a troca DECLARADA de versao: o
+  // dono do repo diz "quero este motor", a base e o lock passam para ele. A dev.19 apontava um
+  // `tars upgrade` que nao existia — nenhum consumidor conseguia atualizar (seo-brain, 14/10).
+  if (divergente && !check && !upgrade) {
     throw new Error(
       `motor do Tars (${doMotor}) != versao travada no lock (${doLock}); nada foi escrito.\n` +
-        `Use o Tars da versao do lock (${doLock}) ou rode \`tars upgrade\` de proposito ` +
-        `(atualiza .ai/base + .ai/tars.lock) antes de \`tars sync\`.`,
+        `Para ATUALIZAR para ${doMotor}: \`tars sync --upgrade\` (reescreve .ai/base e .ai/tars.lock; ` +
+        `depois \`tars upgrade-notes --from ${doLock}\`). Para manter ${doLock}: use o Tars dessa versao.`,
     )
   }
+  if (divergente && upgrade) log(`upgrade declarado: Tars ${doLock} -> ${doMotor}.`)
   const { missing, stale, absent, copied, removed } = await plan({ tars, project, manifest, lock })
   // Familia D: a saida gerada orfa e' calculada AQUI, com o manifesto de agora e o lock de
   // ANTES de a base ser reescrita (o lock novo ja' perdeu a skill removida).

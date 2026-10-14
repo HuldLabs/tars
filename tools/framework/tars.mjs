@@ -35,6 +35,8 @@ import * as memoryMod from './tars-memory.mjs'
 import * as refsMod from './tars-check-refs.mjs'
 import * as handoffMod from './tars-handoff.mjs'
 import * as upgradeMod from './tars-upgrade.mjs'
+// `tars release-notes` (dev.20): as notas da Release geradas do CHANGELOG + artefatos.
+import * as releaseNotesMod from './tars-release-notes.mjs'
 // `tars gates baseline` (item B3.3 do eixo de gates): a linha de base da adocao — a divida
 // velha fica nomeada e o gate so' reprova o que e' novo. O dono mora no modulo proprio.
 import * as gatesBaselineMod from './tars-gates-baseline.mjs'
@@ -109,7 +111,8 @@ const USAGE = [
   'uso: tars <comando> [opcoes]',
   '',
   '  init                       cria .ai/tars.toml minimo e sincroniza o declarado',
-  '  sync [--check]             puxa o declarado para .ai/base/ (--check: so valida)',
+  '  sync [--check|--upgrade]   puxa o declarado para .ai/base/ (--check: so valida;',
+  '                             --upgrade: troca DECLARADA de versao, motor != lock)',
   '    --adopt <hook>           adota o hook do projeto (guarda o original em <hook>.bak); sem',
   '                             ele, hook sem a marca de autoria do Tars NAO e sobrescrito',
   '  check                      atalho de `sync --check` (o gate)',
@@ -122,6 +125,7 @@ const USAGE = [
   '  curation [--advance --reviewed <r,..>] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
   '                             (<ponteiro>..HEAD) dos repos vizinhos e lista o que andou',
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
+  '  release-notes --version V  notas da Release (CHANGELOG + --dist/--image/--repo/--run/--prev)',
   '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
   '  gates baseline [--prune]   grava a LINHA DE BASE da adocao (.ai/gates-baseline.json): o',
@@ -188,7 +192,7 @@ async function sync(action, rest, project) {
     project: resolve(argValue(rest, '--project') ?? project),
   }
   if (action === 'init') return void (await mod.init(opts))
-  const r = await mod.sync({ ...opts, check: rest.includes('--check'), adopt: argValues(rest, '--adopt') })
+  const r = await mod.sync({ ...opts, check: rest.includes('--check'), upgrade: rest.includes('--upgrade'), adopt: argValues(rest, '--adopt') })
   if (rest.includes('--check')) {
     const bad = r.missing.length || r.stale.length || r.absent.length
     if (bad) {
@@ -506,6 +510,7 @@ const COMMANDS = {
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,
+  'release-notes': (rest) => releaseNotesMod.cli(rest),
   git: gitCommand,
 }
 
