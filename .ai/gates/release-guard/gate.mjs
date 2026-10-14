@@ -6,8 +6,16 @@
 // `.ai/governance/` sem subir a versao deixa o consumidor sem saber que mudou — o defeito
 // que este repositorio existe para corrigir.
 //
-// Contrato (pre-commit): roda `git diff --cached` no projeto (TARS_PROJECT ou cwd), le a
-// lista de arquivos tocados e compara `.ai/VERSION` com o HEAD. exit != 0 = reprova.
+// Contrato: roda em DOIS hooks, e cada um julga so' o que ele SABE (TARS-BUG release-guard).
+//
+//   pre-commit  — `git diff --cached` da a lista de arquivos; compara `.ai/VERSION` com o
+//                 HEAD. NAO julga isencao: no pre-commit o arquivo da mensagem ainda nao
+//                 existe (o git so' o cria no commit-msg) e num WORKTREE o `.git` e' um
+//                 ARQUIVO (`gitdir: ...`), entao `join(root, '.git', 'COMMIT_EDITMSG')` nem
+//                 existe — ler a mensagem ali dava string vazia e a isencao sumia.
+//   commit-msg  — recebe o ARQUIVO da mensagem como argv[2] (dois hooks, um julgamento):
+//                 aqui, e so' aqui, a isencao `No-Release:` e' decidida.
+//
 // Escape: `No-Release: <motivo de 10+ chars>` no corpo da mensagem do commit.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -42,8 +50,12 @@ const staged = (root) =>
     .filter(Boolean)
 
 /**
- * Julga o commit staged. Devolve `{ok, motivo}` — sem efeito colateral (o CLI traduz).
- * `mensagem` (opcional) e' o texto do commit, para o escape `No-Release:`.
+ * Julga o commit staged. Devolve `{ok, motivo, defere}` — sem efeito colateral (o CLI traduz).
+ * `mensagem` e' o CONTEUDO da mensagem de commit quando o hook a tem (commit-msg): so' ali o
+ * `No-Release:` e' julgado. No pre-commit a mensagem ainda nao existe (`mensagem = null`):
+ * sem ela, o gate NAO reprova por falta do par versao+CHANGELOG — ele DEFERE (`defere: true`)
+ * para o commit-msg, que decide. Reprovar aqui foi o TARS-BUG release-guard: o pre-commit
+ * lia a mensagem de um caminho que num worktree nem existe e a isencao sumia.
  */
 export function julgar(root, { mensagem = null, arquivos = staged(root), head = versaoNoHead(root), atual = versaoDe(root) } = {}) {
   if (!tocaMotor(arquivos)) return { ok: true, motivo: 'nao toca o motor do Tars' }
@@ -54,24 +66,34 @@ export function julgar(root, { mensagem = null, arquivos = staged(root), head = 
   const faltando = []
   if (!subiuVersao) faltando.push('.ai/VERSION nao subiu')
   if (!changelog) faltando.push('CHANGELOG.md sem entrada')
-  return { ok: false, motivo: faltando.join(' + ') }
+  const motivo = faltando.join(' + ')
+  // Sem mensagem para julgar a isencao (pre-commit), nao reprova: DEFERE ao commit-msg.
+  if (mensagem === null) return { ok: true, defere: true, motivo }
+  return { ok: false, motivo }
 }
 
-const mensagemDe = (root) => {
-  // No `pre-commit` o arquivo da mensagem nao existe (so' no commit-msg): le a mensagem
-  // do indice quando houver, senao o corpo do ultimo `-m`. Sem ela, so' resta exigir o par.
+/**
+ * A mensagem do commit no `commit-msg`: o git passa o ARQUIVO dela como `argv[2]` do gate
+ * (o `tars-hooks` repassa os args do hook depois do comando). Sem arquivo = pre-commit.
+ */
+const mensagemDoArquivo = (arquivo) => {
   try {
-    const f = join(root, '.git', 'COMMIT_EDITMSG')
-    return existsSync(f) ? readFileSync(f, 'utf8') : ''
+    return arquivo && existsSync(arquivo) ? readFileSync(arquivo, 'utf8') : null
   } catch {
-    return ''
+    return null
   }
 }
 
-// --- CLI (pre-commit) ------------------------------------------------------
+// --- CLI -------------------------------------------------------------------
+// Dois hooks, um julgamento. O `commit-msg` chega com o arquivo da mensagem em `argv[2]`:
+// ali a isencao e' decidida (reprova quando falta o par E nao ha' `No-Release`). O
+// `pre-commit` (sem arquivo) so' AVISA o que falta e DEFERE — quem reprova e' o commit-msg.
 if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
   const root = process.env.TARS_PROJECT ?? process.cwd()
-  const r = julgar(root, { mensagem: mensagemDe(root) })
+  const r = julgar(root, { mensagem: mensagemDoArquivo(process.argv[2]) })
+  if (r.defere) {
+    process.stderr.write(`RELEASE GUARD: motor tocado sem subir versao/CHANGELOG (${r.motivo}); julgado no commit-msg (declare \`No-Release: <motivo>\` se for isento).\n`)
+  }
   if (!r.ok) {
     process.stderr.write(
       [

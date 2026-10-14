@@ -25,9 +25,12 @@ guards = [
 # commit-msg recebe o arquivo da mensagem (argv do hook do git); gitleaks varre o indice.
 # release-guard cobra versao+CHANGELOG em commit que toca o motor (tools/framework/tars-*,
 # .ai/gates, .ai/guards, .ai/governance) — o Tars e' o primeiro consumidor da propria regra.
+# Ele roda nos DOIS hooks (TARS-BUG release-guard): no pre-commit cobra o par versao+CHANGELOG;
+# no commit-msg julga a isencao `No-Release:` — que so' existe quando ha' o arquivo da mensagem
+# (no pre-commit ele nao existe, e num worktree `.git` e' arquivo, nao pasta).
 # no-add-all fica no guard de agente, nao no hook do git.
 pre-commit = ["gitleaks", "release-guard"]
-commit-msg = ["commit-msg"]
+commit-msg = ["commit-msg", "release-guard"]
 
 # prod-guard (B1.4): o agente nao muda producao (compose/systemctl/kubectl/helm/force-push)
 # sem a ordem direta do dono. Fica no PreToolUse do harness (como o no-add-all), nao no hook
