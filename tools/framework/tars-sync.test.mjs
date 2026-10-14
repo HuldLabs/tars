@@ -136,7 +136,7 @@ describe("tars-sync — so' o declarado e' copiado", () => {
     await sync({ tars, project, log: () => {} });
     const l = readLock(lock);
     expect(l.lockfileVersion).toBe(1);
-    expect(l.tars.version).toBe("v0.3");
+    expect(l.tars.version).toBe("1.2.3");
     expect(Object.keys(l.files).sort()).toEqual([
       "gates/commit-msg",
       "governance/alpha.md",
@@ -148,9 +148,10 @@ describe("tars-sync — so' o declarado e' copiado", () => {
     for (const f of Object.values(l.files)) expect(f.sha256).toMatch(/^(sha256-)?[0-9a-f]{64}$/);
   });
 
-  it("sem `version` no manifesto, o lock grava a versao do CATALOGO (package.json)", async () => {
-    // `version = "..."` no manifesto e' override opcional; sem ele o lock tem de trazer a
-    // versao real do catalogo — e' o que o `upgrade-notes` compara depois.
+  it("o lock grava a versao do MOTOR (`.ai/VERSION`), nao a do manifesto", async () => {
+    // A versao do manifesto e' do PROJETO; quem compara antes de escrever e' a do motor
+    // (TARS-BUG-4) — o lock tem de trazer a mesma que o sync le, senao a recusa dispara num
+    // sync legitimo.
     const { tars, project, lock } = scaffold({ manifest: MANIFEST.replace('version = "v0.3"\n', "") });
     fs.writeFileSync(path.join(tars, ".ai", "VERSION"), "0.0.1-dev.9\n");
     await sync({ tars, project, log: () => {} });
@@ -158,14 +159,17 @@ describe("tars-sync — so' o declarado e' copiado", () => {
   });
 
   it("versao subiu desde o lock: o sync aponta `tars upgrade-notes`", async () => {
+    // O lock grava a versao do MOTOR (`.ai/VERSION`), nunca a do manifesto. Motor != lock e'
+    // a recusa do TARS-BUG-4 — quem atualiza de proposito passa pelo `--check` (que so' acusa)
+    // e pelo `tars upgrade`, nunca por um `sync` cego.
     const { tars, project } = scaffold({ manifest: MANIFEST.replace('version = "v0.3"\n', "") });
-    fs.writeFileSync(path.join(tars, ".ai", "VERSION"), "0.0.1-dev.2\n");
     await sync({ tars, project, log: () => {} });
-    fs.writeFileSync(path.join(tars, ".ai", "VERSION"), "0.0.1-dev.3\n");
-    const linhas = [];
-    const r = await sync({ tars, project, log: (l) => linhas.push(l) });
-    expect(linhas.join("\n")).toContain("rode `tars upgrade-notes`");
-    expect(r.fromVersion).toBe("0.0.1-dev.2");
+    const l = path.join(project, ".ai", "tars.lock");
+    fs.writeFileSync(l, JSON.stringify({ ...readLock(l), tars: { version: "0.0.1-dev.2", commit: "x" } }, null, 2));
+    await expect(sync({ tars, project, log: () => {} })).rejects.toThrow(/0\.0\.1-dev\.2[\s\S]*1\.2\.3|1\.2\.3[\s\S]*0\.0\.1-dev\.2/);
+    // `--check` nao recusa: acusa a divergencia e deixa a decisao para quem le.
+    const r = await sync({ tars, project, check: true, log: () => {} });
+    expect(r.lock?.tars?.version ?? "0.0.1-dev.2").toBe("0.0.1-dev.2");
   });
 });
 
@@ -452,6 +456,35 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     // Nada de guard fantasma no wiring.
     const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
     expect(JSON.stringify(s)).not.toContain("guard-extra.sh");
+  });
+
+  it("motor de versao DIFERENTE do lock RECUSA e nao apaga nada (TARS-BUG-4)", async () => {
+    // O tars local era de versao diferente da travada no `.ai/tars.lock` e o sync APAGOU
+    // `.ai/base/guards/lib-json.sh` do consumidor, deixando guard que o `source`ava sem
+    // arquivo (seo-brain, 14/10). Versao do motor != lock = RECUSA ruidosa, nada escrito.
+    const { tars, project, base } = scaffold();
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "lib-json.sh"), "#!/usr/bin/env bash\njson_field() { :; }\n");
+    const comLib = MANIFEST.replace(
+      'guards  = ["alpha-guard"]',
+      'guards  = ["alpha-guard", "lib-json"]',
+    );
+    fs.writeFileSync(path.join(project, ".ai", "tars.toml"), comLib);
+    await sync({ tars, project, log: () => {} });
+    const lib = path.join(base, "guards", "lib-json.sh");
+    expect(fs.existsSync(lib)).toBe(true);
+    const lockAntes = fs.readFileSync(path.join(project, ".ai", "tars.lock"), "utf8");
+    const other = path.join(path.dirname(tars), "tars-outro");
+    fs.cpSync(tars, other, { recursive: true });
+    fs.writeFileSync(path.join(other, ".ai", "VERSION"), "0.0.1-dev.19\n");
+    // O manifesto declara SO' o alpha-guard: `lib-json` cai no removedFromBase — e o guard
+    // declarado o cita por `source`. Nem por um caminho nem por outro pode ser apagado.
+    fs.writeFileSync(path.join(project, ".ai", "tars.toml"), MANIFEST);
+
+    await expect(sync({ tars: other, project, log: () => {} })).rejects.toThrow(/0\.0\.1-dev\.19[\s\S]*1\.2\.3|1\.2\.3[\s\S]*0\.0\.1-dev\.19/);
+
+    expect(fs.existsSync(lib)).toBe(true);
+    expect(fs.readFileSync(path.join(project, ".ai", "tars.lock"), "utf8")).toBe(lockAntes);
+    expect(fs.existsSync(path.join(other, ".ai", "tars.lock"))).toBe(false); // nada escrito
   });
 
   it("sync NAO apaga arquivo que ele nunca escreveu na base (posse e' o lock)", async () => {
