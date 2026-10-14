@@ -107,6 +107,11 @@ Regra do dono, sem exceção de projeto (curadoria 14/10; `seg-agentmem-1` #27,
 
 ## Doutrinas de extracao
 
+- **Conhecimento tem lugar por prazo, não por conveniência.** Fato/regra durável mora na
+  memória (`.ai/memory/`), estado de sessão no cursor (`HANDOFF.md`), o que falta na fila
+  (`BACKLOG.md`/tracker), incidente no ledger — e a mesma informação não mora em dois
+  lugares (o resto aponta). Regra que só existe no cursor morre com a sessão, em silêncio.
+  Fonte: `.ai/governance/onde-mora-o-conhecimento.md`.
 - **Versionamento:** toda peça extraída (Tars, Tomo, Sofon, Pion, Kipp, Lazarus, Endurance)
   nasce em `0.0.1-dev.N` e sobe a versão a cada entrega, com as notas de upgrade —
   `.ai/governance/versionamento-de-extracao.md`.
