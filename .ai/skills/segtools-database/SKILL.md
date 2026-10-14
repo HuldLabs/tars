@@ -74,6 +74,48 @@ custo de pular é recolocar em produção uma migração que já rodou — e mig
   `migration-imutavel`); o delta vira migration **nova**.
   (fonte: seo-brain/HANDOFF.md, seo-brain/docs/BACKUP.md)
 
+## Porta × adapter — o driver não sobe de camada
+
+Portar de `nexus/docs/architecture/database-agnostic.md` + ADRs 001/002/004/006 (R1: lógica, nunca dado do projeto).
+
+- **Domínio conhece `Protocol`/porta, nunca driver.** O driver só existe dentro de `adapters/`/`engines/`; nenhum
+  `if engine == ...` fora deles (parte de sessão também não resolve caminho: quem resolve o default de conexão é o
+  adapter, não o objeto de sessão).
+- **Engine novo = módulo novo com `register()`; zero arquivo pré-existente editado.** Discovery por registro; o
+  bootstrap não se edita para acomodar engine. Se plugar exigiu mexer no núcleo, não é plugin.
+- **Enforcement por teste, não por memória de quem coda (gate).** Prova mecânica: nenhum import de driver fora de
+  `adapters/`/`engines/`, nenhum `if engine ==`, e toda exceção em allowlist carrega comentário justificando.
+  A regra que só vive na cabeça do revisor não é regra.
+- **Nunca conexão global de longa duração.** Abre → executa → fecha por chamada, `close()` no `finally`, conexão
+  nunca compartilhada entre requests. (Causa raiz de incidente real no projeto de origem.)
+- **Sem fallback silencioso na resolução de engine**: engine explícito → config → **erro**. Default declarado e
+  alternativo **explícito** (ex.: engine de dev), com imports lazy na factory — nunca escolher sozinho em runtime.
+- **Alternativas rejeitadas ficam registradas com o motivo**, e o critério é durável: **não adotar o que quebra o
+  backup** (`pg_dump`) nem o que exige privilégio interno para funcionar.
+- **Aceleração por tipo de conexão, não por DDL.** Perfil analítico é forçado **por sessão**, atrás de parâmetro do
+  caller, para não tocar o CRUD.
+- **Porta × Hook**: extensão central = `Protocol`; opcional = hook. Protocol primeiro; hook é complemento.
+
+### Checklist de adapter novo (reusar como checklist de PR)
+
+1. A porta é um `Protocol`/DTO sem driver; o adapter é o único que importa o driver.
+2. `register()` no módulo do engine — e **nenhum** arquivo pré-existente alterado.
+3. Resolução de engine explícita, com erro no fim da cascata (sem fallback silencioso).
+4. Ciclo de vida de conexão por chamada, `close()` garantido no `finally`.
+5. Fake/in-memory equivalente, com a mesma semântica da porta, para teste.
+6. Teste do gate de camadas (sem import de driver fora de `adapters/`/`engines/`; sem `if engine ==`).
+7. Exceção, se houver, em allowlist **com comentário justificando**.
+
+### Antes de tocar persistência (as 5 perguntas)
+
+1. Onde mora esta regra — na porta, no adapter ou no schema? (uma casa só)
+2. Isto é extensão central (`Protocol`) ou complemento (hook)?
+3. Quem mais usa este ponto? **Inventarie os callers antes de mudar o perfil de conexão** — mapa
+   operacional × analítico de todo ponto que usa o banco, com classificação.
+4. A resolução é explícita (sem fallback silencioso) e o default está declarado?
+5. Qual a prova? (teste/gate que reprova se a fronteira for violada)
+
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
-+ `docs/operations/{data-foundation,database-environments}`. (Repos de terceiros: **somente leitura**.)
++ `docs/operations/{data-foundation,database-environments}`. Camada porta × adapter: `nexus`
+`docs/architecture/database-agnostic.md` + `adr-001/002/004/006`. (Repos de terceiros: **somente leitura**.)
