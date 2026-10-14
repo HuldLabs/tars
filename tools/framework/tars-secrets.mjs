@@ -168,10 +168,10 @@ export const CAMPOS = {
 export const CAMADAS = ['embutido', 'perfil', 'projeto']
 
 /** A BASE da config do usuario: `TARS_SECRETS_DIR` troca tudo (o teste aponta para um tmpfs). */
-export function baseConfig({ env = process.env } = {}) {
+export function baseConfig({ env = process.env, platform = process.platform } = {}) {
   return (
     env.TARS_SECRETS_DIR ||
-    (process.platform === 'win32'
+    (platform === 'win32'
       ? path.join(env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'tars')
       : path.join(os.homedir(), '.config', 'tars'))
   )
@@ -186,8 +186,8 @@ export function configDir({ project = process.cwd(), env = process.env } = {}) {
 }
 
 /** O PERFIL do usuario: FORA de repo (o projeto nunca o versiona), um por maquina. */
-export function perfilFile({ env = process.env } = {}) {
-  return path.join(baseConfig({ env }), 'profile.toml')
+export function perfilFile({ env = process.env, platform = process.platform } = {}) {
+  return path.join(baseConfig({ env, platform }), 'profile.toml')
 }
 
 /**

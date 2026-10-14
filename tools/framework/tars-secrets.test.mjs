@@ -886,7 +886,8 @@ describe('camadas de config: embutido | perfil | projeto', () => {
   it('o perfil mora FORA de repo: `profile.toml` na base de config do usuario', () => {
     const c = cenario()
     expect(perfilFile({ env: c.env })).toBe(path.join(c.base, 'profile.toml'))
-    expect(perfilFile({ env: { APPDATA: path.join('C:', 'Users', 'x', 'AppData', 'Roaming') } })).toBe(
+    // A plataforma e' injetada: o caso Windows se prova em qualquer host (antes so' passava no Windows).
+    expect(perfilFile({ platform: 'win32', env: { APPDATA: path.join('C:', 'Users', 'x', 'AppData', 'Roaming') } })).toBe(
       path.join('C:', 'Users', 'x', 'AppData', 'Roaming', 'tars', 'profile.toml'),
     )
   })
