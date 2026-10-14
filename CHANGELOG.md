@@ -4,6 +4,32 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.25
+
+### O que mudou
+- **Fonte da versão do projeto, cobrada.** Depois da primeira tag, o `tars doctor` exige uma fonte
+  da versão (a `version` do `package.json`, a do `pyproject.toml` ou um `VERSION` na raiz) igual
+  ao topo do CHANGELOG. O `.ai/VERSION` não conta: é a versão do catálogo do Tars.
+- **`tars release-notes` sem `--version`** lê a versão dessa mesma fonte.
+- **Modelo do PR final de versão** (`templates/PR-RELEASE.tpl.md`) e **formato do título**
+  (`… — v<versão>`) na doutrina `release`: o dono reconhece qual merge é o aval.
+
+Bugs reportados que esta versão fecha:
+- Endurance (14/10): a versão vivia só na tag e no CHANGELOG, e nada acusava; o título e o modelo
+  do PR final não estavam escritos.
+
+### Por que
+No PR final da `v0.0.1-dev.3` do Endurance, o repo não tinha fonte de versão e nenhum gate notou.
+
+### Arquivos impactados
+`tools/framework/tars-release-health.mjs`, `tars-release-notes.mjs`, `.ai/governance/release.md`,
+`templates/PR-RELEASE.tpl.md` (novo) (+ testes).
+
+### O que o consumidor faz
+`tars self-update`. Repo que já publicou release e não tem fonte da versão: crie `VERSION` na
+raiz (ou preencha a `version` do manifesto da stack) com a versão do topo do CHANGELOG. Use o
+modelo do PR final nas próximas versões.
+
 ## 0.0.1-dev.24
 
 ### O que mudou
