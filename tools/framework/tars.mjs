@@ -54,6 +54,9 @@ import * as acessosMod from './tars-acessos.mjs'
 // provision/revoke/verify). Reusa o cofre do `tars secrets`; o julgamento mora no modulo
 // dono (R3) — aqui so' o despacho fino e a leitura de `[identity]`.
 import * as identityMod from './tars-identity.mjs'
+// `tars adopt` (dev.19): o ROTEIRO de adocao de repo pre-existente — SO' LEITURA. O
+// julgamento mora no modulo dono (tars-adopt.mjs); aqui so' o despacho fino (R3).
+import * as adoptMod from './tars-adopt.mjs'
 // FATIA 2A: o catalogo EMBUTIDO no binario. O import ESTATICO e' o que faz o
 // `bun build --compile` enxerga-lo e embutir (`tars-embedded.mjs` e' GERADO no build por
 // `tars-embed-catalog.mjs`; ver `defaultTars`). So' `materializar` e' usado aqui.
