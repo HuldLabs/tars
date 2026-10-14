@@ -734,13 +734,24 @@ export function hooksPathOf(project) {
   }
 }
 
+/** Os hooks do git que o manifesto de fato declara (`[gates].pre-commit`, etc.). */
+export function declaredGitHooks(manifest) {
+  return GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+}
+
 /**
- * O Tars so' escreve os hooks do git quando o consumidor JA' usa hooks proprios: o
- * `core.hooksPath` esta' declarado, ou a pasta `.githooks/` ja' existe. Sem isso o `sync`
- * trocaria o `core.hooksPath` de quem nunca pediu — wiring silencioso quebrado e' pior que
- * ausente. Quem nao usa hooks do git simplesmente nao ganha pasta nova.
+ * O Tars escreve os hooks do git quando o consumidor DECLAROU um `[gates]` de hook git —
+ * o manifesto e' o pedido explicito, e o sync passa a ligar `core.hooksPath` sozinho.
+ *
+ * Antes o gatilho era a PASTA `.githooks/` ja' existir (ou o `core.hooksPath` ja' apontar
+ * para la'): o consumidor novo declarava `pre-commit` e ficava SEM hook nenhum, calado
+ * (TARS-BUG-4 / END-SYNC-3, Endurance 14/10). Pedir o gate no manifesto E' pedir o hook.
+ *
+ * Quem nao declara gate de hook git nao ganha pasta nova — o `core.hooksPath` de quem
+ * nunca pediu continua intocado. Sem `manifest` (sonda pura) cai no sinal antigo da pasta.
  */
-export function usesGitHooks(project, hooksPath = hooksPathOf(project)) {
+export function usesGitHooks(project, hooksPath = hooksPathOf(project), manifest = null) {
+  if (manifest && declaredGitHooks(manifest).length) return true
   return hooksPath !== null || existsSync(join(project, DEFAULT_HOOKS_PATH))
 }
 
@@ -910,6 +921,27 @@ async function writeGitHookMode(project, hooksPath, hook, file) {
   }
 }
 
+/**
+ * Liga `core.hooksPath` ao diretorio dos hooks quando o consumidor DECLAROU um gate de hook
+ * git e o `core.hooksPath` ainda nao aponta para la'. Sem isso o sync gera os arquivos e o
+ * git continua rodando o `.git/hooks` vazio — hook no disco, commit sem gate (TARS-BUG-4).
+ *
+ * So' mexe quando: (a) ha' gate git declarado, (b) o consumidor NAO tem `core.hooksPath`
+ * proprio apontando para outro lugar (idempotente: se ja' aponta, nada muda), e (c) o dir
+ * de destino e' o DESTE projeto (`.git` presente). Fora de um repo git, silencio: nao ha' o
+ * que ligar.
+ */
+async function wireHooksPath(project, hooksPath) {
+  if (hooksPathOf(project) === hooksPath) return false // ja' aponta (idempotente)
+  if (!existsSync(join(project, '.git'))) return false // fora de repo git: nada a ligar
+  try {
+    execFileSync('git', ['-C', project, 'config', 'core.hooksPath', hooksPath], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false // git ausente/indice somente-leitura: o disco ja' tem os hooks
+  }
+}
+
 /** Gera os hooks do git declarados; idempotente (mesmo conteudo, nada muda). */
 export async function writeGitHooks(
   project,
@@ -917,14 +949,17 @@ export async function writeGitHooks(
   hooksPath = effectiveHooksPath(project),
   adopt = [],
 ) {
-  if (!usesGitHooks(project, hooksPathOf(project))) return []
+  if (!usesGitHooks(project, hooksPathOf(project), manifest)) return []
   const dir = join(project, hooksPath)
   const wrote = []
   await mkdir(dir, { recursive: true })
+  // Declarar o gate E' pedir o hook: o `core.hooksPath` passa a apontar para ca' sem o
+  // consumidor ter de configurar o git a mao (era o buraco do TARS-BUG-4).
+  if (await wireHooksPath(project, hooksPath)) wrote.push(`git config core.hooksPath=${hooksPath}`)
   // `prepare-commit-msg` acompanha o `commit-msg`: e' quem INJETA o emoji do tipo (o
   // `validate-commit.mjs --inject`), sem o qual o `commit-msg` reprova a mensagem escrita
   // a mao sem emoji. Declarar `commit-msg` traz os dois — o par e' uma coisa so'.
-  const alvos = GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+  const alvos = declaredGitHooks(manifest)
   if (alvos.includes('commit-msg')) alvos.push('prepare-commit-msg')
   const alheios = []
   for (const hook of alvos) {
@@ -994,8 +1029,8 @@ export function hookVivo(file, { win32 = process.platform === 'win32' } = {}) {
  * inexistente). Devolve a mensagem de erro (R4) ou `null` quando esta' tudo certo.
  */
 export function deadHooks(project, manifest, hooksPath = effectiveHooksPath(project)) {
-  if (!usesGitHooks(project, hooksPathOf(project))) return null
-  const esperados = GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+  if (!usesGitHooks(project, hooksPathOf(project), manifest)) return null
+  const esperados = declaredGitHooks(manifest)
   if (!esperados.length) return null
   const dir = join(project, hooksPath)
   if (!existsSync(dir)) return `HOOKS MORTOS: core.hooksPath=${hooksPath} nao existe — nenhum gate roda (rode \`tars sync\`)`
@@ -1049,6 +1084,11 @@ export async function init({ tars = findTars(), project = process.cwd(), log = c
   await writeFile(manifestPath, MANIFEST_TEMPLATE.replace('${version}', version))
   const r = await sync({ tars, project, log })
   log(`init: ${relative(project, manifestPath)} + .ai/memory/ criados (Tars ${version}); rode \`tars sync\` apos declarar itens.`)
+  // O `init` NAO avisava que sem gate de hook git nao ha' commit-msg/pre-commit: o
+  // consumidor novo comitava sem gate nenhum achando que estava coberto (TARS-BUG-4).
+  const manifest2 = await readManifest(project)
+  if (!declaredGitHooks(manifest2).length)
+    log('init: nenhum gate de hook git declarado — sem `[gates].commit-msg`/`pre-commit` o repo comita SEM GATE (declare e rode `tars sync`).')
   return { manifest: manifestPath, version, wrote: r.wrote }
 }
 

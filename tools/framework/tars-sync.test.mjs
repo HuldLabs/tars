@@ -566,11 +566,34 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
 });
 
 describe("tars-sync — hooks do git (fatia 3b)", () => {
-  it("consumidor SEM `.githooks/` nao ganha hook nenhum (o Tars nao troca o hooksPath de quem nao pediu)", async () => {
+  it("declarar gate de hook git BASTA: consumidor novo ganha `.githooks/` e o hooksPath ligado (TARS-BUG-4)", async () => {
+    // O gatilho antigo era a PASTA `.githooks/` ja' existir: consumidor novo declarava
+    // `pre-commit` e ficava sem hook nenhum, calado (END-SYNC-3, Endurance 14/10). Agora o
+    // manifesto E' o pedido — o sync cria a pasta e liga `core.hooksPath`.
     const { tars, project } = scaffold();
+    execFileSync("git", ["-C", project, "init", "-q"]);
+    const r = await sync({ tars, project, log: () => {} });
+
+    expect(r.hooks).toContain(".githooks/pre-commit");
+    expect(fs.existsSync(path.join(project, ".githooks", "pre-commit"))).toBe(true);
+    expect(execFileSync("git", ["-C", project, "config", "--get", "core.hooksPath"], { encoding: "utf8" }).trim()).toBe(
+      ".githooks",
+    );
+  });
+
+  it("consumidor SEM gate de hook git nao ganha pasta nem troca o hooksPath (pedido explicito)", async () => {
+    const { tars, project } = scaffold({ manifest: MANIFEST.replace('[gates]\npre-commit = ["commit-msg"]\n', "[gates]\n") });
+    execFileSync("git", ["-C", project, "init", "-q"]);
     const r = await sync({ tars, project, log: () => {} });
     expect(r.hooks).toEqual([]);
     expect(fs.existsSync(path.join(project, ".githooks"))).toBe(false);
+    let hooksPath = "";
+    try {
+      hooksPath = execFileSync("git", ["-C", project, "config", "--get", "core.hooksPath"], { encoding: "utf8" }).trim();
+    } catch {
+      hooksPath = "";
+    }
+    expect(hooksPath).toBe("");
   });
 
   it("gera `.githooks/pre-commit` executavel apontando o motor, so' para o hook declarado", async () => {
@@ -870,8 +893,16 @@ describe("tars-sync — init", () => {
     expect(fs.existsSync(lock)).toBe(true);
   });
 
-  it("init repetido falha ruidoso e nao toca no manifesto do projeto", async () => {
+  it("init AVISA que sem gate de hook git o repo comita sem gate (TARS-BUG-4)", async () => {
+    // O `init` criava o manifesto com `[gates]` vazio e nao dizia nada: o consumidor novo
+    // comitava sem gate achando que estava coberto (END-SYNC-3, Endurance 14/10).
     const { tars, project } = scaffold({ manifest: null });
+    const linhas = [];
+    await init({ tars, project, log: (l) => linhas.push(l) });
+    expect(linhas.join("\n")).toMatch(/SEM GATE/);
+  });
+
+  it("init repetido falha ruidoso e nao toca no manifesto do projeto", async () => {    const { tars, project } = scaffold({ manifest: null });
     await init({ tars, project, log: () => {} });
     const antes = fs.readFileSync(path.join(project, ".ai", "tars.toml"), "utf8");
 
