@@ -17,6 +17,10 @@ Como contar a versão e o que vai em cada seção do CHANGELOG está em
 
 O dono não cria tag, não roda workflow e não confere asset.
 
+**Só o PR de corte de versão espera o dono** (decisão de 14/10/2026). Todo outro PR (correção que
+entra no `main` com `No-Release`, doc, BACKLOG, HANDOFF) o coord mergeia como Daneel, depois do
+CI verde e da prova no corpo do PR.
+
 ## Quem decide o nível da versão
 
 Decisão do dono (14/10/2026):
