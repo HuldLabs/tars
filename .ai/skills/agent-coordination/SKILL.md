@@ -57,6 +57,19 @@ benchmark/parity sweeps and fixes all go to a DeepSeek worker via the dispatch s
 Explore, general-purpose) cost the same budget as the coordinator — they are NOT the cheap path; use them only when the owner
 asks. Violation seen 2026-09-26: rebuild debugging, e2e timing and two Fabber sweeps done by Opus/Explore.
 
+**Why the subagent is not the cheap path (ported from `seg-agentmem-1` #29).** It is
+tempting to read "subagent" as "a smaller worker I never have to explain myself to" —
+same harness, same session budget, one tool call away. It is the opposite: a Claude
+subagent (the harness's own `Agent`/`Explore`/general-purpose) bills against the
+**coordinator's own budget at the coordinator's own rate**, so every sweep it runs costs
+what the coordinator would have cost doing it, without the cheaper worker's rate and
+without the isolation. "Delegate it to a subagent" therefore buys nothing over doing it
+yourself, and gives up what the real worker path provides (a different budget, a
+disjoint worktree, a prompt file that survives the session). Use it when the owner asks,
+or when the work is genuinely a read-only parallel read; never as the default handler for
+a task you would otherwise dispatch.
+
+
 Coordinator and reviewer, not implementer. Three duties, in order:
 1. Bound the work before dispatching — scope, write-set, evidence standard.
 2. Verify what comes back against the running system, never against the report.
