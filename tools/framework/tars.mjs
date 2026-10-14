@@ -51,6 +51,9 @@ import * as acessosMod from './tars-acessos.mjs'
 // provision/revoke/verify). Reusa o cofre do `tars secrets`; o julgamento mora no modulo
 // dono (R3) — aqui so' o despacho fino e a leitura de `[identity]`.
 import * as identityMod from './tars-identity.mjs'
+// `tars adopt` (dev.19): o ROTEIRO de adocao de repo pre-existente — SO' LEITURA. O
+// julgamento mora no modulo dono (tars-adopt.mjs); aqui so' o despacho fino (R3).
+import * as adoptMod from './tars-adopt.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -99,6 +102,10 @@ const USAGE = [
   '    --adopt <hook>           adota o hook do projeto (guarda o original em <hook>.bak); sem',
   '                             ele, hook sem a marca de autoria do Tars NAO e sobrescrito',
   '  check                      atalho de `sync --check` (o gate)',
+  '  adopt [--json]             roteiro de adocao de repo PRE-EXISTENTE: lista o que falta e',
+  '                             o comando de cada item (hooks, gates, baseline, secrets,',
+  '                             memoria, doutrinas) e acusa hook manual fora do Tars.',
+  '                             SO` LEITURA: diagnostica, nao altera (exit != 0 se falta algo).',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
   '  curation [--advance] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
@@ -383,6 +390,14 @@ function identityCommand(rest, project) {
   process.exit(r && r.ok === false ? 1 : 0)
 }
 
+/** `tars adopt` — despacho fino: o roteiro (so' leitura) mora no modulo dono (tars-adopt). */
+function adoptCommand(rest, project) {
+  const r = adoptMod.adopt({ project: resolve(argValue(rest, '--project') ?? project ?? process.cwd()) })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else adoptMod.format(r)
+  if (r.falta.length) process.exit(1)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -420,6 +435,7 @@ const COMMANDS = {
   init: (rest, project) => sync('init', rest, project),
   sync: (rest, project) => sync('sync', rest, project),
   check: (rest, project) => sync('sync', [...rest, '--check'], project),
+  adopt: adoptCommand,
   hooks: runHooksCommand,
   promote: promoteCommand,
   curation: curationCommand,
