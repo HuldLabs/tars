@@ -8,7 +8,8 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 
 ### O que mudou
 - **Binário publicado por padrão.** Toda tag `v*` compila `tars-linux-amd64` e
-  `tars-linux-arm64`, anexa à Release com `sha256sums` e publica
+  `tars-linux-arm64` (glibc) e as variantes `-musl` (Alpine), prova cada um rodando na sua
+  libc e arquitetura, anexa à Release com `sha256sums` e publica
   `ghcr.io/huldlabs/tars:<versão>` (só o binário, com atestação de procedência). O binário
   **embute o catálogo**: roda sem checkout e sem `TARS_HOME`. Instalação e uso em imagem:
   [`docs/adocao.md`](docs/adocao.md) §1.
