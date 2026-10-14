@@ -115,7 +115,7 @@ titulo = "Commit que toca o motor do Tars sobe a versao e traz entrada no CHANGE
 fonte = ".ai/gates/release-guard/GATE.md:1-8"
 gate = ".ai/gates/release-guard"
 prova = "node .ai/gates/release-guard/gate.mjs --forca-reprova 2>/dev/null; test $? -ne 0"
-onde = "pre-commit"
+onde = "commit-msg"
 escopo = "catalogo"
 
 [[doctrine]]
