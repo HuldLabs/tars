@@ -4,6 +4,74 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.17
+
+### O que mudou
+- **Curadoria do ecossistema: 10 absorcoes, generalizadas, sem dado de projeto.** O
+  conhecimento que vivia espalhado nos repos vizinhos (memoria, licoes, handoffs, estudos)
+  sobe ao catalogo:
+  - **`senior-research`** (skill nova). Pesquisa com sub-perguntas antes de buscar, cada
+    afirmacao com **fonte datada**, `nao encontrado` explicito em vez de inferir, veredito de
+    uma linha por sub-pergunta com confianca, marcacao DET/LLM/EXT como criterio de desenho.
+  - **`backup-restore`** (skill nova). Um repositorio por contexto; snapshot completo e
+    auto-contido; retencao **declarada** com o motivo do horizonte; **restore AO LADO, nunca
+    por cima**; **prova de restore agendada** (backup so e' real quando restaura); fonte unica
+    do que existe, reconciliada nos dois sentidos.
+  - **`ambiente`** (regra de boot nova). **Nunca cruzar sistemas de arquivos**: a ferramenta
+    roda do mesmo lado do repo; atravessar (9P/DrvFs) muda o COMPORTAMENTO (watcher que nao
+    dispara, symlink quebrado, chmod que nao cola); falhe ALTO em caminho nao-Linux.
+  - **`telemetria`** (skill nova). Telemetria e' **capacidade CORE**: hooks antes/depois/falha
+    em tudo que o framework registra (rota, job, CLI, evento, acao de modulo) + porta neutra
+    `ctx.telemetria` (`evento/medir/span`), **no-op por padrao**. A implementacao (OTel) e'
+    **plugin** que assina os hooks; core/modulos/plugins **nunca** importam SDK OTel. Nomes
+    `<modulo>.<coisa>` + semconv oficial; **sem segredo/PII** em atributo (allowlist no
+    plugin). Dedup/amostragem/alertas no **coletor**, nunca no app; coletor fora nao derruba
+    app; liga/desliga por app/modulo/plugin na ficha (desligado = custo ~zero e comportamento
+    identico). Criterio de aceite: teste prova "desligado nao emite" e "comportamento
+    identico ligado/desligado".
+  - **`iac`** (skill nova). Infra por ficha: a declaracao e' a fonte unica do que existe;
+    FQDN nunca IP; apelido de painel e' codigo versionado; a receita **fecha com checagem que
+    falha alto** ("rodou" != "provou"); bootstrap (provisionar) separado da reconciliacao
+    (convergir); o manual fica escrito como manual.
+  - **D18 em `versionamento-de-extracao`**: extraido nasce versionado (`0.0.1-dev.N`); toda
+    mudanca VISIVEL no consumidor sobe o `N`; a versao e' a do catalogo, nao a do app.
+  - **`agent-coordination`** (extensao): a credencial carrega o **recurso** que autoriza, nao
+    so o ator (identidade presa ao projeto A nao escreve no B — BR-IAM-004); e o **revisor de
+    cobertura** como papel separado do adversarial (pega o item SEM status, o que o autor
+    esqueceu).
+  - **`segtools-database`** (extensao): **reconciliar o schema ANTES de portar** — medir o
+    delta por OBJETO contra o banco vivo; "o gap e' so o lado X"; migration aplicada nunca se
+    reescreve (o delta e' migration NOVA).
+- **`tars curation`** (comando novo) + **`docs/CURATION.md`**: a rotina de curadoria por
+  **ponteiro** — liga a metodologia que ja' existia (retrospectiva `EVOLUTION` + `tars
+  promote` + o mapa origem→destino do `skills-absorvidas`) num fluxo so'. Le' so' o delta
+  `<ponteiro>..HEAD` dos **caminhos de conhecimento** dos repos vizinhos; ponteiro em
+  `.ai/curation.json` (dado, como o `.ai/tars.lock`); **idempotente** (sem commit novo, nao
+  faz nada); `--advance` grava o HEAD lido. O registro origem→destino→situacao e a secao "o
+  que NAO entra e por que" vivem em `docs/CURATION.md`.
+
+### Por que
+- A fatia 1 (inventario do conhecimento do ecossistema, 13/10) mediu 11 temas: 5 COVERED, 1
+  PARTIAL e 5 MISSING. As absorcoes acima fecham os MISSING e o PARTIAL; a rotina fecha o
+  buraco que sobrava — o inventario era um retrato que envelhecia.
+- Sem a rotina por ponteiro, cada absorcao virava releitura manual de todos os repos. Com o
+  ponteiro, a rodada le' so' o que ANDOU.
+
+### Arquivos impactados no consumidor
+- `.ai/base/skills/{senior-research,backup-restore,telemetria,iac}/` (novas), `.ai/base/skills/agent-coordination/SKILL.md`,
+  `.ai/base/skills/segtools-database/SKILL.md`, `.ai/base/rules/ambiente.md` (nova),
+  `.ai/base/governance/versionamento-de-extracao.md` — os itens que o consumidor DECLARAR em
+  `[tars].skills`/`rules`/`governance` passam a chegar.
+- `tools/framework/tars-curation.mjs` e `docs/CURATION.md` sao do CATALOGO (motor + doc), nao
+  vao para `.ai/base/`.
+
+### O que o consumidor faz
+Rodar **`tars sync`** e declarar o que quiser usar no `.ai/tars.toml`:
+`skills = [..., "senior-research", "backup-restore", "telemetria", "iac"]` e
+`rules = [..., "ambiente"]`. Depois, **`tars upgrade-notes`** imprime so' estas notas.
+Nada muda no comportamento do que o consumidor ja' tem — as skills so' carregam quando
+declaradas e a regra `ambiente` so' entra se declarada.
+
 ## 0.0.1-dev.15
 
 ### O que mudou
