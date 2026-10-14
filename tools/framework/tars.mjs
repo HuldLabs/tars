@@ -35,6 +35,8 @@ import * as memoryMod from './tars-memory.mjs'
 import * as refsMod from './tars-check-refs.mjs'
 import * as handoffMod from './tars-handoff.mjs'
 import * as upgradeMod from './tars-upgrade.mjs'
+// `tars release-notes` (dev.20): as notas da Release geradas do CHANGELOG + artefatos.
+import * as releaseNotesMod from './tars-release-notes.mjs'
 // `tars gates baseline` (item B3.3 do eixo de gates): a linha de base da adocao — a divida
 // velha fica nomeada e o gate so' reprova o que e' novo. O dono mora no modulo proprio.
 import * as gatesBaselineMod from './tars-gates-baseline.mjs'
@@ -123,6 +125,7 @@ const USAGE = [
   '  curation [--advance --reviewed <r,..>] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
   '                             (<ponteiro>..HEAD) dos repos vizinhos e lista o que andou',
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
+  '  release-notes --version V  notas da Release (CHANGELOG + --dist/--image/--repo/--run/--prev)',
   '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
   '  gates baseline [--prune]   grava a LINHA DE BASE da adocao (.ai/gates-baseline.json): o',
@@ -507,6 +510,7 @@ const COMMANDS = {
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,
+  'release-notes': (rest) => releaseNotesMod.cli(rest),
   git: gitCommand,
 }
 

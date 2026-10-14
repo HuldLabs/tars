@@ -7,6 +7,12 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 ## 0.0.1-dev.20
 
 ### O que mudou
+- **Notas de release automáticas: `tars release-notes`.** Toda tag sai com notas de release
+  madura, geradas do `CHANGELOG.md` e dos artefatos: destaques, downloads (arquivo, para quem,
+  tamanho, sha256), imagem por digest, instalar, a seção inteira do CHANGELOG, verificação e
+  comparação com a tag anterior. Versão com `-` sai como pré-release. O `release.yml` do Tars
+  usa o comando e publica a Release **por último**, só depois dos binários e da imagem
+  provados. Qualquer repo do ecossistema usa o mesmo comando no seu workflow.
 - **`tars sync --upgrade` (correção que bloqueava todo consumidor).** Na dev.19 o `sync`
   recusava, com razão, motor de versão diferente da do lock, mas mandava rodar `tars upgrade`,
   um comando que não existe. Ninguém conseguia atualizar. Agora a recusa aponta o comando real,
@@ -26,10 +32,14 @@ Achado pelo seo-brain e pelo Kipp ao atualizar para a dev.19: o lock vinha de `1
 do binário não tinha o CHANGELOG.
 
 ### Arquivos impactados
-`tools/framework/tars-sync.mjs`, `tars.mjs`, `tars-upgrade.mjs`, `tars-embed-catalog.mjs`
-(+ testes), `docs/adocao.md`.
+`tools/framework/tars-sync.mjs`, `tars.mjs`, `tars-upgrade.mjs`, `tars-embed-catalog.mjs`,
+`tars-release-notes.mjs` (+ testes), `.github/workflows/release.yml`, `docs/adocao.md`.
 
 ### O que o consumidor faz
+Repo que publica release: troque o corpo da Release por
+`tars release-notes --version <V> --dist <dir> --image <img@digest> --repo <Org/repo> --run <url> --prev <tag> --out notes.md`
+(o `release.yml` do Tars é o exemplo). Sem a seção da versão no CHANGELOG o comando falha — de propósito.
+
 Para sair de qualquer versão anterior (inclusive lock `1.0.0`): troque o binário e rode
 **`tars sync --upgrade`**, depois `tars upgrade-notes --from <versão antiga>`, `tars doctor` e
 `tars adopt`. Quem já está na versão do motor não muda nada.
