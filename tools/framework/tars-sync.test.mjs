@@ -370,6 +370,24 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
 
     expect(fs.existsSync(path.join(base, "guards", "block-destructive-commands.sh"))).toBe(true);
     expect(fs.existsSync(path.join(base, "guards", "lib-json.sh"))).toBe(true);
+
+    // Endurance, 14/10 (dev.20): o SEGUNDO sync (e o `--upgrade`) apagava o `lib-json.sh`
+    // "fora do manifesto" — a dep entra na copia mas nao na conta de quem esta' declarado, e o
+    // `source "$(dirname "$0")/lib-json.sh"` nao era lido como referencia. Guard sem a lib
+    // sai com rc=0 e APROVA tudo.
+    await sync({ tars, project, log: () => {} });
+    await sync({ tars, project, upgrade: true, log: () => {} });
+    expect(fs.existsSync(path.join(base, "guards", "lib-json.sh"))).toBe(true);
+  });
+
+  it("referencia `source \"$(dirname \"$0\")/x.sh\"` protege o irmao da poda", async () => {
+    const { referenciadosNaBase } = await import("./tars-sync.mjs");
+    const { project, base } = scaffold({ manifest: MANIFEST.replace("alpha-guard", "usa-lib") });
+    fs.mkdirSync(path.join(base, "guards"), { recursive: true });
+    fs.writeFileSync(path.join(base, "guards", "usa-lib.sh"), "#!/usr/bin/env bash\nsource \"$(dirname \"$0\")/lib-json.sh\"\n");
+    fs.writeFileSync(path.join(base, "guards", "lib-json.sh"), "jget() { :; }\n");
+    const { readManifest } = await import("./tars-sync.mjs");
+    expect([...referenciadosNaBase(project, await readManifest(project))]).toContain("guards/lib-json.sh");
   });
 
   it("gate que importa lib irma (`../lib-x.mjs`) traz a lib junto; sem import, nada a mais", async () => {

@@ -395,7 +395,7 @@ export async function plan({ tars, project, manifest, lock }) {
     if (locked && got !== locked) stale.push({ ...entry, want: locked, got })
     else copied.push(entry)
   }
-  return { missing, stale, absent, copied, removed: removedFromBase(project, manifest, lock) }
+  return { missing, stale, absent, copied, removed: removedFromBase(project, manifest, lock, { tars }) }
 }
 
 /**
@@ -409,8 +409,10 @@ export async function plan({ tars, project, manifest, lock }) {
  * apagar o que nao e' nosso e' o incident de 07/10 esperando acontecer de novo. Roda com o
  * lock de ANTES (o novo ja' perdeu o item removido).
  */
-export function removedFromBase(project, manifest, lock, { protegidos } = {}) {
-  const declarados = new Set(declare(manifest, { tars: null }).map((e) => destOf(e)))
+export function removedFromBase(project, manifest, lock, { protegidos, tars = null } = {}) {
+  // Com o catalogo, as deps implicitas (lib de guard/gate) contam como declaradas: a copia as
+  // traz, a poda nao pode leva-las (Endurance, 14/10: o `lib-json.sh` sumia no 2o sync).
+  const declarados = new Set(declare(manifest, { tars }).map((e) => destOf(e)))
   const citados = protegidos ?? referenciadosNaBase(project, manifest)
   const out = []
   for (const key of Object.keys(lock?.files ?? {})) {
@@ -469,6 +471,8 @@ function referenciasDe(abs, key) {
   const out = new Set()
   for (const linha of txt.split('\n')) {
     if (!/^\s*(source|\.)\s+/.test(linha)) continue
+    // `source "$(dirname "$0")/lib.sh"` (a forma do catalogo): irmao no diretorio do guard.
+    for (const m of linha.matchAll(/\$\(dirname [^)]*\)\/([\w.-]+\.sh)/g)) out.add(collapseSegments(posix(dir ? `${dir}/${m[1]}` : m[1])))
     for (const m of linha.matchAll(/[^\s"'`()$]+\/[\w.-]+\.sh/g)) {
       // `a/lib.sh` e `./a/lib.sh` sao o MESMO item — normaliza antes de resolver.
       const limpo = m[0].replace(/^\.\//, '')
