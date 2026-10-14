@@ -1,6 +1,6 @@
 {
   "name": "tars",
-  "version": "0.0.1-dev.17",
+  "version": "0.0.1-dev.18",
   "private": true,
   "description": "Tars — o catalogo de metodo: camada .ai, gates/hooks, tooling de workers e processo de sessao",
   "type": "module",

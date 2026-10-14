@@ -4,6 +4,57 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.18
+
+### O que mudou
+- **`tars identity` (novo comando).** A identidade de automação do PROJETO — quem a
+  automação usa para falar com os hosts, de onde vem a chave e quem a autoriza. Fecha o
+  bloqueio da `v0.1.0` do Endurance (TARS-BUG-5 / END-CLI-1).
+  - `show [--json]` imprime ator, ref do cofre, chave e a impressão **pública** (nunca valor
+    de segredo); `verify` é read-only e confere chave (0600) × cofre × `known_hosts` (pinned)
+    × autorização no host, **FALHANDO nomeando o que falta**; `provision` e `revoke` são do
+    **DONO (TTY)** — fora de TTY recusam. `revoke` apaga a chave local e **nomeia** os hosts a
+    limpar (não escreve no host de terceiro sem ordem).
+  - A chave do bot vem do **mesmo cofre do `tars secrets`** (ref `op://` em `[identity].bot`);
+    o `fingerprintDe` e o `spawnOp` são reusados — nada de lógica própria no consumidor
+    (doutrina D3/R5 do Endurance). Desenho em `docs/identity.md`.
+- **`tars sync` simétrico (3 bugs reportados pelo coord do Endurance, 14/10).**
+  - **A1 (END-SYNC-1/TARS-BUG-2):** guard de conteúdo não vai mais para o `PreToolUse:Bash` —
+    o matcher é **declarado** no manifesto (`[hooks.guard] "daneel-acoes" = "Edit|Write"`);
+    default segue `Bash|PowerShell` para guard de shell.
+  - **A2 (END-SYNC-2/TARS-BUG-3):** o que sai da declaração (ou do catálogo) **sai da base
+    copiada** — guard fantasma deixa de ficar vivo. A posse é o lock; arquivo posto à mão
+    pelo consumidor fica intacto.
+  - **A3 (END-SYNC-3/TARS-BUG-4):** declarar gate de hook git **basta** — o sync cria
+    `.githooks/` e liga `core.hooksPath` sozinho; o `init` **avisa** que sem gate o repo
+    comita sem gate.
+- **A-cap: o orçamento de boot não pode zerar o índice com store cheio.** A guarda cobria o
+  store vazio, não o `cap`; agora `cap === 0` com memória cheia **falha alto** nomeando a
+  contagem e o teto (foi assim que o `INDEX.md` do segtools perdeu 264 entradas).
+- **Regra nova (D-1, decisão do dono 14/10):** matriz única de **quando perguntar e quando
+  decidir** — desconhecido/irreversível/produção → pergunta; reversível dentro do write-set →
+  decide e entrega. Substitui as versões conflitantes em `.ai/rules/principles.md`.
+- **Curadoria (F1/F2):** ponteiros de `endurance`/`lazarus`/`dotfiles` criados no
+  `.ai/curation.json`; `docs/CURATION.md` §5 ganha a segunda metade da regra — **conhecimento
+  não commitado não avança o ponteiro**.
+
+### Por que
+Os três bugs de sync vinham de um mecanismo só (o sync só acrescentava e amarrava tudo ao
+Bash); o Endurance travava a `v0.1.0` na ausência do `tars identity`; e o índice zerado era
+uma perda silenciosa de conhecimento. Cada correção tem teste no próprio repo (o Tars é o
+primeiro consumidor da regra).
+
+### Arquivos impactados
+`tools/framework/tars-identity.mjs` (+ teste), `tars-sync.mjs` (+ teste), `ai-memory.mjs`
+(+ teste), `tars.mjs`, `.ai/rules/principles.md`, `.ai/curation.json`, `docs/CURATION.md`,
+`docs/identity.md`, `BACKLOG.md`.
+
+### O que o consumidor faz
+Rodar **`tars sync`** — o sync passa a ser simétrico (remove guard que saiu) e a ligar
+`.githooks` sozinho quando você declarar gate de hook git. Declare `[identity]` se quiser o
+`tars identity`. Nada muda no que você não declarou. Uma dívida nomeada entra no BACKLOG:
+`SYNC-PRE-TOOL` (o sync ainda derruba hook manual do `PreToolUse`; pré-existente no HEAD).
+
 ## 0.0.1-dev.17
 
 ### O que mudou

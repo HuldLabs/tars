@@ -1067,6 +1067,15 @@ governance = []                                     # ex.: ["EVOLUTION", "source
 # [env]
 # MINHA_CHAVE = "valor"
 
+# Identidade de automacao do projeto (opcional; comando: tars identity). O campo bot e' a
+# REF no cofre (o mesmo 1Password do tars secrets), nunca o valor da chave:
+# [identity]
+# actor = "daneel"
+# bot = "op://secrets/daneel-bot/homelab/auth-ssh-key"
+# key_file = "/home/daneel/.ssh/id_daneel"
+# hosts = ["hermes", "nuc"]
+# known_hosts = "/home/daneel/.ssh/known_hosts"
+
 [gates]
 pre-commit = []                                     # do catalogo: commit-msg, gitleaks, no-add-all, layout-check, ds-gate
 pre-push   = []                                     # do catalogo: full-check

@@ -47,6 +47,10 @@ import * as secretsOps from './tars-secrets-ops.mjs'
 // `tars acessos daneel` (fase 3 da identidade de automacao): GERA o inventario de acessos da
 // Daneel. Read-only e sem valor de segredo; o julgamento mora no modulo dono (R3).
 import * as acessosMod from './tars-acessos.mjs'
+// `tars identity` (TARS-BUG-5): a identidade de automacao do projeto (chave SSH do bot,
+// provision/revoke/verify). Reusa o cofre do `tars secrets`; o julgamento mora no modulo
+// dono (R3) — aqui so' o despacho fino e a leitura de `[identity]`.
+import * as identityMod from './tars-identity.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -134,6 +138,12 @@ const USAGE = [
   '                             nomes (cofres/campos/repos/hosts), nunca valor de segredo',
   '  acessos check [--out <f>]  TESTA cada acesso e compara com o inventario commitado;',
   '                             divergencia = drift (exit != 0)',
+  '  identity show [--json]     IDENTIDADE de automacao do projeto: ator, ref do cofre,',
+  '                             impressao PUBLICA da chave, hosts (nunca valor de segredo)',
+  '  identity verify [--host H] confere chave (0600) x cofre x known_hosts (pinned) x',
+  '                             autorizacao no host; read-only; exit != 0 no que faltar',
+  '  identity provision         DONO (TTY): escreve a chave do bot (0600) a partir do cofre',
+  '  identity revoke            DONO: apaga a chave local e NOMEIA os hosts a limpar',
   '',
   '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
   '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
@@ -360,6 +370,19 @@ function acessosCommand(rest) {
   process.exit(r ? (r.ok === false ? 1 : 0) : 1)
 }
 
+/**
+ * `tars identity show|verify|provision|revoke` (TARS-BUG-5): a identidade de automacao do
+ * PROJETO. A tabela `[identity]` vem do `.ai/tars.toml` (o `bot` reusa a ref do cofre que o
+ * `tars secrets` ja' conhece). O julgamento mora no modulo dono (tars-identity).
+ */
+function identityCommand(rest, project) {
+  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  const file = join(raiz, '.ai', 'tars.toml')
+  const cfg = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')).identity ?? {} : {}
+  const r = identityMod.runIdentity({ sub: rest[0], rest: rest.slice(1), cfg })
+  process.exit(r && r.ok === false ? 1 : 0)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -406,6 +429,7 @@ const COMMANDS = {
   incident: incidentCommand,
   secrets: secretsCommand,
   acessos: acessosCommand,
+  identity: identityCommand,
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,

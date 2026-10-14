@@ -14,7 +14,9 @@ describe('tars — despacho', () => {
     // `secrets` entrou com o dev.9: o cofre do PROJETO, declarado em `[secrets]` do `.ai/tars.toml`.
     // `acessos` entrou com a skill da Daneel (fase 3): o inventario de acesso GERADO.
     // `curation` entrou com a fatia 2 da curadoria: a rotina por PONTEIRO (docs/CURATION.md).
-    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'check', 'check-refs', 'curation', 'doctor', 'git', 'handoff', 'hooks', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
+    // `identity` entrou com a release 14/10 (TARS-BUG-5): a identidade de automacao que o
+    // Endurance precisa para a v0.1.0 (docs/decisoes-20260808 §Sequence/§SSH).
+    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'check', 'check-refs', 'curation', 'doctor', 'git', 'handoff', 'hooks', 'identity', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {
