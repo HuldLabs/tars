@@ -13,7 +13,9 @@
 FROM debian:bookworm-slim
 
 ARG TARGETARCH
-COPY tars.${TARGETARCH} /tars
+# --chmod: o upload/download-artifact do Actions PERDE o bit de execucao (zip); sem ele o
+# container morre em `exec /tars: permission denied` (smoke da v0.0.1-dev.19, 14/10).
+COPY --chmod=0755 tars.${TARGETARCH} /tars
 
 # Labels OCI: a origem aponta o pacote do GHCR para o repo (link no GitHub Packages).
 LABEL org.opencontainers.image.source="https://github.com/huldlabs/tars"
