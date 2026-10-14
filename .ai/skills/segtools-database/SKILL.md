@@ -74,6 +74,24 @@ custo de pular é recolocar em produção uma migração que já rodou — e mig
   `migration-imutavel`); o delta vira migration **nova**.
   (fonte: seo-brain/HANDOFF.md, seo-brain/docs/BACKUP.md)
 
+## Conexão e carga: as regras que o incidente ensinou
+
+- **Nunca conexão global de longa duração.** Abre → executa → **fecha** por chamada, com o `close()`
+  no `finally`. Conexão de vida longa guardada no módulo é o pior dos dois mundos: sobrevive ao erro
+  que a corrompeu (transação abortada, `search_path` sujo, timeout de sessão) e a chamada seguinte
+  herda o estado sujo **sem sintoma no ponto de uso**. O pool resolve o reuso — não o handle global.
+- **Carga em massa em batch, nunca `row-by-row`.** Um `INSERT` por linha troca uma operação por N idas
+  ao servidor e transforma o import numa fila de latência: `COPY`, `INSERT ... SELECT` ou lote de N.
+  Onde o motor é **estendido** (ex.: `pg_duckdb` lendo Parquet), deixe o hook de extensão interceptar
+  em vez de reescrever a ingestão caso a caso.
+- **Agendador: dispare o caminho, não espere o relógio.** Teste de job agendado que dorme até o
+  horário é lento, instável, e prova o relógio — não o job. Chame o gatilho real (`triggerSchedule`)
+  e aguarde o **resultado**: a asserção é sobre o efeito, com o mesmo tratamento de erro do caminho
+  agendado.
+- **Fail-closed.** Ausência de trava, de gate ou de verificação **REPROVA** — nunca `return` silencioso,
+  nunca "não achei nada, então sigo". O par é a doutrina `metodo/contramedida-testada`: a contramedida
+  só existe quando um teste **negativo** a cobra.
+
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
 + `docs/operations/{data-foundation,database-environments}`. (Repos de terceiros: **somente leitura**.)
