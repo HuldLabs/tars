@@ -88,7 +88,8 @@ seção certa, a imagem por digest. "O CI passou" não basta; a prova é a pági
 
 O coord manda a cada coord consumidor um texto pronto para colar: a versão e o link, o comando
 de atualização, o que conferir depois e o que mudou para ele. O texto **termina sempre** com:
-"Em caso de dúvida, bug ou problema, fale com o coord do <repo>."
+"Em caso de dúvida, bug ou problema, fale com o coord do <repo>." No Tars, o texto sai do
+modelo `templates/AVISO-CONSUMIDORES.tpl.md`.
 
 ### 7. Consumidores atualizam
 

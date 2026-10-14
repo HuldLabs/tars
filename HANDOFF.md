@@ -32,8 +32,8 @@ Doutrina inteira em `.ai/governance/release.md`. Resumo do papel do coord:
 3. **Nível:** o coord só corta `dev.N+1`. Sair de `-dev`, patch/minor/major, modelo de tag e
    cortar-ou-esperar são do dono, com pergunta única e isolada.
 4. Tag sem Release pode ser movida ou removida; com Release publicada, nunca.
-5. Depois da Release: avisar os coords consumidores com texto pronto, que termina com "Em caso de
-   dúvida, bug ou problema, fale com o coord do Tars".
+5. Depois de **toda** Release: avisar todos os coords consumidores (inclusive os offline, quando
+   voltarem) com o modelo `templates/AVISO-CONSUMIDORES.tpl.md`.
 
 ## Versões
 
