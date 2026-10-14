@@ -5,7 +5,8 @@
 // executavel (rename atomico) e roda `sync --upgrade` no projeto atual, se ele tiver
 // `.ai/tars.toml`. Ja' na versao pedida = nada muda (idempotente).
 //
-// Repo: `TARS_REPO` (default HuldLabs/tars). Token (repo privado): GH_TOKEN > GITHUB_TOKEN >
+// Repo: `TARS_REPO` (default HuldLabs/tars). Repo publico: baixa SEM token. Se a requisicao
+// anonima falhar (limite de taxa, repo privado), tenta de novo com GH_TOKEN > GITHUB_TOKEN >
 // `gh auth token`. O token nunca vai para argv, log ou URL — so' no header da requisicao.
 //
 //   tars self-update [--version 0.0.1-dev.23] [--no-sync] [--check]
@@ -41,7 +42,7 @@ export function shaDe(sums, nome) {
 export function token(env = process.env) {
   if (env.GH_TOKEN) return env.GH_TOKEN
   if (env.GITHUB_TOKEN) return env.GITHUB_TOKEN
-  const r = spawnSync('gh', ['auth', 'token'], { encoding: 'utf8' })
+  const r = spawnSync('gh', ['auth', 'token'], { encoding: 'utf8', env })
   return r.status === 0 ? r.stdout.trim() : null
 }
 
@@ -56,11 +57,15 @@ export function escolher(releases, version) {
 export async function selfUpdate({ atual, version = null, exe = process.execPath, fetchFn = fetch, env = process.env, log = console.log, nome = assetName() } = {}) {
   // Rodando pelo fonte (`node tars.mjs`), o execPath e' o node: trocar seria sobrescrever o runtime.
   if (/(^|\/)(node|bun)(\.exe)?$/.test(exe)) throw new Error("self-update: so' o binario publicado se atualiza (rodando pelo fonte: git pull).")
-  const tk = token(env)
-  if (!tk) throw new Error('self-update: sem token para o GitHub (defina GH_TOKEN ou faca `gh auth login`).')
-  const h = { Authorization: `Bearer ${tk}`, 'X-GitHub-Api-Version': '2022-11-28' }
+  const h = { 'X-GitHub-Api-Version': '2022-11-28' }
+  let tk // so' buscado se a anonima falhar; depois disso vale para o resto
   const get = async (url, accept) => {
-    const r = await fetchFn(url, { headers: { ...h, Accept: accept } })
+    let r = tk ? null : await fetchFn(url, { headers: { ...h, Accept: accept } })
+    if (!r?.ok) {
+      tk ??= token(env)
+      if (!tk) throw new Error(`self-update: ${r.status} em ${url.replace(/\?.*/, '')} sem token (limite de taxa? defina GH_TOKEN ou faca \`gh auth login\` e tente de novo).`)
+      r = await fetchFn(url, { headers: { ...h, Authorization: `Bearer ${tk}`, Accept: accept } })
+    }
     if (!r.ok) throw new Error(`self-update: ${r.status} em ${url.replace(/\?.*/, '')}`)
     return r
   }
