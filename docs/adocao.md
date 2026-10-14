@@ -7,7 +7,7 @@ Guia prático do consumidor: como instalar o `tars`, ligar um repo **novo**, ado
 ## 1. Instalar o binário
 
 O `tars` é um binário único: roda sem Node, sem checkout do Tars e sem `TARS_HOME`, porque
-o catálogo (`.ai/` e `templates/`) vem embutido. Toda tag `v*` (cortada pelo coord depois do merge do dono: `.ai/governance/versionamento-de-extracao.md` §Quem corta a tag) publica três coisas:
+o catálogo (`.ai/` e `templates/`) vem embutido. Toda tag `v*` (processo único do ecossistema: `.ai/governance/release.md`) publica três coisas:
 
 - os binários na Release do GitHub, com `sha256sums`: `tars-linux-amd64` e `tars-linux-arm64`
   (glibc: Ubuntu, WSL, Debian) e `tars-linux-amd64-musl` e `tars-linux-arm64-musl` (Alpine,

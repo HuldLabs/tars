@@ -54,22 +54,7 @@ nasce com divida e o consumidor nao tem como saber o que mudou.
   que ele instalou, e `tars upgrade-notes` imprime so' o delta desde o lock — versionamento
   sem notas acionaveis repete o defeito que esta doutrina corrige.
 
-## Quem corta a tag (vale para o Tars e para todo consumidor)
+## Como a versao vira Release
 
-Decisão do dono (14/10/2026). A Release é **trabalho do coordenador do repo**; o dono decide
-pelo merge.
-
-1. **O coord prepara o PR final da versão:** o código, a `VERSION` (ou o equivalente da
-   stack) e a seção da versão no `CHANGELOG.md`, com as 4 subseções.
-2. **O dono mergeia esse PR.** O merge do PR final **é o aval**: não há uma segunda pergunta.
-   O coord não corta tag de versão cujo PR o dono não mergeou.
-3. **O coord corta a tag** `v<versão>` sobre o commit de merge: anotada, com a identidade do
-   bot (Daneel), nunca a pessoal.
-4. **O coord acompanha o CI até a Release sair** e confere o resultado: pré-release quando a
-   versão tem `-`, assets, notas geradas e imagem por digest.
-5. **Se a publicação falhar:** a correção vai num PR novo, e o ciclo recomeça no passo 2.
-   Tag **sem Release publicada** pode ser removida ou movida, porque ninguém a consumiu.
-   Tag **com Release publicada nunca se move**: a correção vira a versão seguinte.
-
-O que o dono não faz: criar tag, rodar o workflow de Release ou conferir os assets. Isso é
-do coord, e o `tars doctor` cobra o formato das releases depois da primeira tag.
+O processo inteiro (PR final, merge do dono como aval, tag, workflow, conferencia,
+aviso e atualizacao dos consumidores) esta' em `release.md`.

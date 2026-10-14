@@ -17,6 +17,16 @@
 | END-CLI-1 | **`tars identity` não existe** — bloqueia a v0.1.0 do Endurance | ready | subcomando ausente; reportado pelo coord Endurance (14/10) |
 | SYNC-PRE-TOOL | **`tars sync` sobrescreve `hooks.PreToolUse` e derruba hook posto à mão** | ready | achado 14/10 ao rodar o sync do próprio catálogo: o `prod-guard` está no PreToolUse do `.claude/settings.json` (não é `[tars].guards`), e o sync reescreve o evento só com os guards declarados — o hook do gate some calado. Não é desta fatia (pré-existente no HEAD); reprodução: `tars sync --tars . --project .` → `git diff .claude/settings.json` mostra o prod-guard removido. Correção provável: preservar entradas de PreToolUse cujo comando o sync não gerencia (posse por `OWNED`/caminho). |
 
+## Metodologias do ecossistema (pedido do dono, 14/10)
+
+A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mesmo formato (papéis, passo a passo, quando falha, quem cobra), cada uma um item da fila:
+- **Rollback**: voltar uma versão publicada (binário, imagem, lock do consumidor) e um deploy; quando se faz rollback e quando se publica a correção para frente; prova de que voltou.
+- **Deploy**: do artefato publicado ao ambiente (homelab: receitas pyinfra, produção só com ordem do dono, `TARS_PROD_ORDER`), promoção entre ambientes, verificação pós-deploy.
+- **Hotfix**: correção urgente sobre uma versão publicada (branch, versão, Release e aviso).
+- **Incidente em produção**: detectar, conter, comunicar, corrigir e registrar no ledger (liga com `incidente-vira-prevencao.md`).
+- **Atualização de dependências**: bump de peças do ecossistema (Tars na base do Endurance) e de terceiros, com cadência e gate.
+- **Descontinuar**: tirar de uso uma versão, feature ou peça sem quebrar o consumidor.
+
 ## Bugs reportados por consumidores
 
 Regra do dono (11/10, `.ai/rules/principles.md`): bug do Tars reportado por um consumidor

@@ -18,8 +18,17 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   satisfazem o TARS-RED-1 (o `fix` precisa tocar teste), além do diretório `test/`, que já
   contava. A mensagem de erro agora lista exatamente o que o gate aceita.
 
+- **Doutrina `release`: o processo de release do ecossistema.** `.ai/governance/release.md`
+  descreve o caminho inteiro e os papéis: o coord prepara o PR final; o merge do dono é o aval;
+  o coord corta a tag, acompanha o workflow (provar, upgrade real, Release por último, tags da
+  imagem depois), confere a Release e avisa os consumidores; o que fazer quando falha.
+- **A imagem só ganha a tag de versão depois da Release.** Antes, o GHCR podia anunciar uma
+  versão cuja Release não saiu (dev.23).
+
 Bugs reportados que esta versão fecha:
 - Kipp (14/10): título "tars" e tag da imagem sem `v` ao usar o `release-notes` fora do Tars.
+- Endurance (14/10): imagem com tag de versão sem Release (`tars:0.0.1-dev.23`).
+- Endurance (14/10): a regra de quem corta a tag não estava escrita no Tars.
 - Endurance (14/10): o gate recusava `fix` cujo teste era `*.test.sh`.
 - Endurance (14/10): texto de verificação e bloco da imagem só serviam para binário (o Endurance
   trocava com `sed`).
@@ -29,13 +38,15 @@ O Kipp e o Endurance adotaram o `release-notes` no workflow, e as notas saíam c
 textos do Tars.
 
 ### Arquivos impactados
+`.ai/governance/release.md` (novo), `versionamento-de-extracao.md`, `docs/adocao.md`,
 `tools/framework/tars-release-notes.mjs`, `.ai/gates/commit-msg/validate-commit.mjs`,
 `.github/workflows/release.yml` (+ `tars-release-notes.test.mjs`, `tars-gates.test.mjs`,
 `tars-workflow-scripts.test.mjs`).
 
 ### O que o consumidor faz
 `tars self-update` (ou o binário da Release) e, no workflow, troque o `sed` por `--kind image`
-quando publicar imagem. O repo do Tars é **privado**: o CI do consumidor que baixa a Release
+quando publicar imagem. Declare `"release"` em `governance` no `.ai/tars.toml` e siga
+`.ai/base/governance/release.md` nas suas tags. O repo do Tars é **privado**: o CI do consumidor que baixa a Release
 precisa de um PAT com leitura do `HuldLabs/tars`; o `GITHUB_TOKEN` de outro repo não alcança.
 
 ## 0.0.1-dev.23
