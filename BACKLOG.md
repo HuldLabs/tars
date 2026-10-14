@@ -11,7 +11,7 @@
 
 | # | item | estado | detalhe |
 |---|---|---|---|
-| END-SYNC-1 | **`tars sync` liga hooks indevidos no `PreToolUse` do Bash** | ready | reportado pelo coord Endurance (14/10); reprodução no §"Bugs" abaixo |
+| END-SYNC-1 | **`tars sync` liga hooks indevidos no `PreToolUse` do Bash** | fixed | corrigido na dev.26; conferido na dev.27 por seo-brain e Tomo (PreToolUse do Bash só com block-destructive-commands e block-secret-dump) |
 | END-SYNC-2 | **`tars sync` não apaga guards removidos de `.ai/base`** | ready | o guard sai da fonte e fica vivo no consumidor; reportado pelo coord Endurance (14/10) |
 | END-SYNC-3 | **`.githooks` só é gerado se a pasta existir — e o `init` não avisa** | ready | consumidor novo fica sem hook e não sabe; reportado pelo coord Endurance (14/10) |
 | END-CLI-1 | **`tars identity` não existe** — bloqueia a v0.1.0 do Endurance | ready | subcomando ausente; reportado pelo coord Endurance (14/10) |
@@ -19,8 +19,7 @@
 | TEST-MUTA-REPO | **A suíte completa (`vitest run`) reescreve o `.claude/settings.json` do próprio repo** | ready | achado 14/10 no ensaio da dev.27: depois do `vitest run` o PreToolUse perde o `prod-guard` (mesma causa do SYNC-PRE-TOOL); teste não pode mexer na árvore real |
 | TARS-SELF-1 | **`tars sync --upgrade` do binário, no repo do Tars, não detecta o modo `self`** | ready | achado 14/10 ao fazer o Tars receber a dev.27 primeiro: criou `.ai/base/` e `.ai/tars.lock`, tratou o repo como consumidor e tirou o `prod-guard` do PreToolUse (revertido à mão). Enquanto não corrigir, o passo "o repo primeiro" de `release.md` §6 é **só o `self-update`** no Tars |
 | AVISO-SALTO | **Modelo do aviso: nota de salto** | nao-refinado | mudança no próprio self-update (ex.: token opcional da dev.27) só vale depois de instalada; o aviso precisa de um campo "só neste salto" |
-| PUB-PAT | **Revisar "precisa de PAT"** (CHANGELOG dev.24, `docs/adocao.md`, notas do self-update) | blocked | com o repo público o token vira opcional (só evita limite de taxa); depende do repo virar público |
-| PUB-GHCR | **Visibilidade de `ghcr.io/huldlabs/tars`** | a-confirmar | o pacote tem visibilidade própria; decisão do dono |
+| GH-ACTIONS-BILLING | **Cobrança de Actions da HuldLabs travada** | blocked | reportado pelo coord Tomo (14/10): o CI do HuldLabs/tomo#24 não inicia. Ação do dono (billing da org); a próxima Release do Tars depende do mesmo Actions |
 | GITLEAKS-FP | **Allowlist do gitleaks para `.ai/governance/licoes-plataforma.md:12`** | ready | varredura do histórico inteiro (319 commits, 14/10): 1 achado `private-key`, falso positivo (texto da lição cita o cabeçalho `BEGIN OPENSSH PRIVATE KEY`) |
 | WT-CLEAN | **Limpar worktrees antigas** (`rel19` e 12 com alteração: a3, a4, daneel, g2, g3, hook-main, hookexec, k0, licoes, novo-repo, rel2, rel3) | ready | conferir cada uma antes de apagar |
 | ADOPT-GHCR | **Secret GHCR por repo no `tars adopt`** | nao-refinado | herdado do coord anterior (14/10) |
@@ -65,5 +64,5 @@ Regra do dono (11/10, `.ai/rules/principles.md`): bug do Tars reportado por um c
 | TARS-BUG-2 | Endurance (coord) | 2026-10-14 | `tars sync` grava hook de catálogo no `PreToolUse` do **Bash** do consumidor — o hook só deveria valer para as ferramentas que o catálogo declara. Reprodução: consumidor novo + `tars sync` → `hooks.jsonc` do consumidor lista o hook em `PreToolUse:Bash` | a-confirmar (aguarda a saída literal do consumidor) |
 | TARS-BUG-3 | Endurance (coord) | 2026-10-14 | `tars sync` **não remove** do consumidor um guard que saiu de `.ai/base` (só acrescenta) — o consumidor fica com guard fantasma que o catálogo não tem mais | a-confirmar (aguarda execução) |
 | TARS-BUG-4 | Endurance (coord) | 2026-10-14 | `.githooks/` só é gerado quando a pasta **já existe** no consumidor, e o `tars init` **não avisa** — consumidor novo fica sem hook de commit/push silenciosamente | a-confirmar (aguarda execução) |
-| TARS-BUG-6 | seo-brain (coord) | 2026-10-14 | `tars self-update` para a dev.26 troca o binário e termina com "binário trocado, mas o sync --upgrade falhou — rode-o e confira"; o `sync --upgrade` manual em seguida passa ("nada mudou, 28 itens"). Erro interno não guardado | a-confirmar (falta a saída literal do sync interno; o próprio self-update a engole — fere a R4) |
+| TARS-BUG-6 | seo-brain (coord) | 2026-10-14 | `tars self-update` para a dev.26 troca o binário e termina com "binário trocado, mas o sync --upgrade falhou — rode-o e confira"; o `sync --upgrade` manual em seguida passa ("nada mudou, 28 itens"). Erro interno não guardado | não reproduz na dev.27 (seo-brain, 14/10: sync "nada mudou, 28 itens"); causa não confirmada — a mensagem genérica do self-update segue escondendo o motivo (R4) |
 | TARS-BUG-5 | Endurance (coord) | 2026-10-14 | `tars identity` **não existe** — subcomando necessário para a v0.1.0 do Endurance; `tars --help` não lista nada equivalente | a-confirmar (capacidade ausente, não bug de mecanismo) |
