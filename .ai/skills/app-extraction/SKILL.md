@@ -232,6 +232,22 @@ the **seed** (`tools/<slug>-seed.js`, data) and **our API** (`server/<slug>.js`)
 | `tools/method/app-parity.mjs` + `app-parity-diff.mjs` | per-view action+response-signature parity (wrap `window.api`/`fetch`) — **for helper-based apps**; BaaS-direct → use the netlog |
 | `tools/cdp-*.js|mjs` | `eval`, `run`, `shot`, `session`, `restore`, `focus`, `cookies`, `console`, `net`, `ssr`, `addscript` |
 
+### 6.2 Browser automation in the container (B3.5)
+
+The capture phases above drive **a real browser**, and that is exactly the dependency that
+disappears on the next rebuild.
+
+- **Install Chrome in the image, not with `sudo` at capture time.** An install done by hand
+  inside a running container is **gone on the next build** — the capture works today and fails
+  the day someone rebuilds, with no code change to blame. The image **declares** the dependency.
+- **A logged-in cookie profile is a credential.** The CDP profile (§Phase 1.5) holds session
+  cookies and `localStorage`: it lives outside version control, is never pasted into an issue,
+  doc or commit, and is treated with the same rules as any other credential.
+- **Never `agent-browser install`** (or any helper that fetches and installs a browser at
+  capture time): it reintroduces the on-demand download this rule exists to remove, and it
+  drifts from the browser the image pins. If the image lacks the browser, that is a **bug in
+  the image** — fix the image.
+
 ## 7. Per-app documentation (perennial — `docs/EXTRACTION-STANDARD.md`)
 
 Every app carries, at **its own root**: `meta.json`, `EXTRACTION.md` (7 mandatory sections,
