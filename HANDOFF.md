@@ -51,10 +51,10 @@ Bash) e traz a regra de nível da versão.
 | consumidor | versão | nota |
 |---|---|---|
 | segtools | dev.25 | wiring ok; `.githooks` próprios sem a marca do Tars → sync sai rc=1 (não bloqueia) |
-| seo-brain | dev.26 | wiring ok, contorno removido (ceb824a); doctor acusa token/cache do op (bind de `~/.config/tars`, com o coord SegTools) |
+| seo-brain | dev.27 | wiring ok, contorno removido (ceb824a); doctor acusa token/cache do op (bind de `~/.config/tars`, com o coord SegTools) |
 | Kipp | dev.22 | doctor reprova o CHANGELOG dele (data no título, sem seção v0.0.2, package.json em dev.1); avisado |
 | Endurance | — | embute o Tars na imagem base por digest; bump do Tars em toda imagem |
-| Tomo | dev.22 | — |
+| Tomo | dev.27 | HuldLabs/tomo#24 sem merge: CI não inicia (cobrança de Actions da org); estava na dev.25, não na dev.22 |
 
 ## Lições desta rodada
 
@@ -66,4 +66,4 @@ Bash) e traz a regra de nível da versão.
 
 ## Próximo passo
 
-Merge deste PR; PUB-GHCR (dono libera pacote público na org); PUB-PAT; TARS-BUG-6.
+dev.27 publicada e conferida (seo-brain, Tomo). Avisar o Kipp quando voltar. Dono: destravar a cobrança de Actions (GH-ACTIONS-BILLING). Próxima fatia (dev.28): TARS-SELF-1 + SYNC-PRE-TOOL + TEST-MUTA-REPO (os três derrubam o prod-guard), depois END-SYNC-2/3 e END-CLI-1.
