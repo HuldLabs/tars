@@ -61,11 +61,25 @@ describe('tars release-notes', () => {
       run: 'https://x/run/1',
       prev: 'v0.0.1-dev.1',
     })
-    for (const parte of ['Pré-release', '## Downloads', '`tars-linux-amd64` | Ubuntu, WSL', 'ghcr.io/o/tars:0.0.1-dev.2',
+    for (const parte of ['Pré-release', '## Downloads', '`tars-linux-amd64` | Ubuntu, WSL',
       'COPY --from=ghcr.io/o/tars@sha256:abc', '## Instalar', 'gh release download v$V -R O/tars', '## O que mudou (CHANGELOG)',
       'Detalhe da coisa', '### Por que', 'https://x/run/1', 'v0.0.1-dev.1...v0.0.1-dev.2'])
       expect(md).toContain(parte)
     expect(md).not.toContain('Primeira') // so' a secao da versao
+  })
+
+  it('fora do Tars: o nome vem do --repo; imagem so por digest (Kipp, 14/10)', () => {
+    const md = gerar({ version: '0.0.1-dev.2', changelog: CHANGELOG, image: 'ghcr.io/o/kipp@sha256:abc', repo: 'O/kipp' })
+    expect(md).toMatch(/^# kipp 0\.0\.1-dev\.2/)
+    expect(md).not.toContain('ghcr.io/o/kipp:')
+    expect(md).toContain('binário em `/kipp`')
+  })
+
+  it('--kind image: sem binario/COPY, com docker pull e verificacao da imagem (Endurance, 14/10)', () => {
+    const md = gerar({ version: '0.0.1-dev.2', changelog: CHANGELOG, image: 'ghcr.io/o/base@sha256:abc', repo: 'O/endurance', run: 'https://x/run/1', kind: 'image' })
+    expect(md).not.toMatch(/binário em|COPY --from/)
+    expect(md).toContain('docker pull ghcr.io/o/base@sha256:abc')
+    expect(md).toContain('a imagem foi publicada')
   })
 
   it('release estavel nao leva o aviso de pre-release; sem dist nao inventa tabela', () => {

@@ -7,7 +7,12 @@
 //
 //   tars release-notes --version 0.0.1-dev.20 [--dist <dir>] [--image ghcr.io/o/r@sha256:...]
 //                      [--repo Org/repo] [--run <url>] [--prev <tag>] [--changelog <arquivo>]
-//                      [--bin <nome>] [--out <arquivo>]
+//                      [--bin <nome>] [--kind bin|image] [--out <arquivo>]
+//
+// O nome sai de `--bin`, senao do `--repo` (HuldLabs/kipp -> kipp): fora do Tars o titulo
+// dizia "tars" (Kipp, 14/10). `--kind image` e' para quem publica IMAGEM (base, feature):
+// sem "binario em /<bin>", sem COPY, e a verificacao fala da imagem (Endurance, 14/10).
+// A imagem vai so' por DIGEST: a tag mutavel tinha convencao diferente por repo (com e sem `v`).
 //
 // Asset desconhecido (fora da tabela PUBLICO) entra na lista sem "para quem" — nunca some.
 import { createHash } from 'node:crypto'
@@ -63,7 +68,8 @@ export function destaques(corpo) {
     .slice(0, 6)
 }
 
-export function gerar({ version, changelog, dist = null, image = null, repo = null, run = null, prev = null, bin = 'tars' }) {
+export function gerar({ version, changelog, dist = null, image = null, repo = null, run = null, prev = null, bin = null, kind = 'bin' }) {
+  bin = bin ?? (repo ? repo.split('/').pop().toLowerCase() : 'tars')
   const corpo = secao(changelog, version)
   const tag = `v${version}`
   const pre = /-/.test(version)
@@ -80,22 +86,22 @@ export function gerar({ version, changelog, dist = null, image = null, repo = nu
     L.push('| `sha256sums` | conferência de todos | — | — |', '')
   }
   if (image) {
-    const semDigest = image.replace(/@sha256:.*/, '')
-    L.push('**Imagem OCI** (binário em `/' + bin + '`):', '', '```', `${semDigest}:${version}`, image, '```', '')
+    L.push(kind === 'image' ? '**Imagem OCI** (por digest):' : `**Imagem OCI** (binário em \`/${bin}\`, por digest):`, '', '```', image, '```', '')
   }
 
   const principal = lista.find((a) => /-linux-amd64$/.test(a.nome))?.nome
-  if (principal && repo) {
+  if (kind === 'image' && image) L.push('## Usar', '', '```sh', `docker pull ${image}`, '```', '')
+  if (kind === 'bin' && principal && repo) {
     L.push('## Instalar', '', '```sh', `V=${version}`, `gh release download v$V -R ${repo} -p ${principal} -p sha256sums`,
       'sha256sum -c --ignore-missing sha256sums    # tem de dizer OK', `install -m 0755 ${principal} ~/.local/bin/${bin}`,
       `${bin} --version`, '```', '')
-    if (image) L.push('Numa imagem, sempre por digest:', '', '```dockerfile', `COPY --from=${image} /${bin} /usr/local/bin/${bin}`, '```', '')
+    if (image && kind === 'bin') L.push('Numa imagem, sempre por digest:', '', '```dockerfile', `COPY --from=${image} /${bin} /usr/local/bin/${bin}`, '```', '')
   }
 
   L.push('## O que mudou (CHANGELOG)', '', corpo, '')
 
   const ver = []
-  if (run) ver.push(`- CI da tag: ${run} — cada binário provado rodando na sua libc e arquitetura antes de publicar.`)
+  if (run) ver.push(kind === 'image' ? `- CI da tag: ${run} — a imagem foi publicada e conferida no registro antes da Release.` : `- CI da tag: ${run} — cada binário provado rodando na sua libc e arquitetura antes de publicar.`)
   if (lista.length) ver.push('- `sha256sum -c sha256sums` confere todos os arquivos desta página.')
   if (ver.length) L.push('## Verificação', '', ...ver, '')
   if (repo && prev) L.push(`**Comparação completa:** [\`${prev}...${tag}\`](https://github.com/${repo}/compare/${prev}...${tag})`, '')
@@ -108,6 +114,7 @@ export function cli(rest, { cwd = process.cwd(), log = console.log } = {}) {
     const i = rest.indexOf(n)
     return i === -1 ? null : rest[i + 1]
   }
+  if (v('--kind') && !['bin', 'image'].includes(v('--kind'))) throw new Error('uso: --kind bin|image')
   const version = v('--version') ?? (existsSync(join(cwd, '.ai', 'VERSION')) ? readFileSync(join(cwd, '.ai', 'VERSION'), 'utf8').trim() : null)
   if (!version) throw new Error('uso: tars release-notes --version <X.Y.Z[-dev.N]> (ou .ai/VERSION no projeto)')
   const changelog = readFileSync(resolve(cwd, v('--changelog') ?? 'CHANGELOG.md'), 'utf8')
@@ -119,7 +126,8 @@ export function cli(rest, { cwd = process.cwd(), log = console.log } = {}) {
     repo: v('--repo'),
     run: v('--run'),
     prev: v('--prev'),
-    bin: v('--bin') ?? 'tars',
+    bin: v('--bin'),
+    kind: v('--kind') ?? 'bin',
   })
   if (v('--out')) writeFileSync(resolve(cwd, v('--out')), md)
   else log(md)
