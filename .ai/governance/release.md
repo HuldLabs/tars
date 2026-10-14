@@ -34,6 +34,22 @@ Decisão do dono (14/10/2026):
 
 O coord propõe ("vale cortar agora" ou "vale esperar o item X"), mas quem decide é o dono.
 
+## Quando propor o corte
+
+Decisão do dono (14/10/2026), depois de três versões no mesmo dia: **versão é lote, não achado.**
+
+- **Por padrão, junta.** A correção entra no `main` com `No-Release` e espera o lote. Um achado
+  não vira versão sozinho.
+- **Corta já quando é urgente**, pelo que a correção **destrava**: consumidor parado (ex.: a
+  dev.26, cujo wiring errado barrava todo uso do Bash), proteção de produção fora do ar, CI de
+  consumidor travado. Contorno local razoável tira a urgência: o item espera o lote.
+- **Corta o lote quando ele fecha** um conjunto que o consumidor percebe junto (os pedidos de um
+  consumidor, uma frente do BACKLOG), não por tempo nem por número de itens.
+- **Um aviso por versão.** O coord não avisa os consumidores por correção solta no `main`.
+
+O coord propõe dizendo a regra que vale ("urgente: destrava X" ou "lote fechado: A, B, C"), e o
+dono decide.
+
 ## O caminho, passo a passo
 
 ### 1. PR final da versão
