@@ -5,6 +5,10 @@ description: How to design backup and restore for anything that matters — one 
 
 # Backup / restore
 
+> **Origem (R1):** portada de `homelab-infra/docs/restaurar-nuc.md` (a prova de restore que
+> ancora a regra) e `seo-brain/docs/BACKUP.md` (o desenho por contexto), generalizados —
+> números, hosts e retenções ficaram de fora. Registro em `docs/CURATION.md` §3.
+
 The rule this skill exists to enforce: **a backup is real only when it restores.** A job
 that exits 0 proves the copy ran; it proves nothing about whether the data comes back. Every
 section below is a consequence of that one sentence.

@@ -5,6 +5,11 @@ description: How telemetry works in the framework — it is a CORE capability ex
 
 # Telemetry
 
+> **Origem (R1):** portada de `homelab-infra/docs/estudos/2026-10-13-telemetria*.md` (o
+> desenho por hook/porta) + a decisão do dono de 14/10 (OTel como plugin). Nenhuma skill
+> equivalente existia em `/projects/*/.ai/skills`, `/projects/*/.claude/skills` ou
+> `/projects/fabber*`. Registro em `docs/CURATION.md` §3.
+
 **Telemetry is a capability of the CORE framework — not a library the core knows.** The
 framework does not import OTel; it offers **hooks** and a **neutral port**, and the
 implementation arrives as a **plugin** that subscribes. This is the pluggability doctrine

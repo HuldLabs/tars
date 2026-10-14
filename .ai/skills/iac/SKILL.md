@@ -5,6 +5,11 @@ description: How to write infrastructure as a declaration — the ficha/host fil
 
 # IaC — infrastructure by declaration
 
+> **Origem (R1):** portada de `homelab-infra/README.md` + `docs/decisoes.md` +
+> `.../gitops-docker.md`; a escolha pyinfra+Pulumi vem do **Fabber** (a ideia, nunca
+> credenciais/hosts). Nenhuma skill equivalente existia em `/projects/*/.ai/skills`,
+> `/projects/*/.claude/skills` ou `/projects/fabber*`. Registro em `docs/CURATION.md` §3.
+
 **A declaration is the single source of what exists.** Everything below follows from
 taking that sentence seriously: the machine, the deploy and the check all read from the
 declaration, and nothing lives only in someone's head or in a web panel.
