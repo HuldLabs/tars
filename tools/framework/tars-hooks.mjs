@@ -81,7 +81,7 @@ export function isCatalog(project) {
 }
 
 /** Onde o gate mora: base no `.ai/base/gates/<nome>/` (ou `.ai/gates/` no catalogo), local no projeto. */
-function target(project, hook, item) {
+export function target(project, hook, item) {
   if (item.origem === 'local') return join(project, item.caminho)
   const base = isCatalog(project) ? join(project, '.ai', 'gates') : join(project, '.ai', BASE, 'gates')
   return join(base, item.nome)
@@ -91,7 +91,7 @@ function target(project, hook, item) {
  *  O runtime JS vem do resolvedor UNICO (`tars-runtime.mjs`): no binario compilado o
  *  `process.execPath` e' o proprio `tars`, nao um runtime — montar o comando com ele fazia o
  *  binario engolir o caminho do gate como argumento e sair 0 (Incident: gate calado). */
-function command(dir, hook, runtime) {
+export function command(dir, hook, runtime) {
   const js = (alvo) => [runtime.cmd, alvo]
   if (!statSync(dir).isFile()) {
     // `prepare-commit-msg`: o passo e' o `--inject` do validador (injeta o emoji do tipo),

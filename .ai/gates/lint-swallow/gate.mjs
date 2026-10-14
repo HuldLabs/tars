@@ -11,9 +11,10 @@
 //
 // Parametros (opcionais, no `[gates.params.lint-swallow]` do `.ai/tars.toml`):
 //   allow = lista de trechos de caminho isentos (ex.: ["vendor/"])
-import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { aplicarBase } from '../lib-baseline.mjs'
+import { isTracked, stagedPaths, trackedPaths } from '../lib-staged.mjs'
 
 const project = process.env.TARS_PROJECT ?? process.cwd()
 const params = JSON.parse(process.env.TARS_GATE_PARAMS || '{}')
@@ -30,44 +31,63 @@ const SWALLOW_JS = /\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}/
 const SWALLOW_PY = /^\s*except\b[^:]*:\s*(?:pass|\.\.\.)\s*$/
 const PY_EXCEPT = /^\s*except\b[^:]*:\s*$/
 
-const r = spawnSync('git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACM'], { cwd: project, encoding: 'utf8' })
-if (r.status !== 0 || typeof r.stdout !== 'string') { console.error('gate lint-swallow: sem git — nao foi possivel listar o staged.'); process.exit(0) }
+// O que julgar sai do dono unico (`.ai/gates/lib-staged.mjs`): o INDICE do commit, nunca a
+// arvore, e so' o que o git RASTREIA (R3 — a resposta a "o que o commit leva" mora num lugar).
+const staged = stagedPaths(project)
+if (staged === null) { console.error('gate lint-swallow: sem git — nao foi possivel listar o staged.'); process.exit(0) }
+const tracked = trackedPaths(project)
+// Nada staged = MODO PROVA (a `prova` da doutrina `fail/erro-nao-se-engole`, rodada por `tars
+// doctor` numa arvore limpa): julga a arvore RASTREADA, para a prova seguir falsificavel — um
+// `exit 0` mudo ali seria PHANTOM. Ausencia de staged NAO e' aprovacao, e o gate diz isso.
+const modoProva = staged.length === 0
+if (modoProva) console.error('gate lint-swallow: nada staged — julgando a ARVORE RASTREADA (modo prova); sem staged NAO significa aprovado.')
+const candidatos = modoProva ? [...(tracked ?? [])] : staged.filter((f) => isTracked(tracked, f))
+const arquivos = candidatos.filter((f) => (JS.test(f) || PY.test(f)) && !allow.some((a) => f.includes(a)))
 
-// Nada staged: o gate tem um SEGUNDO modo, e ele precisa ser dito em voz alta.
-// Quem CHAMA o gate (pre-commit) sempre tem staged; quem so' quer saber se ele
-// ainda REPROVA (a `prova` da doutrina `fail/erro-nao-se-engole`, roda por
-// `tars doctor` numa arvore limpa) nao tem — e um `exit 0` mudo ali vira
-// PHANTOM: "a prova passou, nada distingue quem segue de quem ignora", que e'
-// o OPOSTO do que aconteceu (o gate desistiu, nao aprovou).
-//   com staged → julga o conteudo STAGED (o commit e' o que entra, nao o disco)
-//   sem staged → julga os arquivos RASTREADOS, para a prova seguir falsificavel
-// Ausencia de staged NAO e' aprovacao — e o gate diz isso na propria saida.
-if (!r.stdout.split('\0').some(Boolean)) {
-  console.error('gate lint-swallow: nada staged — julgando a ARVORE RASTREADA (modo prova); sem staged NAO significa aprovado.')
-  const t = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: project, encoding: 'utf8' })
-  if (t.status !== 0 || typeof t.stdout !== 'string') { console.error('gate lint-swallow: sem git — nao foi possivel listar a arvore.'); process.exit(0) }
-  r.stdout = t.stdout
+/** A COLETA (compartilhada com `tars gates baseline`): os achados `<arquivo>:<linha>`. Pura
+ *  quanto ao exit — quem julga e' o chamador. `lerLinha` amarra o hash do trecho da base. */
+export function colher({ cwd = project } = {}) {
+  const achados = []
+  for (const f of arquivos) {
+    let txt
+    try { txt = readFileSync(join(cwd, f), 'utf8') } catch { continue } // sumiu do disco: nada a julgar
+    const re = JS.test(f) ? SWALLOW_JS : SWALLOW_PY
+    const linhas = txt.split(/\r?\n/).map((l) => l.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/, '').replace(/#.*$/, ''))
+    linhas.forEach((codigo, i) => {
+      if (re.test(codigo)) return achados.push(`${f}:${i + 1}`)
+      // `except:` sozinho e o `pass` na linha de baixo = o mesmo erro engolido.
+      if (PY.test(f) && PY_EXCEPT.test(codigo) && /^\s*(?:pass|\.\.\.)\s*$/.test(linhas[i + 1] ?? '')) achados.push(`${f}:${i + 1}`)
+    })
+  }
+  return achados
 }
 
-const arquivos = r.stdout.split('\0').filter(Boolean).filter((f) => (JS.test(f) || PY.test(f)) && !allow.some((a) => f.includes(a)))
-const achados = []
-for (const f of arquivos) {
-  let txt
-  try { txt = readFileSync(join(project, f), 'utf8') } catch { continue } // sumiu do disco: nada a julgar
-  const re = JS.test(f) ? SWALLOW_JS : SWALLOW_PY
-  const linhas = txt.split(/\r?\n/).map((l) => l.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/, '').replace(/#.*$/, ''))
-  linhas.forEach((codigo, i) => {
-    if (re.test(codigo)) return achados.push(`${f}:${i + 1}`)
-    // `except:` sozinho e o `pass` na linha de baixo = o mesmo erro engolido.
-    if (PY.test(f) && PY_EXCEPT.test(codigo) && /^\s*(?:pass|\.\.\.)\s*$/.test(linhas[i + 1] ?? '')) achados.push(`${f}:${i + 1}`)
-  })
+// `--findings` (usado pela linha de base): imprime os achados um por linha, SEM julgar — o
+// exit e' 0 mesmo com achados. E' o modo que deixa `tars gates baseline` separar isento de novo.
+if (process.argv.includes('--findings')) {
+  const lista = colher()
+  process.stdout.write(lista.length ? lista.join('\n') + '\n' : '')
+  process.exit(0)
 }
 
-if (achados.length) {
+const achados = colher()
+
+// LINHA DE BASE (B3.3): o que o projeto JA' adotou como divida fica ISENTO — o exit e' decidido
+// so' pelo que e' NOVO. `trechoDe` amarra o hash do trecho: mudou a linha, a isencao cai.
+const { novos, isentos } = aplicarBase(achados, {
+  project,
+  gate: process.env.TARS_GATE ?? 'lint-swallow',
+  trechoDe: (key) => {
+    const m = /^(.*?):(\d+)$/.exec(key)
+    if (!m) return ''
+    try { return readFileSync(join(project, m[1]), 'utf8').split(/\r?\n/)[Number(m[2]) - 1] ?? '' } catch { return '' }
+  },
+})
+
+if (novos.length) {
   console.error('\ngate lint-swallow: erro ENGOLIDO (falha silenciosa) no que vai ser commitado:')
-  for (const a of achados) console.error(`  ${a}`)
-  // O texto abaixo NAO pode conter o padrao que o gate procura: ele seria o primeiro
-  // achado de si mesmo (o gate julga a arvore INTEIRA no modo prova, este arquivo incluso).
+  for (const a of novos) console.error(`  ${a}`)
+  if (isentos.length) console.error(`\n  (+${isentos.length} na linha de base — divida adotada, nao reprova)`)
   console.error('\n  `catch` com corpo vazio e `except: pass` escondem a falha — trate, propague ou registre o porque')
   console.error('  (com um erro nomeado). Se for mesmo intencional, deixe o motivo escrito no corpo.')
   process.exit(1)

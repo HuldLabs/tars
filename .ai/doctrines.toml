@@ -74,6 +74,22 @@ prova = "rm -rf /tmp/tars-doc-nfr && mkdir -p /tmp/tars-doc-nfr/.ai/skills/x && 
 onde = "pre-commit"
 
 [[doctrine]]
+id = "gates/julga-o-staged"
+titulo = "O gate julga so` o que o commit leva (o INDICE), nunca a arvore — e so` o que o git RASTREIA (`.cache/`/gitignored nao e' superficie)"
+fonte = ".ai/gates/lib-staged.mjs:1-22"
+gate = "../../.ai/gates/lib-staged.mjs"
+prova = "d=$(mktemp -d) && git -C $d init -q && printf 'x\\n' > $d/sujo.mjs && node -e \"import('$PWD/.ai/gates/lib-staged.mjs').then(m=>process.exit(m.stagedPaths('$d').length?0:1))\""
+onde = "pre-commit"
+
+[[doctrine]]
+id = "gates/linha-de-base"
+titulo = "Adocao com divida: a violacao VELHA entra na linha de base (`.ai/gates-baseline.json`); o gate reprova so` o que e' NOVO e a base so` encolhe (ratchet)"
+fonte = "tools/framework/tars-gates-baseline.mjs:1-20"
+gate = "../../tools/framework/tars-gates-baseline.mjs"
+prova = "d=$(mktemp -d) && git -C $d init -q && printf 'try { f() } catch {}\\n' > $d/a.mjs && git -C $d add a.mjs && TARS_PROJECT=$d node .ai/gates/lint-swallow/gate.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
 id = "git/branch-name"
 titulo = "Branch `<tipo>/<slug>`"
 fonte = ".ai/governance/git.md:5-16"

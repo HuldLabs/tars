@@ -29,6 +29,9 @@ import { classesRecorrentes, readJsonl } from './ai-memory.mjs'
 // S3 (dev.9): o doctor de SEGREDOS mora no modulo dono (`tars-secrets.mjs`) — aqui so' se
 // anexa o que ele julga quando o projeto declara `[secrets]`/`[identity]` (R3).
 import { doctorDoProjeto } from './tars-secrets.mjs'
+// B3.3: o doctor mostra o TAMANHO DA DIVIDA da linha de base (quantas violacoes adotadas o
+// projeto carrega). A leitura mora no modulo dono da base (R3); aqui so' a linha do relatorio.
+import { divida as dividaBaseline } from './tars-gates-baseline.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -305,6 +308,10 @@ export function doctor({ tars, project, env = process.env } = {}) {
     porStatus,
     wiring,
     segredos,
+    // O TAMANHO DA DIVIDA da linha de base (B3.3): quantas violacoes adotadas o projeto
+    // carrega por gate. Nao derruba o exit (e' divida declarada, nao regressao) — mas fica
+    // VISIVEL, senao a base vira o lugar onde a violacao some de vista.
+    divida: dividaBaseline(root),
     classes: recorrencia.classes,
     incidentes: { total: ledgerEntries.length, recorrentesSemGuarda: semGuarda.map((e) => e.id) },
     faltando: [
@@ -317,7 +324,7 @@ export function doctor({ tars, project, env = process.env } = {}) {
 }
 
 /** Uma linha por doutrina: `STATUS  id  onde  gate`, com o detalhe abaixo quando ha' o que dizer. */
-export function format({ itens, porStatus, tars, project, wiring, classes, incidentes, segredos }, log = console.log) {
+export function format({ itens, porStatus, tars, project, wiring, classes, incidentes, segredos, divida }, log = console.log) {
   log(`tars doctor — ${itens.length} doutrina(s) · catalogo ${tars} · projeto ${project}`)
   for (const i of itens) {
     log(`${i.status.padEnd(9)} ${i.id}  [${i.onde}]  gate=${i.gate}`)
@@ -341,6 +348,13 @@ export function format({ itens, porStatus, tars, project, wiring, classes, incid
   if (segredos) {
     log(`\nSEGREDOS/IDENTIDADE (${segredos.ok ? 'ok' : 'FALHA'}):`)
     for (const l of segredos.linhas) log(`  ${(l.ok ? 'OK    ' : 'FALHA ')}${l.nome.padEnd(12)}  ${l.detalhe}`)
+  }
+  // B3.3: o tamanho da divida da linha de base, por gate. Zero TAMBEM imprime — saida
+  // ausente nao distingue "sem base" de "base vazia" (nao esconder o que se decidiu adotar).
+  if (divida) {
+    log(`\nLINHA DE BASE (divida adotada): ${divida.total}`)
+    for (const l of divida.linhas) log(`  ${String(l.n).padStart(4)}  ${l.gate}`)
+    if (!divida.total) log('  (nenhuma — o gate cobra tudo)')
   }
   if (wiring) log(`${(wiring.ok ? 'OK' : 'FALHA').padEnd(9)} wiring/settings  [session-start]  ${wiring.detalhe}`)
   log(
