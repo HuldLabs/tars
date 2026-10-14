@@ -88,6 +88,15 @@ sempre o delta entre a amostra e a leitura completa — ele nunca mais apareceri
 `--reviewed '*'`, quando a rodada leu tudo o que andou). Sem `--reviewed`, o comando **mede e
 avisa**, mas não grava nada — o arquivo de estado fica byte-idêntico.
 
+**Conhecimento não commitado não avança o ponteiro** (achado F1, 14/10). O ponteiro por sha
+só enxerga o que foi **commitado**: se a rodada leu arquivos que ainda estão no disco sem
+commit (o caso do `segtools/.ai/memory/agent/`, 124 arquivos, 20+ não commitados), a leitura
+foi real mas o `git diff <ponteiro>..HEAD` **não a vê** — e o delta reaparece na rodada
+seguinte como se nada tivesse sido lido. Avançar o ponteiro aí seria pior: apagaria para
+sempre o delta dos itens que ninguém commitou. A regra: **commite o que leu** (ou registre a
+rodada como "não avança") antes de mexer no ponteiro. Leitura DIRETA (sem commit) não avança
+ponteiro — é o mesmo erro da amostra, por outro caminho.
+
 ## 5. O histórico por rodada
 
 Cada rodada fecha deixando o registro em `docs/curation/historico/<AAAA-MM-DD>/`:
@@ -97,6 +106,7 @@ Cada rodada fecha deixando o registro em `docs/curation/historico/<AAAA-MM-DD>/`
 | **08/10** | a rodada-base — escreveu direto no catálogo (memória perene + governança); sem artefato | `8f71263` (08/10 23:34) |
 | **11/10** | fase 1 (3 coletas A/B/C, ~80 itens) + fase 1b (`PLANO-RELEASE-TARS.md`, 38 deduplicados) | `7b4dce79` (tars) + HEAD de cada repo |
 | **13/10** | a rodada do **ponteiro**: leu as memórias do agente; o inventário por amostra **não** avança | memória do agente lida por inteiro |
+| **14/10** | 5 coletas (~205 brutos → 58 no plano) + ponteiros de `endurance`/`lazarus`/`dotfiles` (F2) | `segtools` **não avança** (memória lida mas não commitada, F1) |
 
 Os **templates** reaproveitáveis de coleta e consolidação (sem dado de projeto) moram em
 `docs/curation/templates/` — a próxima rodada parte deles, não de um prompt novo.

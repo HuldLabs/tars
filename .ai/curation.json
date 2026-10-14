@@ -1,9 +1,24 @@
 {
   "repos": {
+    "dotfiles": {
+      "sha": "5c23430",
+      "iso": "2026-10-12T09:38:00Z",
+      "reviewed": "14/10 (leitura integral; branch fix/sops-age-key-canonica)"
+    },
+    "endurance": {
+      "sha": "e94897e",
+      "iso": "2026-10-13T23:29:00Z",
+      "reviewed": "14/10 (leitura integral; repo ausente do estado ate' aqui)"
+    },
     "homelab-infra": {
       "sha": "cb8c53b",
       "iso": "2026-10-13T18:08:37-03:00",
       "reviewed": "amostra (inventario 13/10) — NAO avanca"
+    },
+    "lazarus": {
+      "sha": "f633e77",
+      "iso": "2026-10-07T15:58:00Z",
+      "reviewed": "14/10 (leitura integral; delta desde 11/10 vazio por construcao)"
     },
     "huldlabs": {
       "sha": "1f0fa30",
@@ -70,6 +85,12 @@
       "tipo": "delta por ponteiro",
       "artefatos": "docs/curation/historico/2026-10-13/",
       "nota": "Leu as memorias do agente do segtools por inteiro; o inventario por amostra NAO avanca ponteiro (--reviewed)."
+    },
+    {
+      "data": "2026-10-14",
+      "tipo": "coleta do ecossistema (delta) + plano de release",
+      "artefatos": "docs/curation/historico/2026-10-14/",
+      "nota": "5 coletas (~205 itens brutos) -> 58 itens no PLANO-RELEASE-TARS.md. F2: criados os ponteiros de endurance/lazarus/dotfiles (faltavam). F1: o ponteiro do SEGTOOLS NAO avanca nesta rodada — ha' 20+ arquivos de .ai/memory/agent/ lidos mas nao commitados; enquanto nao forem commitados o delta reaparece (regra: ponteiro so' avanca sobre leitura inteira E commitada)."
     }
   ]
 }
