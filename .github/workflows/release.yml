@@ -248,11 +248,11 @@ jobs:
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
         with:
           images: ${{ env.IMAGE }}
-          # `v0.0.1-dev.18` -> `0.0.1-dev.18`; a tag `latest` so' para release sem pre-release.
+          # Aqui a imagem e' CANDIDATA: so' `candidato-<sha>`. As tags de versao (`0.0.1-dev.N`,
+          # `latest`) so' entram no job `imagem-tags`, DEPOIS da Release — senao o GHCR anuncia
+          # uma versao cuja Release ainda pode falhar (Endurance, 14/10: dev.23 com imagem e sem Release).
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=sha,prefix=candidato-,format=long
 
       - name: Build e push (multi-arch)
         id: push
@@ -287,6 +287,29 @@ jobs:
         run: |
           set -euo pipefail
           versao="${GITHUB_REF_NAME#v}"
-          saida="$(docker run --rm "${IMAGE}:${versao}" --version)"
+          saida="$(docker run --rm "${IMAGE}@${{ needs.imagem.outputs.digest }}" --version)"
           echo "imagem respondeu: ${saida}"
           test "${saida}" = "${versao}" || { echo "esperava '${versao}'"; exit 1; }
+
+  # So' depois da Release publicada: o digest provado ganha as tags de versao. Quem le o GHCR
+  # (o gate do Endurance compara a maior tag) nunca ve uma versao sem Release.
+  imagem-tags:
+    name: imagem — tags de versao (depois da Release)
+    needs: [imagem, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Login no GHCR
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promover o digest as tags de versao
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          tags=(-t "${IMAGE}:${v}" -t "${IMAGE}:$(echo "$v" | cut -d. -f1-2)")
+          case "$v" in *-*) ;; *) tags+=(-t "${IMAGE}:latest") ;; esac
+          docker buildx imagetools create "${tags[@]}" "${IMAGE}@${{ needs.imagem.outputs.digest }}"
+          docker buildx imagetools inspect "${IMAGE}:${v}" | head -3
