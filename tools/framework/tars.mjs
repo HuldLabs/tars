@@ -159,6 +159,8 @@ const USAGE = [
   '                             autorizacao no host; read-only; exit != 0 no que faltar',
   '  identity provision         DONO (TTY): escreve a chave do bot (0600) a partir do cofre',
   '  identity revoke            DONO: apaga a chave local e NOMEIA os hosts a limpar',
+  '  identity sign-setup        assinatura de commit por SSH: gpg.format/signingkey/',
+  '                             allowedSignersFile no git do projeto; idempotente; --force',
   '',
   '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
   '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
@@ -421,10 +423,18 @@ function acessosCommand(rest) {
  * `tars secrets` ja' conhece). O julgamento mora no modulo dono (tars-identity).
  */
 function identityCommand(rest, project) {
-  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  const raiz = resolve(argValue(rest, '--project') ?? project ?? process.env.TARS_PROJECT ?? process.cwd())
   const file = join(raiz, '.ai', 'tars.toml')
-  const cfg = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')).identity ?? {} : {}
-  const r = identityMod.runIdentity({ sub: rest[0], rest: rest.slice(1), cfg })
+  const toml = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')) : {}
+  const cfg = toml.identity ?? {}
+  // O `allowed_signers` e' o do cofre (mesma ref do `tars secrets`), lido da mesma tabela:
+  // o sign-setup nao tem config propria (R3).
+  const allowed_signers = toml.secrets?.allowed_signers ?? null
+  const r = identityMod.runIdentity({
+    sub: rest[0],
+    rest: rest.slice(1),
+    cfg: { ...cfg, raiz, allowed_signers },
+  })
   process.exit(r && r.ok === false ? 1 : 0)
 }
 

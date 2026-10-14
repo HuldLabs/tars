@@ -21,14 +21,15 @@
 //      bit está 0600, a impressão casa com o cofre e o `authorized_keys` do host autoriza
 //      (por `ssh -o BatchMode=yes`), sem nunca mostrar o segredo.
 //
-// Escopo desta fatia (P0): `show`, `verify`, `provision`, `revoke`. O `tars identity rename`
-// e a rotacao agendada ficam registrados como dívida nomeada no BACKLOG.
+// Escopo desta fatia (P0): `show`, `verify`, `provision`, `revoke`, `sign-setup`. O
+// `tars identity rename` e a rotacao agendada ficam registrados como dívida nomeada no BACKLOG.
 //
 // Uso:
 //   tars identity show [--json]          imprime a identidade (nomes/impressões, nunca valor)
 //   tars identity verify [--host H]      confere chave x cofre x autorizacao no host (read-only)
 //   tars identity provision [--out F]    DONO: escreve a chave do bot (0600) a partir do cofre
 //   tars identity revoke [--host H]      DONO: revoga (apaga a chave local; lembra o host)
+//   tars identity sign-setup [--force]   assinatura de commit: gpg.format/ssh/signingkey/allowedSignersFile
 //   node tools/framework/tars-identity.mjs show
 //
 // Testes rodam SEM REDE/cofre: `op`/`ssh`/`ssh-keygen` são injetados (o default fala com o
@@ -189,6 +190,65 @@ export function revoke({ id, fs = { existsSync, rmSync } } = {}) {
   }
 }
 
+/**
+ * `sign-setup` — configura a ASSINATURA de commit por SSH no git do projeto. Porta a ideia
+ * de `/projects/endurance/src/signing/` (feature `signing`): `gpg.format=ssh`,
+ * `user.signingkey`, `gpg.ssh.allowedSignersFile` — mas SEM tocar no ssh-agent nem no disco
+ * da chave: aqui so' o `git config` do projeto, que o Endurance aplicava no `signing-git-config`.
+ *
+ * A chave assinante e' o CAMINHO PUBLICO derivado de `[identity].key_file` (a `.pub`), nunca
+ * o socket do agente: o `git config` do Endurance apontava para o socket, o que exige o
+ * agente vivo a cada commit; a `.pub` versionada assina sem agente (a chave privada fica so'
+ * na `.key_file`, 0600).
+ *
+ * IDEMPOTENTE: config ja' com o valor desejado nao e' reescrita (`aplicados` fica vazio).
+ * NAO sobrescreve config do DONO sem `--force`: valor diferente do esperado sem `--force`
+ * vira item `conflito` e `ok:false` — falha alta, nunca escrita silenciosa por cima (R4).
+ */
+export const CHAVES_ASSINATURA = ['gpg.format', 'user.signingkey', 'gpg.ssh.allowedSignersFile']
+
+/** Le uma config do git (`git -C <raiz> config <chave>`). Ausente devolve `null`, nunca `''`. */
+export function lerGitConfig(raiz, chave, { spawn = spawnSync } = {}) {
+  const r = spawn('git', ['-C', raiz, 'config', chave], { encoding: 'utf8' })
+  if (r.status !== 0) return null
+  return r.stdout.replace(/\r?\n$/, '') || null
+}
+
+/**
+ * Aplica a config de assinatura. `desejado` = `{ 'gpg.format': 'ssh', ... }` (a SSOT do que
+ * se escreve vem do modulo, nao do CLI). Devolve `{ ok, aplicados, inalterados, conflitos }`.
+ */
+export function signSetup({ raiz, desejado, force = false, atual = {}, exec = () => {}, fs = { existsSync } } = {}) {
+  const aplicados = []
+  const inalterados = []
+  const conflitos = []
+  for (const [chave, valor] of Object.entries(desejado)) {
+    if (valor === null || valor === undefined) continue
+    const antes = atual[chave] ?? null
+    if (antes === valor) {
+      inalterados.push({ chave, valor })
+    } else if (antes !== null && !force) {
+      // Config do dono divergente: nunca sobrescreve calado. Nomeia o que achou e o que faria.
+      conflitos.push({ chave, de: antes, para: valor })
+    } else {
+      exec(chave, valor)
+      aplicados.push({ chave, valor })
+    }
+  }
+  return { ok: conflitos.length === 0, aplicados, inalterados, conflitos, raiz }
+}
+
+/** A suite de config de assinatura a partir da identidade + `[secrets].allowed_signers`. */
+export function configAssinatura({ id = {}, allowedSigners = null, raiz = '.' } = {}) {
+  const pub = id.chave ? `${id.chave}.pub` : null
+  const asf = allowedSigners ?? null
+  return {
+    'gpg.format': 'ssh',
+    'user.signingkey': pub,
+    'gpg.ssh.allowedSignersFile': asf,
+  }
+}
+
 /** Monta a identidade a partir do manifesto + disco + cofre (o efeito, isolado do CLI). */
 export function carregarIdentidade({ cfg = {}, op = null, env = process.env, fs = { existsSync, readFileSync } } = {}) {
   const keyFile = cfg.key_file ?? null
@@ -210,6 +270,16 @@ export function runIdentity({ sub, rest = [], cfg = {}, deps = {}, env = process
   const saida = (texto) => {
     assertSemSegredo(texto)
     return texto
+  }
+  // `verify` sem identidade: falha ALTA nomeando o comando do DONO. Automacao NUNCA se
+  // auto-provisiona (doutrina do TARS-BUG-5): sem identidade declarada, o caminho e'
+  // `tars identity provision` com TTY, na mao do dono. Nada de "ok" por vacuidade.
+  if (sub === 'verify' && !id.actor && !id.origem && !id.chave) {
+    const msg =
+      'identidade NAO provisionada — rode `tars identity provision` (DONO, com TTY) antes; ' +
+      'automacao nao se auto-provisiona. Declare [identity] no .ai/tars.toml e rode o provision.'
+    log(saida(renderVerify(id, { ok: false, itens: [{ nome: 'identidade declarada', ok: false, motivo: msg }] })))
+    return { ok: false, itens: [{ nome: 'identidade declarada', ok: false, motivo: msg }] }
   }
   if (sub === 'show' || !sub) {
     const texto = rest.includes('--json') ? JSON.stringify(id, null, 2) + '\n' : renderIdentidade(id)
@@ -237,7 +307,24 @@ export function runIdentity({ sub, rest = [], cfg = {}, deps = {}, env = process
     log(saida(renderRevoke(r)))
     return r
   }
-  throw new Error(`use \`tars identity show|verify|provision|revoke\` (recebi '${sub ?? ''}')`)
+  if (sub === 'sign-setup') {
+    const raiz = deps.raiz ?? cfg.raiz ?? process.cwd()
+    const force = rest.includes('--force')
+    // O `allowed_signers` vem de `[secrets].allowed_signers` (a mesma ref do `tars secrets`).
+    const asf = deps.allowedSigners ?? cfg.allowed_signers ?? null
+    const desejado = configAssinatura({ id, allowedSigners: asf, raiz })
+    const ler = deps.lerGitConfig ?? ((k) => lerGitConfig(raiz, k, { spawn: deps.spawn }))
+    const atual = {}
+    for (const k of CHAVES_ASSINATURA) atual[k] = ler(k)
+    const exec =
+      deps.exec ??
+      ((k, v) => spawnSync('git', ['-C', raiz, 'config', k, v], { encoding: 'utf8', stdio: 'ignore' }))
+    const r = signSetup({ raiz, desejado, force, atual, exec })
+    log(saida(renderSignSetup(r)))
+    if (!r.ok) process.exitCode = 1
+    return r
+  }
+  throw new Error(`use \`tars identity show|verify|provision|revoke|sign-setup\` (recebi '${sub ?? ''}')`)
 }
 
 export function renderVerify(id, r) {
@@ -247,8 +334,18 @@ export function renderVerify(id, r) {
   return linhas.join('\n')
 }
 
-export function renderRevoke(r) {
-  const linhas = [`# Identidade — revoke`, '']
+export function renderSignSetup(r) {
+  const linhas = [`# Identidade — sign-setup (${r.ok ? 'OK' : 'FALHA'})`, '', `- raiz: ${r.raiz}`, '']
+  for (const a of r.aplicados) linhas.push(`- aplicado    ${a.chave} = ${a.valor}`)
+  for (const i of r.inalterados) linhas.push(`- inalterado  ${i.chave} (ja' = ${i.valor})`)
+  for (const c of r.conflitos) linhas.push(`- CONFLITO    ${c.chave}: achei '${c.de}' — use \`--force\` para trocar para '${c.para}'`)
+  if (!r.aplicados.length && !r.conflitos.length) linhas.push("- nada a fazer (config ja' e' a desejada)")
+  if (r.conflitos.length) linhas.push('', '  `--force` sobrescreve a config do dono — sem ele, nada foi escrito no conflito.')
+  linhas.push('')
+  return linhas.join('\n')
+}
+
+export function renderRevoke(r) {  const linhas = [`# Identidade — revoke`, '']
   linhas.push(r.removido ? `- removido: ${r.removido}` : '- chave local ja’ ausente')
   if (r.pendente_nos_hosts.length) {
     linhas.push(`- PENDENTE nos hosts (remova a linha do authorized_keys): ${r.pendente_nos_hosts.join(', ')}`)
