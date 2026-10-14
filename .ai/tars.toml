@@ -26,8 +26,13 @@ guards = [
 # release-guard cobra versao+CHANGELOG em commit que toca o motor (tools/framework/tars-*,
 # .ai/gates, .ai/guards, .ai/governance) — o Tars e' o primeiro consumidor da propria regra.
 # no-add-all fica no guard de agente, nao no hook do git.
-pre-commit = ["gitleaks", "release-guard"]
-commit-msg = ["commit-msg"]
+#
+# release-guard no commit-msg, NAO no pre-commit: o escape `No-Release:` vive na MENSAGEM e
+# o arquivo dela so' existe a partir do `prepare-commit-msg`/commit-msg — no pre-commit ele
+# ainda nao foi escrito, entao o escape era invisivel e o gate reprovava quem o declarava.
+# (Medido: pre-commit roda antes de o COMMIT_EDITMSG existir; commit-msg o recebe em argv.)
+pre-commit = ["gitleaks"]
+commit-msg = ["commit-msg", "release-guard"]
 
 # prod-guard (B1.4): o agente nao muda producao (compose/systemctl/kubectl/helm/force-push)
 # sem a ordem direta do dono. Fica no PreToolUse do harness (como o no-add-all), nao no hook
