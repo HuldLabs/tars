@@ -371,7 +371,7 @@ export function resolveBaseDir(root = REPO, override) {
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(root, ".ai", "memory.config.json"), "utf8"));
     if (typeof cfg.base === "string" && cfg.base.trim()) return path.resolve(root, cfg.base);
-  } catch { /* sem config: default */ }
+  } catch (e) { /* sem `.ai/memory.config.json` NAO e' erro: o default logo abaixo responde. */ void e }
   return path.join(root, DEFAULT_BASE_DIR);
 }
 /**
@@ -453,7 +453,7 @@ function compact(obj) {
  */
 export function readIndexBudget(root = REPO) {
   let budget = {};
-  try { budget = JSON.parse(fs.readFileSync(path.join(root, ".ai", "boot-budget.json"), "utf8")); } catch { /* default */ }
+  try { budget = JSON.parse(fs.readFileSync(path.join(root, ".ai", "boot-budget.json"), "utf8")); } catch (e) { /* sem `.ai/boot-budget.json` NAO e' erro: o teto default logo abaixo responde. */ void e }
   const teto = Number.isFinite(budget.teto_tokens) ? budget.teto_tokens : DEFAULT_BOOT_BUDGET;
   const outros = (budget.arquivos ?? []).filter((f) => f !== ".ai/memory/INDEX.md");
   return { teto, arquivos: outros, root, INDEX: ".ai/memory/INDEX.md" };
@@ -476,7 +476,7 @@ export function capIndexEntries({ arquivos = [], root = REPO, file = FILE, entri
   const ordenadas = todas.map((e, i) => ({ e, i })).sort((a, b) => peso(a.e) - peso(b.e) || a.i - b.i).map((x) => x.e);
   let outros = 0;
   for (const rel of arquivos.filter((f) => f !== ".ai/memory/INDEX.md")) {
-    try { outros += Math.ceil(fs.readFileSync(path.join(root, rel), "utf8").length / 4); } catch { /* arquivo ausente: conta 0 */ }
+    try { outros += Math.ceil(fs.readFileSync(path.join(root, rel), "utf8").length / 4); } catch (e) { /* arquivo do boot ausente NAO e' erro: conta 0 tokens. */ void e }
   }
   // O boot NAO carrega o store (669 KB): carrega os arquivos do boot-budget. Por
   // isso a conta desconta so' os OUTROS arquivos do boot, o cabecalho e o report.

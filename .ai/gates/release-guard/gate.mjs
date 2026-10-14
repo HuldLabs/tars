@@ -9,9 +9,9 @@
 // Contrato (pre-commit): roda `git diff --cached` no projeto (TARS_PROJECT ou cwd), le a
 // lista de arquivos tocados e compara `.ai/VERSION` com o HEAD. exit != 0 = reprova.
 // Escape: `No-Release: <motivo de 10+ chars>` no corpo da mensagem do commit.
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 /** Arquivos cuja mudanca OBRIGA versao+CHANGELOG (o motor e a doutrina do catalogo). */
 export const TRIGGERS = [/^tools\/framework\/tars-.*\.mjs$/, /^\.ai\/gates\//, /^\.ai\/guards\//, /^\.ai\/governance\//]
@@ -60,10 +60,21 @@ export function julgar(root, { mensagem = null, arquivos = staged(root), head = 
 const mensagemDe = (root) => {
   // No `pre-commit` o arquivo da mensagem nao existe (so' no commit-msg): le a mensagem
   // do indice quando houver, senao o corpo do ultimo `-m`. Sem ela, so' resta exigir o par.
+  //
+  // Em WORKTREE `.git` e' um ARQUIVO (`gitdir: <caminho>`) e nao um diretorio: montar o
+  // caminho a mao lia um arquivo inexistente, `mensagem` voltava vazia e o escape
+  // `No-Release:` ficava INALCANCAVEL — o autor via "FALHOU" sem ter como se declarar
+  // isento (fail-closed que virou fail-quieto). `git rev-parse --git-path` responde o
+  // caminho certo nas duas formas; se nem assim houver mensagem, isso e' DITO.
   try {
-    const f = join(root, '.git', 'COMMIT_EDITMSG')
-    return existsSync(f) ? readFileSync(f, 'utf8') : ''
+    const g = spawnSync('git', ['rev-parse', '--git-path', 'COMMIT_EDITMSG'], { cwd: root, encoding: 'utf8' })
+    const rel = g.status === 0 && g.stdout.trim() ? g.stdout.trim() : join('.git', 'COMMIT_EDITMSG')
+    const f = isAbsolute(rel) ? rel : join(root, rel)
+    if (existsSync(f)) return readFileSync(f, 'utf8')
+    console.error('gate release-guard: sem mensagem de commit legivel (procurei ' + f + ') — sem o corpo lido o escape No-Release nao vale.')
+    return ''
   } catch {
+    console.error('gate release-guard: nao consegui ler a mensagem de commit — sem o corpo lido o escape No-Release nao vale.')
     return ''
   }
 }

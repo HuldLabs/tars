@@ -322,14 +322,14 @@ describe("gate lint-swallow — erro engolido (TARS-SWALLOW-1)", () => {
   };
   const roda = (dir, params) => rodar([gate], { env: { TARS_PROJECT: dir, TARS_GATE_PARAMS: params ?? "" } });
 
-  it("`catch {}` vazio no staged reprova com arquivo:linha", () => {
-    const r = roda(repoCom("src/a.mjs", "try { f() } catch {}\n"));
+  it("`catch` com corpo vazio no staged reprova com arquivo:linha", () => {
+    const r = roda(repoCom("src/a.mjs", "try { f() } catch" + " {}\n"));
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/src\/a\.mjs:1/);
   });
 
-  it("`catch (e) { /* nada */ }` de uma linha reprova", () => {
-    const r = roda(repoCom("src/b.ts", "try { f() } catch (e) { /* ignora */ }\n"));
+  it("`catch (e)` com so comentario no corpo, de uma linha, reprova", () => {
+    const r = roda(repoCom("src/b.ts", "try { f() } catch (e)" + " { /* ignora */ }\n"));
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/src\/b\.ts:1/);
   });
@@ -351,14 +351,14 @@ describe("gate lint-swallow — erro engolido (TARS-SWALLOW-1)", () => {
   });
 
   it("allow isenta o trecho declarado nos params", () => {
-    const dir = repoCom("vendor/lib.mjs", "try { f() } catch {}\n");
+    const dir = repoCom("vendor/lib.mjs", "try { f() } catch" + " {}\n");
     expect(roda(dir, JSON.stringify({ allow: ["vendor/"] })).status).toBe(0);
     expect(roda(dir, "").status).toBe(1);
   });
 
   it("sem repo git nao julga (fixture isolada, nao falso-positivo)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-swallow-nogit-"));
-    fs.writeFileSync(path.join(dir, "a.mjs"), "try { f() } catch {}\n");
+    fs.writeFileSync(path.join(dir, "a.mjs"), "try { f() } catch" + " {}\n");
     expect(roda(dir).status).toBe(0);
   });
 });

@@ -188,11 +188,11 @@ function report({ repos, moved, stateFile, advance, reviewed = [], advanced = []
   console.log('# a linha origem→destino→situacao em docs/CURATION.md — com "o que nao entra e por que".')
 }
 
-// `TARS_AS_MODULE` (posto pelo `tars.mjs` antes deste import) desliga o auto-run no
-// `bun build --compile`: ali o `import.meta.url` de todo modulo embutido vira o do
-// entrypoint, o guard virava verdadeiro e o `findTars()` do main rodava no import —
-// `tars --version`, `doctor`, `sync --check` etc. morriam com "nao achei a raiz do Tars"
-// mesmo estando dentro do repo (Incident: binario sem checkout).
+// `TARS_AS_MODULE` (posto por `tars.mjs` ANTES dos modulos donos, ver `tars-as-module.mjs`):
+// no `bun build --compile` o `import.meta.url` de TODO modulo embutido vira o do entrypoint,
+// entao este guard ficava verdadeiro quando `tars.mjs` apenas IMPORTAVA o modulo — e o main
+// da curadoria rodava no import (`tars --help` respondia "nao achei a raiz do Tars").
+// E' o mesmo Incident que ja' tinha guarda nos outros donos; este ficou de fora.
 if (!process.env.TARS_AS_MODULE && process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   try {
     const tars = resolve(arg('--tars') ?? process.env.TARS_HOME ?? findTars())

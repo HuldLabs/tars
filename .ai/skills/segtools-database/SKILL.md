@@ -53,6 +53,27 @@ tabela; guarde o handle como texto). Migration de identidade combina `kind` com 
   fila de revisão, a precedência entre propostas concorrentes e o rigor do override; correção manual em
   dado de fonte oficial é **override auditado** (motivo estruturado, ator). (fonte: farmega/docs/strategy/roadmap-decisions.md:274,278,258,268)
 
+## Porta tipada por domínio: o SQL mora no adapter
+
+**A porta expõe MÉTODO DE DOMÍNIO, nunca `query(sql)`.** O ponto de entrada do banco no
+resto do sistema é uma interface por domínio (`Orders.byId(id)`, `Catalog.search(term)`) —
+não um executor que recebe string.
+
+- **Por que a string proibida:** um `query(sql)` expõe o **dialeto** e o **schema** a cada
+  chamador. Cada `SELECT` escrito no meio da regra de negócio é uma costura a mais: o
+  índice que muda, a coluna que renomeia, o `JOIN` que vira N+1 — nada disso tem fronteira
+  para ser corrigido em um lugar. A porta tipada é o que permite **otimizar sem tocar em
+  quem chama** (R2: menos código, mesma função, medido).
+- **O SQL mora no adapter**, e o adapter é a única camada que conhece o driver
+  (`pg`/`kysely`/`postgres`). Quem está acima recebe **tipo de domínio** (a entidade, o DTO),
+  nunca linha crua nem builder vazado.
+- **O teste que decide:** dá para trocar o índice, fundir duas queries em uma, ou mudar o
+  `WHERE` sem editar nenhum arquivo fora do adapter? Se não, a porta está vazando SQL.
+- **Regressão cobrável:** import de driver **fora** do diretório de adapters **reprova**. É
+  a forma mecânica de manter a fronteira — sem gate, a string volta na primeira pressa.
+- Detalhe da porta por domínio: `docs/QUERY-LAYER.md`. (fonte: `coleta-segtools` 5.4,
+  `eco.md` N1-N8)
+
 ## Reconciliar o schema ANTES de portar (R1 aplicado a banco)
 
 Antes de portar schema de um repo para outro, **reconciliar** — levantar o que **já** foi portado. O
@@ -73,6 +94,24 @@ custo de pular é recolocar em produção uma migração que já rodou — e mig
 - **Nunca reescreva migration já aplicada** para "encaixar" o delta: ela é imutável (doutrina
   `migration-imutavel`); o delta vira migration **nova**.
   (fonte: seo-brain/HANDOFF.md, seo-brain/docs/BACKUP.md)
+
+## Conexão e carga: as regras que o incidente ensinou
+
+- **Nunca conexão global de longa duração.** Abre → executa → **fecha** por chamada, com o `close()`
+  no `finally`. Conexão de vida longa guardada no módulo é o pior dos dois mundos: sobrevive ao erro
+  que a corrompeu (transação abortada, `search_path` sujo, timeout de sessão) e a chamada seguinte
+  herda o estado sujo **sem sintoma no ponto de uso**. O pool resolve o reuso — não o handle global.
+- **Carga em massa em batch, nunca `row-by-row`.** Um `INSERT` por linha troca uma operação por N idas
+  ao servidor e transforma o import numa fila de latência: `COPY`, `INSERT ... SELECT` ou lote de N.
+  Onde o motor é **estendido** (ex.: `pg_duckdb` lendo Parquet), deixe o hook de extensão interceptar
+  em vez de reescrever a ingestão caso a caso.
+- **Agendador: dispare o caminho, não espere o relógio.** Teste de job agendado que dorme até o
+  horário é lento, instável, e prova o relógio — não o job. Chame o gatilho real (`triggerSchedule`)
+  e aguarde o **resultado**: a asserção é sobre o efeito, com o mesmo tratamento de erro do caminho
+  agendado.
+- **Fail-closed.** Ausência de trava, de gate ou de verificação **REPROVA** — nunca `return` silencioso,
+  nunca "não achei nada, então sigo". O par é a doutrina `metodo/contramedida-testada`: a contramedida
+  só existe quando um teste **negativo** a cobra.
 
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
