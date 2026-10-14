@@ -115,6 +115,32 @@ Portar de `nexus/docs/architecture/database-agnostic.md` + ADRs 001/002/004/006 
 4. A resolução é explícita (sem fallback silencioso) e o default está declarado?
 5. Qual a prova? (teste/gate que reprova se a fronteira for violada)
 
+## 4. Jobs duráveis: lease, idempotência e o teste do agendador
+
+Portado de `coleta-eco` §5.6 e do mapa de 13/10 (C6 do plano de 14/10).
+
+- **Lease, não lock eterno.** Um job pega o item com **lease** (prazo), renova com **heartbeat** e
+  devolve à fila quando o prazo vence — um job morto não pode segurar trabalho para sempre
+  (`SKIP LOCKED` + heartbeat + stalled + dead-letter, ver Filosofia).
+- **Três idempotências, não uma:** (1) o job rodar de novo não duplica efeito; (2) o lease vencido
+  e retomado não duplica efeito; (3) o retry após falha parcial não duplica efeito. Cada uma tem
+  prova própria — "é idempotente" sem as três é meia idempotência.
+- **Teste de agendador não espera o relógio.** Dispare o **caminho** (o gatilho determinístico do
+  scheduler) e aguarde o resultado real; esperar o minuto virar é teste lento e instável. E **nunca**
+  aumentar teto/`sleep` nem afrouxar a asserção para o teste passar: se o agendamento não dispara no
+  caminho, o defeito é do caminho.
+- **Contrato de tempo e locale é declarado.** Fuso, formato de data e locale do banco/job são
+  **explícitos** no schema/código (UTC no armazenamento; locale só na borda de apresentação) — o
+  "funcionou na minha máquina" de data é sempre locale ambiente vazando para o dado.
+- **Ledger de IA**: toda chamada de modelo que gera dado persistido registra **qual modelo, qual
+  versão/prompt e quando** — sem o ledger, o derivado não é reproduzível nem auditável.
+
+## 5. Um engine de jobs só
+
+Um segundo orquestrador/agendador **não roda em paralelo**: ele entra atrás da **mesma porta**
+(`OrchestratorPort`), com o caminho de migração escrito (ver skill `iam` §3). Duas filas é duas
+verdades sobre o que está rodando.
+
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
 + `docs/operations/{data-foundation,database-environments}`. Camada porta × adapter: `nexus`
