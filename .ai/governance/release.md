@@ -86,6 +86,11 @@ seção certa, a imagem por digest. "O CI passou" não basta; a prova é a pági
 
 ### 6. Aviso aos consumidores
 
+Antes do aviso, o repo é o **primeiro** consumidor da própria versão: o coord roda `<repo>
+self-update` (ou o equivalente) onde trabalha e o `sync --upgrade` no próprio repo. O aviso só
+sai com isso feito.
+
+
 O coord manda a cada coord consumidor um texto pronto para colar: a versão e o link, o comando
 de atualização, o que conferir depois e o que mudou para ele. O texto **termina sempre** com:
 "Em caso de dúvida, bug ou problema, fale com o coord do <repo>." No Tars, o texto sai do

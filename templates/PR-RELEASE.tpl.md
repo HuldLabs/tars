@@ -23,4 +23,5 @@ O merge deste PR pelo dono é o aval para o coord cortar a tag `v<versão>`.
 - [ ] tag `v<versão>` anotada, como Daneel, sobre o commit de merge
 - [ ] CI até a Release: artefatos provados, upgrade real, Release por último, tags da imagem depois
 - [ ] conferir a página da Release (pré-release, assets, notas, digest)
-- [ ] avisar os coords consumidores (texto pronto, fechando com o contato)
+- [ ] o Tars primeiro: `tars self-update` no container e `tars sync --upgrade` no próprio repo
+- [ ] avisar os coords consumidores (`templates/AVISO-CONSUMIDORES.tpl.md`)

@@ -14,6 +14,9 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 - **`tars self-update` concorrente.** O temporário do binário leva o pid do processo. Dois
   self-update no mesmo HOME (container compartilhado entre sessões) não disputam mais o mesmo
   `.tmp`, e os dois rodam o `sync --upgrade`.
+- **Doutrina `release`: o repo é o primeiro consumidor.** Depois da Release, o coord roda o
+  self-update e o `sync --upgrade` no próprio repo antes de avisar os consumidores (§6 e o
+  checklist do `templates/PR-RELEASE.tpl.md`).
 
 Bugs reportados que esta versão fecha:
 - segtools (14/10): `tars self-update` falhou com ENOENT no rename de
