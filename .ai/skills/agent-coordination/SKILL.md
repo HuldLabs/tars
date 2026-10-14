@@ -784,6 +784,21 @@ nothing to attack. Coverage is a different question — *what is missing from th
 - Evidence that counts: a command and its real output run *this cycle*, a passing
   test run's output, a screenshot for anything visual, negative tests where a
   failure mode exists.
+- **A finding is only a finding after the whole block is read (ported from
+  `seg-agentmem-3` #5).** The grep line that matched is a pointer to the defect, not
+  the defect: a `TODO`, a `return null`, a hardcoded value all mean something different
+  once read with its surroundings — the guarded branch, the comment that says why, the
+  caller that never passes that path. Reporting the line as-is produces confidently
+  wrong findings and burns a worker round on a non-defect; the reviewer who read 20
+  lines and concluded "bug" is the one who pays for it. Read the enclosing unit whole
+  before naming it, and if the block is large, read the block — not a bigger grep.
+- **A screen is verified on the SCREEN, never on the operator's own session (ported
+  from `seg-agentmem-1` #26, `seg-agentmem-2` #4).** Two failures in one: verifying
+  inside the owner's logged-in account proves a screen the owner can see, not the screen
+  a fresh user gets (different permissions, data, state), and measuring parity by memory
+  instead of side by side lets small drift pass as "matches". Open the real target as its
+  own consumer sees it, and when the claim is parity, put the reference and the result
+  next to each other and diff them visibly.
 - Evidence that doesn't count: "the doc/agent said so," a `qa-ready` label with
   nothing verified underneath, a status field saying running, a healthcheck passing
   without verifying it actually proves the function it claims to.
