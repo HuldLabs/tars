@@ -156,6 +156,12 @@ export const CAMPOS = {
   // Quantos dias o cache pode envelhecer antes do `doctor` avisar (S3/dev.9). Ausente = 30:
   // um cache que ninguem recifra ha' um mes carrega a chave que o cofre ja' pode ter trocado.
   cache_max_dias: {},
+  // `git_credential` (dev.19): o NOME da chave do cache que guarda o PAT, e a LISTA de HOSTS
+  // (separados por virgula) para os quais o helper a ENTREGA. Sem a lista declarada o helper
+  // nao entrega para host NENHUM — a negacao e' o default, e um host a mais so' entra por
+  // declaracao explicita do dono. Ver `respostaCredential`.
+  git_credential: {},
+  git_hosts: {},
 }
 
 /** As camadas, da mais fraca para a mais forte. A ordem E' o merge (campo a campo). */
@@ -319,7 +325,19 @@ export function lerConfig(secrets = {}, { project = process.cwd(), env = process
   // `sops_files` e' a LISTA de arquivos versionados a recifrar na rotacao (glob, relativo ao
   // PROJETO). Nao e' ref nem caminho local: ganha tratamento proprio, como o `sops_config`.
   const sops_files = secrets.sops_files ?? null
-  return { ...cfg, key_scope, source: secrets.source, sops_config, sops_files, projeto: path.resolve(project), dir }
+  const projetoAbs = path.resolve(project)
+  // O bloco `[secrets]` que o `init` escreve carrega a PROCEDENCIA: e' ela que deixa o `init`
+  // ver o que ELE ja' montou, em vez de comparar com a config resolvida (que mistura perfil e
+  // padroes). Nao e' campo de comportamento: nenhum caminho de execucao a le'.
+  const gerado = secrets.gerado ?? null
+  // O `template` e' o unico campo que a tabela DO PROJETO declara com caminho proprio e relativo
+  // (o resto dos caminhos so' nasce do padrao embutido, que ja' devolve absoluto): sem isto, um
+  // `template = "config/secrets.tpl"` dependeria do diretorio de trabalho — funcionaria da raiz
+  // e falharia de um subdiretorio, longe da causa (R4). Absoluto e `~` passam intactos.
+  if (secrets.template !== undefined && secrets.template !== null) {
+    cfg.template = caminhoDoProjeto(secrets.template, projetoAbs)
+  }
+  return { ...cfg, key_scope, source: secrets.source, sops_config, sops_files, gerado, projeto: projetoAbs, dir }
 }
 
 /**
@@ -613,6 +631,77 @@ export function exec(cfg, argv, { env = process.env, spawn = spawnSync } = {}) {
   const r = spawn(argv[0], argv.slice(1), { stdio: 'inherit', env: envDoFilho(decifraMapa(cfg), { env, cfg }), shell: false })
   if (r.error) throw new ErroConfig(`[secrets] nao consegui executar '${argv[0]}': ${r.error.message}`)
   return { status: r.status ?? 1 }
+}
+
+/**
+ * O `stdin` do protocolo do git: o `git` manda `chave=valor\n` e NADA de interativo — le' o
+ * fd 0 ate' o fim, sem eco e sem TTY. Separado de `leOculto` (que e' a pergunta secreta do
+ * dono) porque a natureza e' outra: aqui o texto e' o PEDIDO, nao o segredo.
+ */
+export function leStdin() {
+  try {
+    return fs.readFileSync(0, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * O subcomando `git-credential` (dev.19): o `git` chama este helper como
+ * `tars secrets git-credential <get|store|erase>` e manda os campos do pedido
+ * (`protocol=`, `host=`, ...) pelo STDIN, uma linha `chave=valor` cada. O helper responde no
+ * stdout o mesmo formato (`username=`, `password=`) — o protocolo esta em
+ * https://git-scm.com/docs/gitcredentials#_helper_protocol.
+ *
+ * O que vale aqui, sem excecao:
+ *   1. O PAT sai do CACHE cifrado (`decifraMapa`), nunca do `op` em tempo real: o `git` abre
+ *      uma conexao por fetch e nao pode depender de biometria/1Password a cada uma.
+ *   2. O host e' conferido CONTRA a lista declarada (`git_hosts`) — host sem declaracao nao
+ *      recebe credencial nenhuma (resposta vazia, o `git` decide). A lista e' a unica coisa
+ *      entre o cache inteiro e qualquer servidor que peca senha; entrega so' para o declarado.
+ *   3. `store`/`erase` sao NO-OP: o cache e' a fonte e nao ha' o que gravar nem apagar por
+ *      pedido do `git` (o `erase` de um 401 NAO derruba o cache). Sair 0 e' o contrato.
+ *   4. A entrada do `git` NAO e' ecoada em mensagem de erro: e' dado de origem externa, e a
+ *      regra e' nao ecoar entrada nao confiavel — o diagnostico cita o HOST, nunca o pedido cru.
+ */
+export function respostaCredential(cfg, entrada, { mapaLeitor = decifraMapa } = {}) {
+  const campos = {}
+  for (const bruta of String(entrada ?? '').split(/\r?\n/)) {
+    const linha = bruta.replace(/\r$/, '')
+    if (!linha.trim()) continue
+    const i = linha.indexOf('=')
+    if (i <= 0) continue
+    campos[linha.slice(0, i).trim()] = linha.slice(i + 1).trim()
+  }
+  const host = campos.host || ''
+  // A lista de hosts vem declarada (`git_hosts`), resolvida pelo merge das camadas — nao ha'
+  // default com nome de pessoa. Ausente = lista vazia = entrega para ninguem (negacao default).
+  const declarados = String(cfg.git_hosts ?? '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean)
+  if (!host || !declarados.includes(host.toLowerCase())) {
+    return { saida: '', entregue: false, motivo: host ? 'host fora de `git_hosts`' : 'pedido sem `host`' }
+  }
+  if (!cfg.git_credential) {
+    throw new ErroConfig('[secrets] `git_hosts` declarado mas `git_credential` (o NOME da chave do cache) nao — sem o nome nao ha o que ler')
+  }
+  // A chave no cache e' o NOME (nao uma ref `op://`): o cache e' plano (`KEY=valor`), e o
+  // `refresh` copiou para la' o campo que o template resolveu. Um nome invalido nao e' ecoado.
+  const nome = String(cfg.git_credential)
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nome)) {
+    throw new ErroConfig('[secrets] git_credential precisa ser um NOME de variavel do cache (valor deliberadamente NAO ecoado)')
+  }
+  if (!fs.existsSync(cfg.cache_file)) {
+    throw new ErroConfig(`[secrets] cache ausente em ${cfg.cache_file} — rode \`tars secrets refresh\``)
+  }
+  const mapa = mapaLeitor(cfg)
+  const pat = mapa[nome]
+  if (!pat) {
+    throw new ErroConfig(`[secrets] \`${nome}\` nao esta' no cache — declare a ref no template e rode \`tars secrets refresh\``)
+  }
+  // O formato do protocolo: `username=` + `password=` + linha vazia encerrando.
+  return { saida: `username=x-access-token\npassword=${pat}\n\n`, entregue: true, motivo: 'entregue' }
 }
 
 /**
@@ -1391,6 +1480,173 @@ export function rotate(cfg, { env = process.env, tty = process.stdin.isTTY, conf
 }
 
 /**
+ * Um caminho declarado no `[secrets]` e' RELATIVO ao PROJETO (a raiz do `.ai/tars.toml`), nao
+ * ao diretorio de trabalho: `template = "config/secrets.tpl"` vale o mesmo rodando da raiz ou
+ * de um subdiretorio. Absoluto e `~` continuam valendo — o `~` e' o unico que o `path.resolve`
+ * nao expande, entao ele sai daqui ja' expandido.
+ */
+export function caminhoDoProjeto(valor, projeto) {
+  const s = String(valor)
+  if (s === '~') return os.homedir()
+  if (s.startsWith('~/')) return path.join(os.homedir(), s.slice(2))
+  if (path.isAbsolute(s)) return path.normalize(s)
+  return path.resolve(projeto, s)
+}
+
+/** A tabela `[secrets]` do manifesto do projeto — o que o `init` copia/organiza. */
+function lerTabelaDoProjeto(manifest) {
+  try {
+    return parseToml(fs.readFileSync(manifest, 'utf8')).secrets ?? {}
+  } catch {
+    return null
+  }
+}
+
+/** Sobe a partir de `de` ate' achar a raiz de um projeto do Tars (`.ai/tars.toml`). */
+function raizDoProjeto(de) {
+  let d = path.resolve(de)
+  for (;;) {
+    if (fs.existsSync(path.join(d, '.ai', 'tars.toml'))) return d
+    const pai = path.dirname(d)
+    if (pai === d) return null
+    d = pai
+  }
+}
+
+/**
+ * `KEY: op://...` numa linha de YAML — o formato do arquivo de refs do projeto
+ * (`config/secrets.refs.yaml`). Aceita `KEY: "op://..."` com aspas e o `- KEY: op://...` de
+ * lista. Devolve `null` para comentario, linha vazia, chave de estrutura sem valor e para
+ * qualquer valor que NAO seja uma ref `op://` (valor em claro no arquivo de refs e' defeito
+ * que o `validaRef` denuncia, nao coisa a transportar).
+ */
+function linhaDeRef(linha) {
+  const m = /^\s*(?:-\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$/.exec(linha)
+  if (!m) return null
+  const valor = m[2].replace(/^["']|["']$/g, '').trim()
+  return /^op:\/\/\S+$/.test(valor) ? { key: m[1], ref: valor } : null
+}
+
+/**
+ * As chaves que a secao `[secrets]` de um `.ai/tars.toml` JA' declara. Le' o texto, secao a
+ * secao, porque quem decide se uma ref entra no manifesto e' o MANIFESTO — nunca o merge
+ * (uma chave que so' existe no perfil nao esta' declarada aqui).
+ */
+function chavesDaSecao(txt) {
+  const chaves = []
+  let dentro = false
+  for (const l of String(txt).split(/\r?\n/)) {
+    const cab = /^\s*\[([^\]]+)\]\s*(?:#.*)?$/.exec(l)
+    if (cab) {
+      dentro = cab[1].trim() === 'secrets'
+      continue
+    }
+    if (!dentro) continue
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(l)
+    if (m) chaves.push(m[1])
+  }
+  return chaves
+}
+
+/**
+ * Monta o bloco `[secrets]` do `.ai/tars.toml` a partir do arquivo de REFS do projeto
+ * (`secrets.refs.yaml`: `KEY: op://...`). So' ESTRUTURA — refs e caminhos; NENHUM valor de
+ * segredo entra aqui, nem existe no arquivo de entrada (R3: o valor mora no cofre).
+ *
+ * IDEMPOTENTE por construcao: campo que o manifesto JA' declara e' PRESERVADO (com a linha e o
+ * comentario do dono) — rodar de novo nao muda byte nenhum. Declaracao que o `lerConfig`
+ * recusaria (sem `source`, ref fora de `op://`) falha ALTA ANTES de escrever: manifesto meio
+ * escrito seria pior que manifesto nenhum (R4).
+ */
+export function initManifest(_cfg, { project = process.cwd(), refs } = {}) {
+  // A RAIZ vem do `.ai/tars.toml` (subindo do diretorio dado) ou, num projeto que ainda NAO
+  // tem manifesto — o caso normal do `init` —, do proprio diretorio dado: exigir o manifesto
+  // aqui seria exigir o arquivo que o comando existe para criar.
+  const raiz = raizDoProjeto(project) ?? path.resolve(project)
+  const manifest = path.join(raiz, '.ai', 'tars.toml')
+  // A tabela de TRABALHO e' lida AQUI, do arquivo: o `cfg` que chega ao `run` ja' passou pelo
+  // `lerConfig`, que ACHATA as tres camadas num objeto plano e acrescenta caminhos resolvidos
+  // (`age_key_file`, `template`, `_origem`...). Escrever aquele objeto no manifesto copiaria
+  // padroes e caminhos de maquina para o arquivo versionado. Quem chamar `initManifest` direto
+  // passa a tabela em `tabela` (o teste faz isso); o CLI so' passa o `cfg`.
+  const secrets = _cfg?.tabela ?? lerTabelaDoProjeto(manifest) ?? _cfg ?? {}
+  const arquivo = refs ? caminhoDoProjeto(refs, raiz) : path.join(raiz, 'config', 'secrets.refs.yaml')
+  if (!fs.existsSync(arquivo)) {
+    throw new ErroConfig(`[secrets] init: arquivo de refs ausente em ${arquivo} (use \`--refs <arquivo>\` para apontar outro)`)
+  }
+  const refsLidas = []
+  const linhas = fs.readFileSync(arquivo, 'utf8').split(/\r?\n/)
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i]
+    if (!l.trim() || /^\s*#/.test(l)) continue
+    if (/op:\/\//.test(l) && !linhaDeRef(l)) {
+      throw new ErroConfig(`[secrets] init: ${arquivo}:${i + 1} tem \`op://\` fora de \`KEY: op://...\` — ref invalida nao entra no manifesto (valor nao ecoado)`)
+    }
+    const r = linhaDeRef(l)
+    if (r) refsLidas.push(r)
+  }
+  if (!refsLidas.length) {
+    throw new ErroConfig(`[secrets] init: nenhuma ref \`KEY: op://...\` em ${arquivo} — nada a montar`)
+  }
+  // Valida ANTES de escrever: o `source` e' obrigatorio por contrato e o `validaRef` recusa
+  // (sem ecoar) o que nao for `op://`. Um manifesto que o proprio `lerConfig` reprova seria
+  // um convite a "so' falta completar a mao".
+  if (!secrets.source) throw new ErroConfig("[secrets] init precisa de `source` (automation | owner) para escrever um manifesto valido")
+  for (const r of refsLidas) validaRef(r.ref)
+
+  const existe = fs.existsSync(manifest)
+  const txt = existe ? fs.readFileSync(manifest, 'utf8') : ''
+  // "Ja' declarado" sai da PROCEDENCIA que o bloco carrega (`gerado`), nao do texto nem da
+  // config resolvida: o texto nao distingue campo de ref, e a config mistura perfil e padroes
+  // (um `source` do perfil faria o `source` do projeto sumir do bloco). Manifesto SEM a marca
+  // e' do dono: as chaves de `[secrets]` ficam como estao e so' o que falta entra.
+  const gerado = Array.isArray(secrets.gerado) ? new Set(secrets.gerado) : null
+  // Manifesto que ESTE comando ja' montou (tem a marca `gerado`): a rodada seguinte so' LE'.
+  const montado = gerado !== null && existe && /^\s*\[secrets\]\s*$/m.test(txt)
+  // O que ja' esta' declarado: a marca `gerado` quando o manifesto e' deste comando; senao as
+  // chaves que o dono escreveu em `[secrets]` — elas ficam como estao e so' o que falta entra.
+  const declarado = montado ? gerado : new Set(chavesDaSecao(txt))
+  const camposDoBloco = montado ? [] : Object.entries(secrets).filter(([c]) => c !== 'gerado' && !declarado.has(c))
+  const refsEntram = refsLidas.filter((r) => !declarado.has(r.key))
+  const preservadas = refsLidas.filter((r) => !refsEntram.includes(r)).map((r) => r.key)
+  const adicionadas = refsEntram.map((r) => r.key)
+  const jaMontado = [...new Set([...(gerado ?? []), ...refsEntram.map((r) => r.key)])]
+
+  if (existe && montado && !adicionadas.length && camposDoBloco.length === 0) {
+    return { ok: true, manifest, adicionadas: [], preservadas, saida: `tars secrets init: nada a fazer em ${manifest} (${preservadas.length} ref(s) ja' declarada(s))`, status: 0 }
+  }
+  // Montado: so' as refs NOVAS se anexam ao bloco que ja' esta' la' (sem repetir o cabecalho).
+  // Na primeira vez (ou num manifesto do dono), o bloco nasce inteiro: `[secrets]`, os campos
+  // declarados, a marca e o cabecalho do arquivo de refs.
+  const linhasNovas = montado
+    ? refsEntram.map((r) => `${r.key} = "${r.ref}"`)
+    : [
+        '# Refs do projeto (dev.19): montado de ' + path.relative(raiz, arquivo).split(path.sep).join('/') + ' — nenhum valor aqui, so\' o endereco no cofre.',
+        ...refsEntram.map((r) => `${r.key} = "${r.ref}"`),
+      ]
+  const partes = txt ? [...txt.replace(/\s+$/, '').split('\n'), ''] : []
+  if (!montado) {
+    partes.push('[secrets]')
+    for (const [campo, valor] of camposDoBloco) partes.push(`${campo} = ${JSON.stringify(valor)}`)
+    partes.push(`gerado = ${JSON.stringify(jaMontado)}`)
+  } else if (adicionadas.length) {
+    // Manifesto ja' montado que GANHOU ref nova: a marca cresce junto, senao a proxima rodada
+    // acharia que a ref nova nunca foi montada e a repetiria para sempre.
+    const i = partes.findIndex((l) => /^\s*gerado\s*=/.test(l))
+    if (i !== -1) partes[i] = `gerado = ${JSON.stringify(jaMontado)}`
+  }
+  for (const l of linhasNovas) partes.push(l)
+  fs.mkdirSync(path.dirname(manifest), { recursive: true })
+  fs.writeFileSync(manifest, `${partes.join('\n').replace(/\n+$/, '')}\n`)
+  const saida = [
+    `tars secrets init: ${adicionadas.length ? adicionadas.join(', ') : '(nenhuma)'} em ${manifest}`,
+    ...(preservadas.length ? [`tars secrets init: preservado o que ja' existia (${preservadas.join(', ')})`] : []),
+    'tars secrets init: o VALOR vai para o cofre (`tars secrets set`); aqui so\' mora o endereco',
+  ]
+  return { ok: true, manifest, adicionadas, preservadas, saida: saida.join('\n'), status: 0 }
+}
+
+/**
  * `token set` — troca o token da service account. O token NOVO vem do stdin OCULTO (nunca
  * argv, nunca eco) e so' substitui o antigo depois de `op whoami` aceita-lo SOZINHO (sem
  * sessao do app, biometria off): se nao validar, o antigo continua e o `.novo` some.
@@ -1428,12 +1684,23 @@ export function tokenSet(cfg, { env = process.env, le = leOculto, spawn = spawnO
 }
 
 /** Modulo DONO do subcomando: o CLI so' chama; o julgamento fica aqui. */
-export function run({ sub, rest = [], cfg, env = process.env, tty = process.stdin.isTTY, confirma, le }) {
+export function run({ sub, rest = [], cfg, tabela, env = process.env, tty = process.stdin.isTTY, confirma, le }) {
   if (sub === 'rotate') return rotate(cfg, { env, tty, confirma })
   if (sub === 'token') {
     const acao = rest[0]
     if (acao !== 'set') throw new ErroConfig(`uso: tars secrets token set (recebi '${acao ?? ''}')`)
     return tokenSet(cfg, { env, le })
+  }
+  if (sub === 'init') {
+    // O `--refs` e' a UNICA opcao: o padrao e' `config/secrets.refs.yaml` na raiz do projeto.
+    let refs = null
+    for (let i = 0; i < rest.length; i++) {
+      if (rest[i] === '--refs') refs = rest[++i]
+      else if (rest[i]?.startsWith('--refs=')) refs = rest[i].slice(7)
+      else throw new ErroConfig(`uso: tars secrets init [--refs <arquivo>] (recebi '${rest[i]}')`)
+    }
+    const r = initManifest(tabela === undefined ? cfg : { ...cfg, tabela }, { project: cfg.projeto, refs })
+    return { saida: r.saida, status: r.status }
   }
   if (sub === 'refresh') {
     const r = refresh(cfg, { env, tty })
@@ -1447,5 +1714,14 @@ export function run({ sub, rest = [], cfg, env = process.env, tty = process.stdi
     const r = check(cfg, { env })
     return { saida: format(r), status: r.ok ? 0 : 1 }
   }
-  throw new ErroConfig(`uso: tars secrets <refresh|exec|check|rotate|token> (recebi '${sub ?? ''}')`)
+  // `git-credential` (dev.19): o helper que o `git` chama. A entrada do protocolo vem pelo
+  // STDIN — `le` e' injetavel para o teste nao depender do console.
+  if (sub === 'git-credential') {
+    const verb = rest[0]
+    if (verb === 'store' || verb === 'erase') return { saida: '', status: 0 } // no-op: o cache e' a fonte
+    if (verb !== 'get') throw new ErroConfig(`uso: tars secrets git-credential <get|store|erase> (recebi '${verb ?? ''}')`)
+    const r = respostaCredential(cfg, (le ?? leStdin)())
+    return { saida: r.saida, status: 0 }
+  }
+  throw new ErroConfig(`uso: tars secrets <init|refresh|exec|check|rotate|token|git-credential> (recebi '${sub ?? ''}')`)
 }

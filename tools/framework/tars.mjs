@@ -133,6 +133,7 @@ const USAGE = [
   '    --correcao R               imprime RECORRENTE: <ids> quando ja repetiu (>= 2 -> lembrete',
   '    [--tags a,b] [--fonte F]   de harness-postmortem). Tudo em uma linha so.',
   '',
+  '  secrets init [--refs <f>]  monta o bloco [secrets] do .ai/tars.toml do arquivo de refs',
   '  secrets refresh            abre o cofre (1Password) e regrava o cache cifrado do projeto',
   '  secrets exec -- <cmd...>   roda <cmd> com o cache decifrado no env SO do filho (sem shell)',
   '  secrets check              julga chave/token/cache/recipient/ambiente SEM abrir o cofre',
@@ -401,7 +402,7 @@ async function secretsCommand(rest, project) {
   // original; a manipulacao de segredo, no de operacoes. `exec` e' do segundo porque e' la'
   // que mora a REDACAO da saida do filho.
   const mod = secretsOps.SUBCOMANDOS.includes(sub) ? secretsOps : secretsMod
-  const r = await mod.run({ sub, rest: rest.slice(1), cfg, em: argValue(rest, '--em') })
+  const r = await mod.run({ sub, rest: rest.slice(1), cfg, tabela, em: argValue(rest, '--em') })
   if (r.saida) console.log(r.saida)
   process.exit(r.status ?? 0)
 }
