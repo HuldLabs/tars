@@ -156,6 +156,12 @@ export const CAMPOS = {
   // Quantos dias o cache pode envelhecer antes do `doctor` avisar (S3/dev.9). Ausente = 30:
   // um cache que ninguem recifra ha' um mes carrega a chave que o cofre ja' pode ter trocado.
   cache_max_dias: {},
+  // `git_credential` (dev.19): o NOME da chave do cache que guarda o PAT, e a LISTA de HOSTS
+  // (separados por virgula) para os quais o helper a ENTREGA. Sem a lista declarada o helper
+  // nao entrega para host NENHUM — a negacao e' o default, e um host a mais so' entra por
+  // declaracao explicita do dono. Ver `respostaCredential`.
+  git_credential: {},
+  git_hosts: {},
 }
 
 /** As camadas, da mais fraca para a mais forte. A ordem E' o merge (campo a campo). */
@@ -613,6 +619,77 @@ export function exec(cfg, argv, { env = process.env, spawn = spawnSync } = {}) {
   const r = spawn(argv[0], argv.slice(1), { stdio: 'inherit', env: envDoFilho(decifraMapa(cfg), { env, cfg }), shell: false })
   if (r.error) throw new ErroConfig(`[secrets] nao consegui executar '${argv[0]}': ${r.error.message}`)
   return { status: r.status ?? 1 }
+}
+
+/**
+ * O `stdin` do protocolo do git: o `git` manda `chave=valor\n` e NADA de interativo — le' o
+ * fd 0 ate' o fim, sem eco e sem TTY. Separado de `leOculto` (que e' a pergunta secreta do
+ * dono) porque a natureza e' outra: aqui o texto e' o PEDIDO, nao o segredo.
+ */
+export function leStdin() {
+  try {
+    return fs.readFileSync(0, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * O subcomando `git-credential` (dev.19): o `git` chama este helper como
+ * `tars secrets git-credential <get|store|erase>` e manda os campos do pedido
+ * (`protocol=`, `host=`, ...) pelo STDIN, uma linha `chave=valor` cada. O helper responde no
+ * stdout o mesmo formato (`username=`, `password=`) — o protocolo esta em
+ * https://git-scm.com/docs/gitcredentials#_helper_protocol.
+ *
+ * O que vale aqui, sem excecao:
+ *   1. O PAT sai do CACHE cifrado (`decifraMapa`), nunca do `op` em tempo real: o `git` abre
+ *      uma conexao por fetch e nao pode depender de biometria/1Password a cada uma.
+ *   2. O host e' conferido CONTRA a lista declarada (`git_hosts`) — host sem declaracao nao
+ *      recebe credencial nenhuma (resposta vazia, o `git` decide). A lista e' a unica coisa
+ *      entre o cache inteiro e qualquer servidor que peca senha; entrega so' para o declarado.
+ *   3. `store`/`erase` sao NO-OP: o cache e' a fonte e nao ha' o que gravar nem apagar por
+ *      pedido do `git` (o `erase` de um 401 NAO derruba o cache). Sair 0 e' o contrato.
+ *   4. A entrada do `git` NAO e' ecoada em mensagem de erro: e' dado de origem externa, e a
+ *      regra e' nao ecoar entrada nao confiavel — o diagnostico cita o HOST, nunca o pedido cru.
+ */
+export function respostaCredential(cfg, entrada, { mapaLeitor = decifraMapa } = {}) {
+  const campos = {}
+  for (const bruta of String(entrada ?? '').split(/\r?\n/)) {
+    const linha = bruta.replace(/\r$/, '')
+    if (!linha.trim()) continue
+    const i = linha.indexOf('=')
+    if (i <= 0) continue
+    campos[linha.slice(0, i).trim()] = linha.slice(i + 1).trim()
+  }
+  const host = campos.host || ''
+  // A lista de hosts vem declarada (`git_hosts`), resolvida pelo merge das camadas — nao ha'
+  // default com nome de pessoa. Ausente = lista vazia = entrega para ninguem (negacao default).
+  const declarados = String(cfg.git_hosts ?? '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean)
+  if (!host || !declarados.includes(host.toLowerCase())) {
+    return { saida: '', entregue: false, motivo: host ? 'host fora de `git_hosts`' : 'pedido sem `host`' }
+  }
+  if (!cfg.git_credential) {
+    throw new ErroConfig('[secrets] `git_hosts` declarado mas `git_credential` (o NOME da chave do cache) nao — sem o nome nao ha o que ler')
+  }
+  // A chave no cache e' o NOME (nao uma ref `op://`): o cache e' plano (`KEY=valor`), e o
+  // `refresh` copiou para la' o campo que o template resolveu. Um nome invalido nao e' ecoado.
+  const nome = String(cfg.git_credential)
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nome)) {
+    throw new ErroConfig('[secrets] git_credential precisa ser um NOME de variavel do cache (valor deliberadamente NAO ecoado)')
+  }
+  if (!fs.existsSync(cfg.cache_file)) {
+    throw new ErroConfig(`[secrets] cache ausente em ${cfg.cache_file} — rode \`tars secrets refresh\``)
+  }
+  const mapa = mapaLeitor(cfg)
+  const pat = mapa[nome]
+  if (!pat) {
+    throw new ErroConfig(`[secrets] \`${nome}\` nao esta' no cache — declare a ref no template e rode \`tars secrets refresh\``)
+  }
+  // O formato do protocolo: `username=` + `password=` + linha vazia encerrando.
+  return { saida: `username=x-access-token\npassword=${pat}\n\n`, entregue: true, motivo: 'entregue' }
 }
 
 /**
@@ -1447,5 +1524,14 @@ export function run({ sub, rest = [], cfg, env = process.env, tty = process.stdi
     const r = check(cfg, { env })
     return { saida: format(r), status: r.ok ? 0 : 1 }
   }
-  throw new ErroConfig(`uso: tars secrets <refresh|exec|check|rotate|token> (recebi '${sub ?? ''}')`)
+  // `git-credential` (dev.19): o helper que o `git` chama. A entrada do protocolo vem pelo
+  // STDIN — `le` e' injetavel para o teste nao depender do console.
+  if (sub === 'git-credential') {
+    const verb = rest[0]
+    if (verb === 'store' || verb === 'erase') return { saida: '', status: 0 } // no-op: o cache e' a fonte
+    if (verb !== 'get') throw new ErroConfig(`uso: tars secrets git-credential <get|store|erase> (recebi '${verb ?? ''}')`)
+    const r = respostaCredential(cfg, (le ?? leStdin)())
+    return { saida: r.saida, status: 0 }
+  }
+  throw new ErroConfig(`uso: tars secrets <refresh|exec|check|rotate|token|git-credential> (recebi '${sub ?? ''}')`)
 }
