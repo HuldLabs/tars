@@ -1,5 +1,6 @@
 Tars v<versão> publicada: https://github.com/HuldLabs/tars/releases/tag/v<versão>
-O repo e a imagem do Tars são públicos: atualizar não precisa de token nem de PAT.
+O repo e a imagem do Tars são públicos: atualizar não precisa de token nem de PAT
+(se esbarrar no limite de taxa do GitHub, o self-update tenta de novo com GH_TOKEN ou `gh auth token`).
 
 Como atualizar (nunca compile o Tars):
 1. tars self-update
