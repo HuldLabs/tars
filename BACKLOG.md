@@ -16,6 +16,13 @@
 | END-SYNC-3 | **`.githooks` só é gerado se a pasta existir — e o `init` não avisa** | ready | consumidor novo fica sem hook e não sabe; reportado pelo coord Endurance (14/10) |
 | END-CLI-1 | **`tars identity` não existe** — bloqueia a v0.1.0 do Endurance | ready | subcomando ausente; reportado pelo coord Endurance (14/10) |
 | SYNC-PRE-TOOL | **`tars sync` sobrescreve `hooks.PreToolUse` e derruba hook posto à mão** | ready | achado 14/10 ao rodar o sync do próprio catálogo: o `prod-guard` está no PreToolUse do `.claude/settings.json` (não é `[tars].guards`), e o sync reescreve o evento só com os guards declarados — o hook do gate some calado. Não é desta fatia (pré-existente no HEAD); reprodução: `tars sync --tars . --project .` → `git diff .claude/settings.json` mostra o prod-guard removido. Correção provável: preservar entradas de PreToolUse cujo comando o sync não gerencia (posse por `OWNED`/caminho). |
+| PUB-PAT | **Revisar "precisa de PAT"** (CHANGELOG dev.24, `docs/adocao.md`, notas do self-update) | blocked | com o repo público o token vira opcional (só evita limite de taxa); depende do repo virar público |
+| PUB-GHCR | **Visibilidade de `ghcr.io/huldlabs/tars`** | a-confirmar | o pacote tem visibilidade própria; decisão do dono |
+| GITLEAKS-FP | **Allowlist do gitleaks para `.ai/governance/licoes-plataforma.md:12`** | ready | varredura do histórico inteiro (319 commits, 14/10): 1 achado `private-key`, falso positivo (texto da lição cita o cabeçalho `BEGIN OPENSSH PRIVATE KEY`) |
+| WT-CLEAN | **Limpar worktrees antigas** (`rel19` e 12 com alteração: a3, a4, daneel, g2, g3, hook-main, hookexec, k0, licoes, novo-repo, rel2, rel3) | ready | conferir cada uma antes de apagar |
+| ADOPT-GHCR | **Secret GHCR por repo no `tars adopt`** | nao-refinado | herdado do coord anterior (14/10) |
+| IMG-TRIXIE | **Imagem em trixie** | nao-refinado | herdado do coord anterior (14/10) |
+| SUITE-LOCAL | **3 falhas locais de ambiente na suíte** (verdes no CI) | nao-refinado | ai-layer-check (rulesync e `.ai/rules/ambiente.md` sem `root:true`); embutido gerado desatualizado; "sem motor" com `~/.local/bin` no PATH |
 
 ## Metodologias do ecossistema (pedido do dono, 14/10)
 
@@ -55,4 +62,5 @@ Regra do dono (11/10, `.ai/rules/principles.md`): bug do Tars reportado por um c
 | TARS-BUG-2 | Endurance (coord) | 2026-10-14 | `tars sync` grava hook de catálogo no `PreToolUse` do **Bash** do consumidor — o hook só deveria valer para as ferramentas que o catálogo declara. Reprodução: consumidor novo + `tars sync` → `hooks.jsonc` do consumidor lista o hook em `PreToolUse:Bash` | a-confirmar (aguarda a saída literal do consumidor) |
 | TARS-BUG-3 | Endurance (coord) | 2026-10-14 | `tars sync` **não remove** do consumidor um guard que saiu de `.ai/base` (só acrescenta) — o consumidor fica com guard fantasma que o catálogo não tem mais | a-confirmar (aguarda execução) |
 | TARS-BUG-4 | Endurance (coord) | 2026-10-14 | `.githooks/` só é gerado quando a pasta **já existe** no consumidor, e o `tars init` **não avisa** — consumidor novo fica sem hook de commit/push silenciosamente | a-confirmar (aguarda execução) |
+| TARS-BUG-6 | seo-brain (coord) | 2026-10-14 | `tars self-update` para a dev.26 troca o binário e termina com "binário trocado, mas o sync --upgrade falhou — rode-o e confira"; o `sync --upgrade` manual em seguida passa ("nada mudou, 28 itens"). Erro interno não guardado | a-confirmar (falta a saída literal do sync interno; o próprio self-update a engole — fere a R4) |
 | TARS-BUG-5 | Endurance (coord) | 2026-10-14 | `tars identity` **não existe** — subcomando necessário para a v0.1.0 do Endurance; `tars --help` não lista nada equivalente | a-confirmar (capacidade ausente, não bug de mecanismo) |
