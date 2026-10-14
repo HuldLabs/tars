@@ -60,8 +60,16 @@ export function julgar(root, { mensagem = null, arquivos = staged(root), head = 
 const mensagemDe = (root) => {
   // No `pre-commit` o arquivo da mensagem nao existe (so' no commit-msg): le a mensagem
   // do indice quando houver, senao o corpo do ultimo `-m`. Sem ela, so' resta exigir o par.
+  // Num worktree `.git` e' um ARQUIVO (`gitdir: ...`), entao `join(root,'.git',...)` nunca
+  // achava o COMMIT_EDITMSG e o escape `No-Release:` era ignorado em silencio — justo onde o
+  // fluxo de fatia por worktree mais depende dele. `git rev-parse --git-path` resolve os dois.
   try {
-    const f = join(root, '.git', 'COMMIT_EDITMSG')
+    const viaGit = execFileSync('git', ['-C', root, 'rev-parse', '--git-path', 'COMMIT_EDITMSG'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+    const rel = viaGit || join('.git', 'COMMIT_EDITMSG')
+    const f = rel.startsWith('/') ? rel : join(root, rel)
     return existsSync(f) ? readFileSync(f, 'utf8') : ''
   } catch {
     return ''
