@@ -145,6 +145,15 @@ worktree for every OpenCode dispatch from here on** — the coordinator's own
 doc edits (ROADMAP/HANDOFF) are the one exception, since those are meant to
 land on the coordinator's own current branch quickly, not a throwaway one.
 
+**Release a shared resource only after checking YOUR OWN dependency on it still holds
+(ported from `seg-agentmem-1` #21).** Handing a resource back — freeing a slot, stopping
+a container, unmounting a disk, releasing a port — is a write on shared state, and the
+coordinator is a consumer of that state like any worker. Before releasing, re-read what
+*you* still need from it. Measured failure: a resource was freed to unblock a waiting
+task while the coordinator's own next step depended on it, so the release unblocked
+someone else at the cost of stalling the coordinator — an unforced deadlock resolved by
+turning it into someone else's.
+
 **Two workers in the SAME checkout/slot kill each other — resource collision is a
 dispatch defect, not bad luck (ported from `seg-agentmem-1` #39/#40/#41).** A worktree
 per worker protects the *files*; it does nothing about the other shared resources a
