@@ -278,6 +278,15 @@ sequence), not the worker's own judgment, that prevented it.
   exist as the record, but the dispatch payload duplicates it.
 - **A gap you found is not a task you may dispatch.** Finding it is valuable;
   scoping work against it is the operator's call. Register the gap, ask, wait.
+- **A finding that belongs to ANOTHER front goes to that front's coordinator — with the
+  source and an explicit "tell me if it collides" (ported from `seg-agentmem-1` #1).** A
+  finding outside this worker's write set is not a dropped finding and not a licence to
+  cross into the other front's files: it is a message to the human or coordinator who owns
+  that front. The message carries **where it was seen** (`file:line`, the command, the
+  version/HEAD) so it can be judged without re-deriving it, and it closes with the request
+  to say whether it collides with work already in flight there. Silence is the failure
+  mode — a real finding that never left the worker's report, or one that got "fixed"
+  inside someone else's front, both end with the defect alive and the owner unaware.
 - Scope the blast radius with the tool's own mechanism (a target flag, an explicit
   profile, explicit pathspecs, a dry-run first) — "only touch these N things" in
   prose is not a control.
