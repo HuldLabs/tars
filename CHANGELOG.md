@@ -4,6 +4,29 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.20
+
+### O que mudou
+- **`tars sync --upgrade` (correção que bloqueava todo consumidor).** Na dev.19 o `sync`
+  recusava, com razão, motor de versão diferente da do lock, mas mandava rodar `tars upgrade`,
+  um comando que não existe. Ninguém conseguia atualizar. Agora a recusa aponta o comando real,
+  e `tars sync --upgrade` é a troca de versão **declarada**: reescreve `.ai/base` e
+  `.ai/tars.lock` para o motor atual e registra `upgrade declarado: Tars X -> Y`.
+- `sync` sem `--upgrade` continua recusando a divergência (nada escrito) — o motivo da dev.19
+  (sync com o motor errado apagava item da base) segue valendo.
+
+### Por que
+Achado pelo seo-brain ao atualizar para a dev.19: o lock dele vinha de `1.0.0` (esquema de
+versão antigo) e a única saída citada pelo erro não existia.
+
+### Arquivos impactados
+`tools/framework/tars-sync.mjs`, `tools/framework/tars.mjs` (+ testes), `docs/adocao.md`.
+
+### O que o consumidor faz
+Para sair de qualquer versão anterior (inclusive lock `1.0.0`): troque o binário e rode
+**`tars sync --upgrade`**, depois `tars upgrade-notes --from <versão antiga>`, `tars doctor` e
+`tars adopt`. Quem já está na versão do motor não muda nada.
+
 ## 0.0.1-dev.19
 
 ### O que mudou

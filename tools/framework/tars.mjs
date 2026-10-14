@@ -109,7 +109,8 @@ const USAGE = [
   'uso: tars <comando> [opcoes]',
   '',
   '  init                       cria .ai/tars.toml minimo e sincroniza o declarado',
-  '  sync [--check]             puxa o declarado para .ai/base/ (--check: so valida)',
+  '  sync [--check|--upgrade]   puxa o declarado para .ai/base/ (--check: so valida;',
+  '                             --upgrade: troca DECLARADA de versao, motor != lock)',
   '    --adopt <hook>           adota o hook do projeto (guarda o original em <hook>.bak); sem',
   '                             ele, hook sem a marca de autoria do Tars NAO e sobrescrito',
   '  check                      atalho de `sync --check` (o gate)',
@@ -188,7 +189,7 @@ async function sync(action, rest, project) {
     project: resolve(argValue(rest, '--project') ?? project),
   }
   if (action === 'init') return void (await mod.init(opts))
-  const r = await mod.sync({ ...opts, check: rest.includes('--check'), adopt: argValues(rest, '--adopt') })
+  const r = await mod.sync({ ...opts, check: rest.includes('--check'), upgrade: rest.includes('--upgrade'), adopt: argValues(rest, '--adopt') })
   if (rest.includes('--check')) {
     const bad = r.missing.length || r.stale.length || r.absent.length
     if (bad) {
