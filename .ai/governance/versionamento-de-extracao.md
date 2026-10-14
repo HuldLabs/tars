@@ -53,3 +53,8 @@ nasce com divida e o consumidor nao tem como saber o que mudou.
 - **O consumidor trava a versao no lock** (`.ai/tars.lock`): a versao viaja com os hashes do
   que ele instalou, e `tars upgrade-notes` imprime so' o delta desde o lock — versionamento
   sem notas acionaveis repete o defeito que esta doutrina corrige.
+
+## Como a versao vira Release
+
+O processo inteiro (PR final, merge do dono como aval, tag, workflow, conferencia,
+aviso e atualizacao dos consumidores) esta' em `release.md`.
