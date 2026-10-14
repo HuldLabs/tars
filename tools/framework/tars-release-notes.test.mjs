@@ -37,6 +37,10 @@ describe('tars release-notes', () => {
     expect(() => secao(CHANGELOG, '0.0.1-dev.9')).toThrow(/sem a secao "## 0.0.1-dev.9"/)
   })
 
+  it('cabecalho com data no titulo falha alto em vez de juntar secoes (Endurance)', () => {
+    expect(() => secao(CHANGELOG.replace('## 0.0.1-dev.1', '## 0.0.1-dev.1 — 13/10/2026'), '0.0.1-dev.2')).toThrow(/fora do formato/)
+  })
+
   it('destaques vem do negrito de "O que mudou"', () => {
     expect(destaques(secao(CHANGELOG, '0.0.1-dev.2'))).toEqual(['Coisa nova', 'Outra coisa'])
   })
