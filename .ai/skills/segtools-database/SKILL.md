@@ -74,6 +74,30 @@ custo de pular é recolocar em produção uma migração que já rodou — e mig
   `migration-imutavel`); o delta vira migration **nova**.
   (fonte: seo-brain/HANDOFF.md, seo-brain/docs/BACKUP.md)
 
+## Migração destrutiva vai em três fatias: expand → migrate → contract
+
+Renomear coluna, trocar tipo, partir tabela: a mudança que cabe num deploy é a que **não**
+derruba quem ainda usa a forma antiga. Fazer tudo numa migration só é o que produz janela
+de erro — o instante entre o schema novo e o código novo em que **nenhuma** das duas versões
+funciona. A fatia resolve isso em três passos, cada um **sozinho** seguro de aplicar:
+
+1. **expand** — adicione a forma nova sem tocar na antiga (a coluna nova, a tabela nova, o
+   índice novo). Nada lê a forma nova ainda, então aplicar é inócuo.
+2. **migrate** — backfill dos dados + deploy do código que passa a escrever na forma nova
+   **e** ler de ambas. A forma antiga continua viva e correta durante todo o passo: é a
+   compatibilidade que permite ir e **voltar** sem perda.
+3. **contract** — só depois de o passo 2 estar em produção e estável, remova a forma
+   antiga. Se ele falhar, o revert é o passo 2, não um restore de backup.
+
+- **Cada fatia é uma migration própria** — nunca as três num arquivo só, e nunca
+  reescrevendo a já aplicada (a imutabilidade vem antes de conveniência).
+- **O `contract` espera o relógio do sistema, não o do autor.** Ele depende de o passo 2
+  estar de fato rodando em todo lugar; aplicar no mesmo dia é como não ter fatia nenhuma.
+- **A prova de cada fatia é a idempotência** — reaplicar não muda nada e o diff de schema
+  é vazio; e o passo 2 se prova rodando com as duas formas presentes.
+
+Origem (R1): curadoria 14/10, `seg-agentmem-1` #3.
+
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
 + `docs/operations/{data-foundation,database-environments}`. (Repos de terceiros: **somente leitura**.)
