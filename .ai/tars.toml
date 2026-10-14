@@ -34,7 +34,7 @@ guards = [
 # o arquivo dela so' existe a partir do `prepare-commit-msg`/commit-msg — no pre-commit ele
 # ainda nao foi escrito, entao o escape era invisivel e o gate reprovava quem o declarava.
 # (Medido: pre-commit roda antes de o COMMIT_EDITMSG existir; commit-msg o recebe em argv.)
-pre-commit = ["gitleaks", "healthcheck"]
+pre-commit = ["gitleaks", "healthcheck", "backup-coverage"]
 commit-msg = ["commit-msg", "release-guard"]
 
 # prod-guard (B1.4): o agente nao muda producao (compose/systemctl/kubectl/helm/force-push)
