@@ -40,6 +40,20 @@ const repo = ({ manifest = null, hooksPath = ".githooks", hooks = {} } = {}) => 
 const idDe = (r, id) => r.itens.find((i) => i.id === id);
 
 describe("tars adopt — roteiro de adocao (dev.19)", () => {
+  it("linha de base e cofre: nomeia `tars gates baseline` e `tars secrets init`, e cala quando existem", () => {
+    const manifesto = '[tars]\nversion = "0.0.1-dev.1"\n';
+    const dir = repo({ manifest: manifesto });
+    let r = adopt({ project: dir });
+    expect(idDe(r, "baseline").estado).toBe("aviso");
+    expect(idDe(r, "baseline").comando).toBe("tars gates baseline");
+    expect(idDe(r, "secrets").comando).toMatch(/^tars secrets init/);
+    fs.writeFileSync(path.join(dir, ".ai", "gates-baseline.json"), "{}\n");
+    fs.writeFileSync(path.join(dir, ".ai", "tars.toml"), manifesto + "[secrets]\nproject = \"x\"\n");
+    r = adopt({ project: dir });
+    expect(idDe(r, "baseline").estado).toBe("ok");
+    expect(idDe(r, "secrets").comando).toBe("tars secrets check");
+  });
+
   it("repo vazio: tudo FALTA, nomeia manifesto e o comando `tars init`", () => {
     const dir = repo({ hooksPath: null });
     const r = adopt({ project: dir });

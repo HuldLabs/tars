@@ -167,13 +167,27 @@ export function adopt({ project } = {}) {
   const temDoutrinas = existsSync(join(root, '.ai', 'doctrines.toml')) || doutrinasProjeto > 0
   itens.push(
     item(
-      'baseline',
+      'doutrinas',
       'doutrinas do projeto ([[doctrine]] no .ai/tars.toml)',
       temManifesto ? (temDoutrinas ? 'ok' : 'aviso') : 'falta',
       doutrinasProjeto
         ? `${doutrinasProjeto} doutrina(s) [[doctrine]] declarada(s)`
         : 'sem doutrina propria — as do escopo `catalogo` ja` valem (rodar `tars doctor` para ver)',
       'tars doctor',
+    ),
+  )
+
+  // 5b. LINHA DE BASE dos gates (B3.3): repo pre-existente ja' tem divida; sem a base o
+  // primeiro commit reprova tudo e a saida vira o `--no-verify`. A base nomeia a divida velha
+  // e o gate so' reprova o NOVO.
+  const temLinhaBase = existsSync(join(root, '.ai', 'gates-baseline.json'))
+  itens.push(
+    item(
+      'baseline',
+      'linha de base dos gates (.ai/gates-baseline.json)',
+      temManifesto ? (temLinhaBase ? 'ok' : 'aviso') : 'falta',
+      temLinhaBase ? 'linha de base gravada — o gate reprova so` o que e` novo' : 'sem linha de base — a divida que ja` existe reprova o primeiro commit',
+      'tars gates baseline',
     ),
   )
 
@@ -185,7 +199,7 @@ export function adopt({ project } = {}) {
       '[secrets] (cofre cifrado do projeto)',
       temManifesto ? (temSecrets ? 'ok' : 'aviso') : 'falta',
       temSecrets ? 'tabela [secrets] declarada' : 'sem `[secrets]` — so` se o repo tiver segredo',
-      'tars secrets check',
+      temSecrets ? 'tars secrets check' : 'tars secrets init --refs <arquivo-de-refs>',
     ),
   )
 
