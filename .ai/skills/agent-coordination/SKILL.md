@@ -102,6 +102,26 @@ edit sitting in the working tree can be silently swept into another worker's
 don't leave them lingering uncommitted while a worker with shell access is active on
 the same tree.
 
+**A credential carries the RESOURCE it authorizes, not just the actor — and the
+dispatch must carry that resource too (real defect, BR-IAM-004, 2026-10).** Two
+workers can be "the same identity" (same bot, same token, same runner label) and
+still be authorized over *different* resources. A token scoped to project A that ends
+up writing under project B is not a permissions bug in the abstract — it is a
+**dispatch that never named the resource**. Rules:
+
+- Every credential states **which resource it is scoped to** (project, repo, host,
+  tenant), and every dispatch names the resource the worker is meant to act on. The
+  worker's write set and its credential's scope must be the **same set**.
+- The worker **verifies the resource before the first write**, not after: read where
+  the credential actually points (`git remote -v`, the target path, the tenant id) and
+  abort loud if it is not the resource the prompt named. A mismatch must fail on write
+  #0, never land a commit in the wrong place.
+- The coordinator checks the same thing at dispatch: reusing an identity across repos
+  without re-stating the resource is how the cross-write happens. Reusing the identity
+  is fine; reusing it **silently** is not.
+- A shared credential that *cannot* be scoped per resource is a stop-and-report, not a
+  "be careful" — the guardrail is the scoping, not the intent.
+
 **Worktree isolation, concretely — use it, don't just cite it as the strongest
 mitigation and then skip to the weaker ones.** `infra/scripts/agent-worktree.sh`
 (this project, added 2026-09-20 after seven same-day collisions on one shared
@@ -690,6 +710,24 @@ coordinator.
 the worktree's `node_modules` living as a real 711 MB directory on the slow host mount (155 s vs 9 s on base). The
 reviewer (human or worker) re-runs the failing test on the base checkout first; a gap only in the worktree is an
 environment defect of the dispatch, not of the delivery.
+
+**The coverage reviewer is a SECOND role, distinct from the adversarial reviewer.** The adversarial reviewer
+(`review-prompt-adversarial.md`) takes the worker's findings as given and tries to break them — it catches what the
+author got *wrong*. It structurally **cannot** catch what the author *forgot*: an item the author never raised leaves
+nothing to attack. Coverage is a different question — *what is missing from the set?* — and it needs its own pass:
+
+- **The checklist is the master, not the delivery.** Take the acceptance criteria (or the canonical checklist for
+  this kind of work) **verbatim**, and for every item ask: does the delivery have a status? The finding is the item
+  with **no status** — not raised, not deferred with a reason, not answered "n/a". Silence is the signal, and it is
+  invisible to a review that only reads what was written.
+- **A deferred item counts only with a named reason.** "Not done" is covered; "not mentioned" is not. Push anything
+  parked on someone/something to name the holder.
+- **Report as a coverage table:** `item (from the checklist) | status (done | missing | deferred) | evidence or the
+  name it was deferred to`. The reviewer of coverage never edits and never moves the status — it hands the missing
+  list to the coordinator, who decides whether it is scope, a sibling issue, or a real gap.
+- **Run it wherever a checklist exists** — not only code: a research note against its sub-questions, a security
+  audit against its controls, a release against its items. The rule is general: *someone must ask what is absent*,
+  and it must not be the author.
 
 - No worker marks its own work qa-done. A delivery already claiming "approved" is
   wrong on sight — revert the status, treat as unverified.
