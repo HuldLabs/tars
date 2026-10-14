@@ -67,6 +67,19 @@ describe('tars self-update', () => {
     expect(fs.readFileSync(f)).toEqual(BIN)
   })
 
+  it('repo publico: baixa sem token; anonima falhou, tenta com token', async () => {
+    const ok = fake(`${sha(BIN)}  tars-linux-amd64\n`)
+    const auths = []
+    const fn = (falha) => async (u, o) => (auths.push(o.headers.Authorization), !o.headers.Authorization && falha ? { ok: false, status: 403 } : ok(u))
+    const semToken = { ...base, env: {}, atual: '0.0.1-dev.8' }
+    expect((await selfUpdate({ ...semToken, exe: exe(), fetchFn: fn(false) })).mudou).toBe(true)
+    expect(auths.every((a) => a === undefined)).toBe(true)
+    auths.length = 0
+    expect((await selfUpdate({ ...base, atual: '0.0.1-dev.8', exe: exe(), fetchFn: fn(true) })).mudou).toBe(true)
+    expect(auths).toEqual([undefined, 'Bearer x', 'Bearer x', 'Bearer x']) // depois do 1o 403, so' com token
+    await expect(selfUpdate({ ...semToken, env: { PATH: '' }, exe: exe(), fetchFn: fn(true) })).rejects.toThrow(/403 .* sem token/)
+  })
+
   it('sha256 diferente: NADA e trocado', async () => {
     const f = exe()
     await expect(selfUpdate({ ...base, atual: '0.0.1-dev.8', exe: f, fetchFn: fake(`${'0'.repeat(64)}  tars-linux-amd64\n`) })).rejects.toThrow(/NAO bate/)

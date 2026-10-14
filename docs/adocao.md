@@ -26,8 +26,8 @@ install -m 0755 tars-linux-amd64 ~/.local/bin/tars
 tars --version
 ```
 
-O repo é privado: o `curl` precisa de token (`-H "Authorization: Bearer $GH_TOKEN"`) ou use
-`gh release download v$V -R HuldLabs/tars -p 'tars-linux-*' -p sha256sums`.
+O repo e a imagem são públicos: o `curl` não precisa de token. Se esbarrar no limite de taxa
+do GitHub, repita com `-H "Authorization: Bearer $GH_TOKEN"`.
 
 **Numa imagem Docker (o que o Endurance faz):** copie da imagem, fixando por digest, nunca
 por tag móvel:
