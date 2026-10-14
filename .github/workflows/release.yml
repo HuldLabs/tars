@@ -312,4 +312,4 @@ jobs:
           tags=(-t "${IMAGE}:${v}" -t "${IMAGE}:$(echo "$v" | cut -d. -f1-2)")
           case "$v" in *-*) ;; *) tags+=(-t "${IMAGE}:latest") ;; esac
           docker buildx imagetools create "${tags[@]}" "${IMAGE}@${{ needs.imagem.outputs.digest }}"
-          docker buildx imagetools inspect "${IMAGE}:${v}" | head -3
+          docker buildx imagetools inspect "${IMAGE}:${v}" --format '{{.Manifest.Digest}}'
