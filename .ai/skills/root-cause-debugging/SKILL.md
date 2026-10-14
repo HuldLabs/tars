@@ -40,6 +40,23 @@ declara) vive em `.ai/governance/incidente-vira-prevencao.md`. Aqui está o pass
 10. **Menor guard honesto para o modo de falha corrigido** — um teste quando for essa a
     camada certa; senão, o check mecânico mais próximo (a lição vira verificação).
 
+### Teste que passa sozinho e falha no arquivo: a ORDEM é a variável (B4.7)
+
+`vitest -t "<nome>"` — ou qualquer filtro por nome — **isola** o teste, e por isso esconde a
+falha que depende do que rodou antes: estado de módulo, mock registrado noutro `beforeAll`,
+índice semeado, `localStorage`, ordem de inscrição. O teste passa com `-t` e reprova na
+suíte — e o reflexo é "flaky", que é uma conclusão, não uma observação.
+
+- **A prova é o ARQUIVO inteiro**, nunca o caso isolado: reproduza com
+  `vitest run <arquivo>` e depois com a suíte; se só o arquivo (ou só a suíte) reprova, a
+  dependência é **posicional** e está entre os vizinhos, não no caso.
+- **Ache o vizinho** estreitando por bissecção da ordem: rode o caso depois de metade do
+  arquivo, depois um quarto — o ponto onde ele começa a falhar nomeia quem contaminou.
+- **Não "conserte" isolando mais** (marcar `.only`, pular o vizinho, reinicializar tudo no
+  `beforeEach`): isso apaga o sintoma e deixa a ordem quebrada para quem escrever o próximo
+  teste. A correção é no **(re)set de estado compartilhado** — cada teste deixa o mundo como
+  encontrou.
+
 ## Regras
 
 - **Preserve a evidência enquanto o bug ainda é observável** — capture a saída/estado que
