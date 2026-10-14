@@ -80,7 +80,8 @@ export async function selfUpdate({ atual, version = null, exe = process.execPath
   const bin = Buffer.from(await (await get(asset(nome), 'application/octet-stream')).arrayBuffer())
   const got = createHash('sha256').update(bin).digest('hex')
   if (got !== shaDe(sums, nome)) throw new Error(`self-update: sha256 de ${nome} NAO bate com o sha256sums — nada trocado.`)
-  const tmp = join(dirname(exe), `.tars-${alvo}.tmp`)
+  // pid no nome: dois self-update no mesmo HOME (container compartilhado) nao disputam o mesmo .tmp
+  const tmp = join(dirname(exe), `.tars-${alvo}.${process.pid}.tmp`)
   writeFileSync(tmp, bin)
   chmodSync(tmp, 0o755)
   renameSync(tmp, exe) // atomico: quem roda o binario velho nao ve arquivo pela metade
