@@ -62,7 +62,7 @@ id = "fail/erro-nao-se-engole"
 titulo = "`catch {}` vazio e `except: pass` REPROVAM no staged (TARS-SWALLOW-1)"
 fonte = ".ai/gates/lint-swallow/GATE.md:1-14"
 gate = "../../.ai/gates/lint-swallow"
-prova = "printf 'try { f() } catch {}\\n' > /tmp/tars-doc-swallow.mjs && node .ai/gates/lint-swallow/gate.mjs"
+prova = "d=$(mktemp -d) && git -C \"$d\" init -q && printf 'try { f() } catch {}\\n' > \"$d/x.mjs\" && git -C \"$d\" add x.mjs && TARS_PROJECT=\"$d\" node .ai/gates/lint-swallow/gate.mjs"
 onde = "pre-commit"
 
 [[doctrine]]
@@ -114,7 +114,7 @@ id = "release/motor-sobe-versao"
 titulo = "Commit que toca o motor do Tars sobe a versao e traz entrada no CHANGELOG"
 fonte = ".ai/gates/release-guard/GATE.md:1-8"
 gate = ".ai/gates/release-guard"
-prova = "node .ai/gates/release-guard/gate.mjs --forca-reprova 2>/dev/null; test $? -ne 0"
+prova = "d=$(mktemp -d) && git -C \"$d\" init -q && git -C \"$d\" commit -q --allow-empty -m init && printf 'tools/framework/tars-embedded.mjs\\n' > \"$d/.staged\" && TARS_PROJECT=\"$d\" node .ai/gates/release-guard/gate.mjs \"$d/msg\" && test -f \"$d/msg\""
 onde = "commit-msg"
 escopo = "catalogo"
 

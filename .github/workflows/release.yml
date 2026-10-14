@@ -1,0 +1,212 @@
+# Release do Tars — publicacao por PADRAO em toda tag `v*`.
+#
+# O que faz (fatia 2a, item 1):
+#   1. compila o binario `tars` para linux amd64 e arm64 (`bun build --compile`, sem Node no
+#      consumidor);
+#   2. anexa os binarios + `sha256sums` a GitHub Release da tag;
+#   3. publica `ghcr.io/huldlabs/tars:<versao>` multi-arch com SO' o binario (base minima —
+#      ver `.github/release.Dockerfile`: o `--compile` do Bun nao emite estatico de verdade,
+#      entao `FROM scratch` nao roda; a base `alpine` + `libstdc++` e' o minimo provado).
+#
+# A versao vem da TAG (`v0.0.1-dev.18` -> `0.0.1-dev.18`); o binario embute o catalogo
+# (`.ai/` + `templates/`) e roda num ambiente SEM checkout e SEM `TARS_HOME` (fatia 2a, item 2).
+#
+# Nada de segredo alem do `GITHUB_TOKEN`: o job publica no proprio repo (Release) e no GHCR
+# (`packages: write`). O `id-token` alimenta a atestacao de procedencia (SLSA) das imagens.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# `contents: write` para criar a Release; `packages: write` para o GHCR; `id-token: write`
+# para o `provenance: true` do build-push-action assinar a atestacao.
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/huldlabs/tars
+
+jobs:
+  # Compila os DOIS alvos numa matriz e sobe cada um como artefato do workflow. `bun build
+  # --compile --target` faz cross-compile a partir do runner amd64 (o arm64 sai do binario
+  # embutido do Bun) — sem runner arm64 e sem QEMU na etapa de build.
+  binario:
+    name: binario ${{ matrix.alvo }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - alvo: linux-x64
+            bun: bun-linux-x64-musl
+            out: tars-linux-amd64
+          - alvo: linux-arm64
+            bun: bun-linux-arm64-musl
+            out: tars-linux-arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.2" # a mesma do `packageManager`; o binario compilado a fixa
+
+      - name: Instalar dependencias
+        run: bun install --frozen-lockfile
+
+      - name: Embutir o catalogo e compilar
+        run: |
+          set -euo pipefail
+          # A versao da tag e' a fonte: o binario embute o catalogo e o `--version` responde.
+          node tools/framework/tars-embed-catalog.mjs --tars . --out tools/framework/tars-embedded.mjs
+          bun build --compile --target=${{ matrix.bun }} tools/framework/tars.mjs --outfile "${{ matrix.out }}"
+
+      - name: Provar o binario (roda SEM checkout, SEM TARS_HOME)
+        run: |
+          set -euo pipefail
+          # Copia o binario para um tmpdir SEM `.ai/` acima: exatamente o asset da Release.
+          # Se ele nao responder, o defeito e' o "sem checkout" (fatia 2a, item 2). O alvo musl
+          # NAO roda no runner amd64 sem o loader — por isso a prova so' roda no alvo da maquina.
+          dir="$(mktemp -d)"
+          cp "${{ matrix.out }}" "${dir}/tars"
+          versao="${GITHUB_REF_NAME#v}"
+          if [ "${{ matrix.alvo }}" = "linux-x64" ]; then
+            saida="$(env -u TARS_HOME TARS_EMBED_CACHE="${dir}/cache" "${dir}/tars" --version)"
+            test "${saida}" = "${versao}" || { echo "binario respondeu '${saida}', esperava '${versao}'"; exit 1; }
+          else
+            echo "alvo ${{ matrix.alvo }}: cross-compilado, a prova de execucao e' o smoke da imagem"
+          fi
+
+      - name: Subir o binario como artefato
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.out }}
+          path: ${{ matrix.out }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Baixa os dois binarios, gera o `sha256sums` e anexa tudo a Release da tag.
+  release:
+    name: GitHub Release
+    needs: binario
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Baixar os binarios
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Gerar o sha256sums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum tars-linux-amd64 tars-linux-arm64 > sha256sums
+          cat sha256sums
+
+      - name: Anexar a Release da tag
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          name: ${{ github.ref_name }}
+          # O corpo padrao do GitHub ("Full Changelog") basta: as notas do consumidor vivem no
+          # CHANGELOG.md (`tars upgrade-notes`). `generate_release_notes` acrescenta o diff.
+          generate_release_notes: true
+          files: |
+            dist/tars-linux-amd64
+            dist/tars-linux-arm64
+            dist/sha256sums
+
+  # Publica a imagem multi-arch `FROM scratch` com SO' `/tars`. Usa o `build-push-action`
+  # com um Dockerfile embutido num contexto de uma linha: cada plataforma INJETA o binario
+  # ja' compilado (nunca recompila no Docker) pela tag que o buildx resolve.
+  imagem:
+    name: imagem OCI (ghcr.io/huldlabs/tars)
+    needs: binario
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Baixar os binarios
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Normalizar os nomes (o Dockerfile espera `tars`)
+        run: |
+          set -euo pipefail
+          cp dist/tars-linux-amd64 tars
+          cp dist/tars-linux-arm64 tars.arm64
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b60017a # v3.7.0
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Login no GHCR
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Metadados da imagem
+        id: meta
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+        with:
+          images: ${{ env.IMAGE }}
+          # `v0.0.1-dev.18` -> `0.0.1-dev.18`; a tag `latest` so' para release sem pre-release.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - name: Build e push (multi-arch, FROM scratch)
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: .github/release.Dockerfile
+          # O buildx passa o SEU proprio layout de plataforma; o Dockerfile escolhe o binario
+          # por `TARGETARCH` (amd64/arm64) — os dois vieram de artefatos ja' compilados.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+
+  # Smoke da imagem: confere que o manifest multi-arch existe e que o container amd64
+  # responde `--version` com a versao da tag, provando a imagem `FROM scratch` de verdade.
+  imagem-smoke:
+    name: smoke da imagem
+    needs: imagem
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Login no GHCR
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: A imagem responde a versao da tag (sem checkout)
+        run: |
+          set -euo pipefail
+          versao="${GITHUB_REF_NAME#v}"
+          saida="$(docker run --rm "${IMAGE}:${versao}" --version)"
+          echo "imagem respondeu: ${saida}"
+          test "${saida}" = "${versao}" || { echo "esperava '${versao}'"; exit 1; }

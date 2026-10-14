@@ -7,3 +7,6 @@ node_modules/
 
 # O binario compilado (`bun run build`) vai para Release, nao para o Git
 dist/
+
+# O catalogo GERADO que o build embute (`tars-embed-catalog.mjs`); o build o regenera
+tools/framework/tars-embedded.mjs

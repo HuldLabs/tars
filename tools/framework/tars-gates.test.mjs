@@ -473,20 +473,28 @@ describe("gate release-guard", () => {
     return dir;
   }
 
-  const julgar = async (dir, mensagem = "") => {
+  // `mensagem` e' o CONTEUDO da mensagem no commit-msg (julgado ali); `null` e' o pre-commit
+  // (sem mensagem), que DEFERE ao commit-msg (TARS-BUG release-guard).
+  const julgar = async (dir, mensagem = null) => {
     const mod = await import(path.join(HERE, "..", "..", ".ai", "gates", "release-guard", "gate.mjs"));
     return mod.julgar(dir, { mensagem });
   };
 
-  it("REPROVA motor tocado sem subir versao nem CHANGELOG", () => {
-    return julgar(repo({ arquivos: ["tools/framework/tars-sync.mjs"] })).then((r) => {
+  it("pre-commit DEFERE (nao reprova) motor tocado sem versao/CHANGELOG", () =>
+    julgar(repo({ arquivos: ["tools/framework/tars-sync.mjs"] })).then((r) => {
+      expect(r.ok).toBe(true);
+      expect(r.defere).toBe(true);
+      expect(r.motivo).toMatch(/VERSION|CHANGELOG/);
+    }));
+
+  it("commit-msg REPROVA motor tocado sem versao/CHANGELOG e sem isencao", () =>
+    julgar(repo({ arquivos: ["tools/framework/tars-sync.mjs"] }), "chore: ajuste\n").then((r) => {
       expect(r.ok).toBe(false);
       expect(r.motivo).toMatch(/VERSION|CHANGELOG/);
-    });
-  });
+    }));
 
-  it("REPROVA quando sobe a versao mas falta o CHANGELOG", () =>
-    julgar(repo({ versaoAtual: "0.0.1-dev.7", arquivos: ["tools/framework/tars-sync.mjs"] })).then((r) =>
+  it("commit-msg REPROVA quando sobe a versao mas falta o CHANGELOG", () =>
+    julgar(repo({ versaoAtual: "0.0.1-dev.7", arquivos: ["tools/framework/tars-sync.mjs"] }), "chore: x\n").then((r) =>
       expect(r.ok).toBe(false),
     ));
 
@@ -495,7 +503,7 @@ describe("gate release-guard", () => {
       (r) => expect(r.ok).toBe(true),
     ));
 
-  it("APROVA `No-Release: <motivo>` no corpo", () =>
+  it("commit-msg APROVA `No-Release: <motivo>` no corpo", () =>
     julgar(repo({ arquivos: [".ai/guards/lib-json.sh"] }), "chore: ajuste\n\nNo-Release: regeneracao de indice\n").then((r) =>
       expect(r.ok).toBe(true),
     ));
@@ -503,13 +511,54 @@ describe("gate release-guard", () => {
   it("APROVA commit que nao toca o motor do Tars", () =>
     julgar(repo({ arquivos: ["docs/x.md"] })).then((r) => expect(r.ok).toBe(true)));
 
-  it("REPROVA pela ponta CLI (exit 1) e passa com No-Release no COMMIT_EDITMSG", () => {
+  // A ponta CLI le a mensagem do ARQUIVO que o git passa como argv[2] do commit-msg
+  // (TARS-BUG release-guard: no pre-commit nao existe arquivo, e num worktree `.git` e' um
+  // ARQUIVO — `join(root, '.git', 'COMMIT_EDITMSG')` nem existe).
+  it("pre-commit DEFERE pela CLI (exit 0, avisa) mesmo sem isencao", () => {
     const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
     const r = rodar([gate], { env: { TARS_PROJECT: dir } });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/RELEASE GUARD/);
+  });
+
+  it("commit-msg APROVA pela CLI quando o arquivo da mensagem traz No-Release (repo normal)", () => {
+    const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
+    const msg = path.join(dir, "msg.txt");
+    fs.writeFileSync(msg, "chore: x\n\nNo-Release: regeneracao de indice\n");
+    expect(rodar([gate, msg], { env: { TARS_PROJECT: dir } }).status).toBe(0);
+  });
+
+  it("commit-msg REPROVA pela CLI sem No-Release (arquivo de mensagem presente)", () => {
+    const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
+    const msg = path.join(dir, "msg.txt");
+    fs.writeFileSync(msg, "chore: x\n");
+    const r = rodar([gate, msg], { env: { TARS_PROJECT: dir } });
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/RELEASE GUARD/);
-    fs.writeFileSync(path.join(dir, ".git", "COMMIT_EDITMSG"), "chore: x\n\nNo-Release: regeneracao de indice\n");
-    expect(rodar([gate], { env: { TARS_PROJECT: dir } }).status).toBe(0);
+  });
+
+  it("commit-msg APROVA pela CLI dentro de um WORKTREE (onde `.git` e' arquivo)", () => {
+    const base = tmp();
+    const git = (...args) => execFileSync("git", ["-C", base, ...args], { stdio: "ignore" });
+    execFileSync("git", ["-C", base, "init", "-q"], { stdio: "ignore" });
+    fs.mkdirSync(path.join(base, ".ai"), { recursive: true });
+    fs.writeFileSync(path.join(base, ".ai", "VERSION"), `${V}\n`);
+    git("add", ".ai/VERSION");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base");
+    const wt = path.join(base, "wt");
+    git("worktree", "add", "-q", wt, "-b", "f");
+    // No worktree `.git` e' ARQUIVO (`gitdir: ...`): o caminho antigo nunca existiria aqui.
+    expect(fs.statSync(path.join(wt, ".git")).isFile()).toBe(true);
+    fs.mkdirSync(path.join(wt, "tools", "framework"), { recursive: true });
+    fs.writeFileSync(path.join(wt, "tools", "framework", "tars-sync.mjs"), "x\n");
+    git("-C", wt, "add", "tools/framework/tars-sync.mjs");
+    const msg = path.join(wt, "msg.txt");
+    // Sem isencao: o commit-msg REPROVA mesmo no worktree (onde o pre-commit deferiu).
+    fs.writeFileSync(msg, "chore: x\n");
+    expect(rodar([gate, msg], { env: { TARS_PROJECT: wt } }).status).toBe(1);
+    // Com isencao: o commi-msg aprova — a mensagem veio do ARQUIVO, nao de `.git/COMMIT_EDITMSG`.
+    fs.writeFileSync(msg, "chore: x\n\nNo-Release: regeneracao de indice\n");
+    expect(rodar([gate, msg], { env: { TARS_PROJECT: wt } }).status).toBe(0);
   });
 
   // O hook commit-msg passa o ARQUIVO da mensagem em argv[2]; no pre-commit ele ainda nao

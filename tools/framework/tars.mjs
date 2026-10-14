@@ -51,6 +51,10 @@ import * as acessosMod from './tars-acessos.mjs'
 // provision/revoke/verify). Reusa o cofre do `tars secrets`; o julgamento mora no modulo
 // dono (R3) — aqui so' o despacho fino e a leitura de `[identity]`.
 import * as identityMod from './tars-identity.mjs'
+// FATIA 2A: o catalogo EMBUTIDO no binario. O import ESTATICO e' o que faz o
+// `bun build --compile` enxerga-lo e embutir (`tars-embedded.mjs` e' GERADO no build por
+// `tars-embed-catalog.mjs`; ver `defaultTars`). So' `materializar` e' usado aqui.
+import { materializar } from './tars-embedded-runtime.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -69,9 +73,13 @@ function findRoot(start) {
 // passa a ser o repo onde o BINARIO vive (`process.execPath`), subindo ate' achar `.ai/VERSION`.
 // Ordem: `--tars` > `TARS_HOME` > este default > cwd (fonte). Sem ele, rodar o binario fora
 // do repo do Tars morria com "nao achei a raiz do Tars" (Incident: dist/tars perde modulo).
+//
+// FATIA 2A (binario sem checkout): quando o binario NAO vive num checkout (asset da release,
+// imagem `FROM scratch` com so' `/tars`), nao ha' repo acima dele. Cai no CATALOGO EMBUTIDO
+// (`tars-embedded.mjs`, gerado em build): materializado no cache do usuario, vira o TARS_HOME.
 function defaultTars() {
-  if (COMPILED) return findRoot(dirname(process.execPath))
-  return null
+  if (!COMPILED) return null
+  return findRoot(dirname(process.execPath)) ?? materializar()
 }
 
 const args = process.argv.slice(2)
