@@ -3,8 +3,8 @@
 //
 // Nao reimplementa padrao de segredo nenhum: se o `gitleaks` esta' instalado, roda ele
 // (`protect --staged`, com o `.gitleaks.toml` do projeto quando existir) e propaga o exit
-// code. Sem gitleaks, AVISA alto e passa — o mesmo comportamento best-effort do pre-commit
-// do segtools: um scan ausente nao pode virar um "pode commitar" silencioso.
+// code. Sem gitleaks, REPROVA (fail-closed): um scan ausente nao pode virar um "pode
+// commitar" — foi o que o Kipp viu na adocao da dev.20 (14/10): o commit passou sem varredura.
 //
 // Parametros (opcionais, no `[gates.params.gitleaks]` do `.ai/tars.toml`):
 //   modo  = "staged" | "tree"  (default staged)
@@ -18,8 +18,8 @@ const params = JSON.parse(process.env.TARS_GATE_PARAMS || '{}')
 
 // Binario ausente => spawnSync devolve `error` (nao status): e' o unico sinal confiavel de "nao instalado".
 if (spawnSync('gitleaks', ['version'], { stdio: 'ignore' }).error) {
-  console.error('gate gitleaks: binario ausente — segredo NAO foi varrido (instale o gitleaks).')
-  process.exit(0)
+  console.error('gate gitleaks: binario ausente — segredo NAO foi varrido. Instale o gitleaks (versao fixa) e repita.')
+  process.exit(1)
 }
 
 const args = params.modo === 'tree' ? ['detect', '--redact'] : ['protect', '--staged', '--redact']

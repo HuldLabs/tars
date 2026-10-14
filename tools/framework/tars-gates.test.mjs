@@ -416,10 +416,10 @@ describe("gate lint-swallow — so' o RASTREADO (regra do dono, 14/10)", () => {
 describe("gate gitleaks", () => {
   const gate = GATE("gitleaks", "gate.mjs");
 
-  it("sem o binario avisa e passa (best-effort declarado)", () => {
-    // PATH sem gitleaks: o gate nao pode virar um "pode commitar" silencioso.
+  it("sem o binario REPROVA (fail-closed, dev.21)", () => {
+    // Kipp, 14/10: com exit 0 o commit da adocao passou sem varredura nenhuma.
     const r = rodar([gate], { env: { TARS_PROJECT: os.tmpdir(), PATH: "/nonexistent" } });
-    expect(r.status).toBe(0);
+    expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/binario ausente/i);
   });
 });

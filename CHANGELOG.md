@@ -4,6 +4,41 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.21
+
+### O que mudou
+- **O sync não apaga mais a lib dos guards.** Na dev.20, o segundo `tars sync` (e o
+  `--upgrade`) removia `.ai/base/guards/lib-json.sh` "fora do manifesto"; sem ela,
+  `block-secret-dump` e `block-destructive-commands` saíam com rc=0 e **aprovavam tudo**.
+  A poda agora usa as mesmas dependências que a cópia traz, e a varredura de `source`
+  reconhece `$(dirname "$0")/lib.sh`.
+- **Guards que bloqueiam falham fechados.** Sem a `lib-json.sh`, os dois guards bloqueiam
+  (exit 2) e dizem o que falta, em vez de aprovar.
+- **Gate gitleaks sem o binário reprova.** Antes avisava e deixava o commit passar sem
+  varredura de segredo.
+- **Sem DRIFT de `gates/linha-de-base` no binário.** A doutrina apontava um arquivo da
+  fonte do Tars que não viaja no binário; agora aponta o aplicador do catálogo
+  (`.ai/gates/lib-baseline.mjs`).
+
+### Por que
+Achados na adoção da dev.20: o Endurance perdeu a lib dos guards no `--upgrade`; o Kipp
+commitou sem varredura de segredo porque o gitleaks não estava instalado, e o doctor
+reprovava por um DRIFT que o consumidor não tinha como resolver. A regra é uma só: o que
+vigia não aprova quando falta a peça que vigia.
+
+### Arquivos impactados
+`tools/framework/tars-sync.mjs`, `.ai/guards/block-secret-dump.sh`,
+`.ai/guards/block-destructive-commands.sh`, `.ai/gates/gitleaks/gate.mjs`,
+`.ai/doctrines.toml` (+ testes: `tars-sync.test.mjs`, `tars-gates.test.mjs`,
+`tars-fail-closed.test.mjs`).
+
+### O que o consumidor faz
+Troque o binário e rode **`tars sync --upgrade`**, depois `tars upgrade-notes --from <versão antiga>`
+e `tars doctor`.
+- Quem rodou o `--upgrade` da dev.20: confira `.ai/base/guards/lib-json.sh`. Se sumiu, o
+  sync da dev.21 o repõe.
+- **Instale o gitleaks** (versão fixa) onde houver commit: sem ele, o pre-commit agora reprova.
+
 ## 0.0.1-dev.20
 
 ### O que mudou

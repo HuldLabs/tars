@@ -5,7 +5,8 @@
 # Fails OPEN.
 set -uo pipefail
 
-source "$(dirname "$0")/lib-json.sh"
+# Sem a lib o guard NAO pode aprovar (rc=0 liberava tudo — Endurance, 14/10): bloqueia.
+source "$(dirname "$0")/lib-json.sh" || { echo "guard: lib-json.sh ausente — bloqueado ate o tars sync repor" >&2; exit 2; }
 HOOK_INPUT="$(cat 2>/dev/null || true)"
 CMD="$(jget tool_input.command)"; TOOL="$(jget tool_name)"
 case "$TOOL" in Bash|PowerShell) ;; *) exit 0 ;; esac
