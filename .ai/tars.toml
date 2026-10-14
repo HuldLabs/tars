@@ -34,7 +34,9 @@ guards = [
 # o arquivo dela so' existe a partir do `prepare-commit-msg`/commit-msg — no pre-commit ele
 # ainda nao foi escrito, entao o escape era invisivel e o gate reprovava quem o declarava.
 # (Medido: pre-commit roda antes de o COMMIT_EDITMSG existir; commit-msg o recebe em argv.)
-pre-commit = ["gitleaks", "healthcheck", "backup-coverage"]
+# no-foreign-runtime (B1.5): o `.ai/` COPIADO nao pode exigir runtime que o consumidor nao
+# usa (transversal = binario unico; o catalogo fala Node). O motor (tools/) fica de fora.
+pre-commit = ["gitleaks", "healthcheck", "backup-coverage", "no-foreign-runtime"]
 commit-msg = ["commit-msg", "release-guard"]
 
 # prod-guard (B1.4): o agente nao muda producao (compose/systemctl/kubectl/helm/force-push)

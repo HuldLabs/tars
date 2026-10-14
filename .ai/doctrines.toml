@@ -66,6 +66,14 @@ prova = "d=$(mktemp -d) && git -C \"$d\" init -q && printf 'try { f() } catch {}
 onde = "pre-commit"
 
 [[doctrine]]
+id = "ecossistema/sem-runtime-de-quem-nao-usa"
+titulo = "O `.ai/` copiado nao exige runtime que o consumidor nao usa (transversal = binario unico)"
+fonte = ".ai/gates/no-foreign-runtime/GATE.md:1-20"
+gate = "../../.ai/gates/no-foreign-runtime"
+prova = "rm -rf /tmp/tars-doc-nfr && mkdir -p /tmp/tars-doc-nfr/.ai/skills/x && cd /tmp/tars-doc-nfr && git init -q && printf 'rode `python3 x.py`\\n' > .ai/skills/x/SKILL.md && git add -- .ai/skills/x/SKILL.md && TARS_PROJECT=/tmp/tars-doc-nfr node /projects/tars/.ai/gates/no-foreign-runtime/gate.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
 id = "git/branch-name"
 titulo = "Branch `<tipo>/<slug>`"
 fonte = ".ai/governance/git.md:5-16"
