@@ -81,6 +81,25 @@ Two different jobs, two different tools — do not merge them.
 - A recipe reads the secret at run time from the secrets layer, same as any other process —
   it does not template it into a config file that then sits in the repo.
 
+## 7. The barrier is mechanical, not memory — fix the mechanism before the recipes
+
+- **The mechanism comes first.** When a class of failure shows up (a recipe that skipped a
+  contract, an apply that left the host wrong), build the **mechanical barrier** before
+  writing more recipes: the ficha's schema, contract tests on every recipe, a gate that
+  refuses commit/push/apply with a red suite, and a **post-apply proof**. Fixing the recipes
+  one by one while the mechanism stays weak reproduces the same class on the next host.
+- **Post-apply proof, not pre-apply intention.** The recipe asserts the declared state
+  *after* applying, in the same run that applied it (§3) — a later human check is not the
+  barrier.
+- **Periodic rebuild rehearsal.** A recipe exercised only when a host is born has rotted
+  without saying so. Rehearse the rebuild on a schedule, so the drift between "what the
+  ficha declares" and "what actually rebuilds" is measured, not assumed.
+- **Reopening trigger.** An adoption decision carries its **explicit reopening trigger**
+  written next to it — the condition that would make it wrong again. Without it, the decision
+  outlives the reason it was taken.
+- **Measure on the ruler of the adopted tool.** A study that measures the stack by another
+  tool's unit is on the wrong ruler, and its comparison decides nothing.
+
 ## Checklist before delivering a recipe
 
 - [ ] The ficha/host file is the declaration: inventory and manifest in one, versioned.
