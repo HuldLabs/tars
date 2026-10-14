@@ -16,10 +16,15 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   binário entra no modo `self` (só wiring e hooks do git). Antes ele comparava o repo com o
   catálogo embutido no cache, tratava o Tars como consumidor e criava `.ai/base/` e
   `.ai/tars.lock`.
+- **A base copiada vence a cópia local de `.ai/guards/`.** O consumidor que tinha `.ai/VERSION`
+  próprio (segtools) era tratado como o catálogo: o hook citava `.ai/guards/`, cópias locais que
+  ninguém atualiza, e não `.ai/base/guards/`. Agora só o checkout do catálogo usa `.ai/guards/`; no
+  consumidor o sync aponta sempre para a base.
 - **A suíte não escreve mais no repo.** O teste de dogfood compara o `settings.json` com o que o
   sync geraria, em memória; antes rodava o sync de verdade e reescrevia o arquivo.
 
-Bugs que esta versão fecha: SYNC-PRE-TOOL, TARS-SELF-1, TEST-MUTA-REPO (achados do coord na dev.27).
+Bugs que esta versão fecha: SYNC-PRE-TOOL, TARS-SELF-1, TEST-MUTA-REPO (achados do coord na dev.27) e
+SEG-SELF (segtools, 14/10: guards de 02/10 sem o fail-closed nem as regras de git).
 
 ### Por que
 Os três derrubavam o `prod-guard` do Tars, o gate que impede mudança em produção sem a ordem do
@@ -31,7 +36,10 @@ dono, e nada acusava.
 
 ### O que o consumidor faz
 `tars self-update` e `tars sync --upgrade`. Hook que você pôs à mão no `PreToolUse` e o sync
-apagou: ponha de novo — agora ele fica.
+apagou: ponha de novo — agora ele fica. Se o repo tem `.ai/guards/` com cópias dos guards do
+catálogo (segtools): depois do sync o hook aponta para `.ai/base/guards/` e essas cópias ficam
+órfãs — confira `git diff .claude/settings.json` e apague-as. Guard próprio do projeto vai pelo
+mecanismo de gate local.
 
 ## 0.0.1-dev.27
 

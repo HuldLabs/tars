@@ -627,19 +627,25 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     expect(fs.existsSync(path.join(base, "guards", "precompact-persist-state.sh"))).toBe(true);
   });
 
-  it("guard da base no PROJETO (`.ai/guards/`) vence a copia da base", async () => {
-    // `resolveGuardFile` procura no projeto primeiro: o hook tem de citar o que ele achou.
+  it("a copia da BASE vence a copia velha em `.ai/guards/` do consumidor (SEG-SELF)", async () => {
+    // A base e' o que o catalogo entrega; `.ai/guards/` no consumidor e' copia que envelhece.
     const { tars, project } = scaffold();
     fs.mkdirSync(path.join(project, ".ai", "guards"), { recursive: true });
     fs.writeFileSync(path.join(project, ".ai", "guards", "sessionstart-context-digest.sh"), "#!/usr/bin/env bash\nexit 0\n");
     fs.writeFileSync(path.join(tars, ".ai", "guards", "sessionstart-context-digest.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    fs.mkdirSync(path.join(project, ".ai", "base", "guards"), { recursive: true });
+    fs.writeFileSync(path.join(project, ".ai", "base", "guards", "sessionstart-context-digest.sh"), "#!/usr/bin/env bash\nexit 0\n");
 
     await sync({ tars, project, log: () => {} });
 
     const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
-    expect(s.hooks.SessionStart.flatMap((e) => e.hooks.map((h) => h.command))).toEqual([
-      'bash "$CLAUDE_PROJECT_DIR/.ai/guards/sessionstart-context-digest.sh"',
-    ]);
+    const cmds = () => s.hooks.SessionStart.flatMap((e) => e.hooks.map((h) => h.command));
+    expect(cmds()).toEqual(['bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/sessionstart-context-digest.sh"']);
+    // Sem a copia na base, `.ai/guards/` ainda serve (o catalogo em modo self nao tem base).
+    fs.rmSync(path.join(project, ".ai", "base", "guards", "sessionstart-context-digest.sh"));
+    await sync({ tars, project, log: () => {} });
+    Object.assign(s, JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8")));
+    expect(cmds()).toEqual(['bash "$CLAUDE_PROJECT_DIR/.ai/guards/sessionstart-context-digest.sh"']);
   });
 
   it("biblioteca (`lib-*.sh`) copiada como dependencia NAO vira hook", async () => {
@@ -846,6 +852,9 @@ commit-msg = ["commit-msg"]
     fs.mkdirSync(path.join(tars, ".ai", "gates", "commit-msg"), { recursive: true });
     fs.writeFileSync(path.join(tars, ".ai", "gates", "commit-msg", "gate.mjs"), "process.exit(0)\n");
     fs.writeFileSync(path.join(tars, ".ai", "guards", "alpha-guard.sh"), "exit 0\n");
+    // O motor ao lado do `.ai/VERSION` e' o que faz do checkout um catalogo (`isCatalog`).
+    fs.mkdirSync(path.join(tars, "tools", "framework"), { recursive: true });
+    fs.writeFileSync(path.join(tars, "tools", "framework", "tars-sync.mjs"), "");
     fs.mkdirSync(path.join(tars, ".githooks"), { recursive: true });
     fs.writeFileSync(path.join(tars, ".ai", "tars.toml"), SELF);
     execFileSync("git", ["-C", tars, "init", "-q"]);

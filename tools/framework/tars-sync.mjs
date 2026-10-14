@@ -753,9 +753,13 @@ export const BASE_HOOKS = [
   { event: 'SessionStart', matcher: 'startup|resume|clear|compact', file: 'ensure-memory-link.sh' },
 ]
 
-/** Acha o arquivo da base: no projeto (`.ai/guards/`) primeiro, depois na base copiada. */
+/**
+ * Acha o arquivo da base: na base COPIADA primeiro, depois em `.ai/guards/` (o catalogo em modo
+ * `self` nao tem base). Com o projeto primeiro, a copia local que ninguem atualiza vencia a do
+ * catalogo: o segtools rodava guards de 02/10 sem o fail-closed nem as regras de git (SEG-SELF, 14/10).
+ */
 export function resolveGuardFile(project, file) {
-  for (const rel of ['guards', join('base', 'guards')]) {
+  for (const rel of [join('base', 'guards'), 'guards']) {
     const full = join(project, '.ai', rel, file)
     if (existsSync(full)) return full
   }
@@ -779,8 +783,9 @@ export function guardRelPath(project, file) {
 export function projectGuardHooks(project, manifest) {
   const out = []
   // O catalogo consumindo a si mesmo guarda o guard em `.ai/guards/`, nao em `.ai/base/guards/`.
-  // `isCatalog` cobre o binario, cujo `tars` e' o catalogo embutido no cache (TARS-SELF-1).
-  const prefixo = isCatalog(project) || isSelf(findTarsSafely(project), project) ? '.ai' : '.ai/base'
+  // So' o checkout do catalogo usa `.ai/guards/`; `.ai/VERSION` sozinho nao o identifica (o
+  // segtools tem um e rodava as copias velhas dele — SEG-SELF). `isCatalog` cobre o binario (TARS-SELF-1).
+  const prefixo = isCatalog(project) ? '.ai' : '.ai/base'
   for (const item of hookGuards(manifest)) {
     const rel = destOf({ area: 'guards', item })
     if (!existsSync(join(project, prefixo, rel))) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
