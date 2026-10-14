@@ -40,6 +40,28 @@ Porquê (incidente de 08/10/2026): o agente afirmou de memória como o push func
 do crash e errou; acionou a biometria do dono antes de verificar os caminhos que não a
 exigiam; e pediu ao dono ações que ele mesmo podia testar.
 
+## Quando perguntar e quando decidir (matriz única)
+
+Decisão do dono (14/10/2026). Substitui as versões conflitantes — "não agir em conversa sem
+ordem" (`docs/WORKING-AGREEMENT.md` do segtools), "pergunta não segura trabalho" e "só 4
+casos de pergunta" (mapas da curadoria 13/10, `seg-agentmem-1` #37/#38) e "perder por alvo"
+(`.ai/governance/perdas-por-alvo.md`). A régua é **uma**:
+
+| Situação | O que fazer |
+|---|---|
+| **Desconhecido** (não dá para medir o efeito sem executar) | **Pergunta** antes de agir |
+| **Irreversível** (apagar dado/infra de terceiro, push em produção, mudança sem rollback) | **Pergunta** antes de agir |
+| **Produção** (recurso do dono fora do write-set da tarefa) | **Pergunta** antes de agir |
+| **Reversível dentro do write-set da tarefa** (dá para desfazer com git, ou está em `.cache/`) | **Decide e entrega**, com `claim`/`verify` na prova |
+
+- **O write-set é o da tarefa**, não o repo inteiro: o que a tarefa mandou tocar é reversível
+  por construção (git); o resto continua exigindo pergunta.
+- **Decidir não é adivinhar:** vale para o reversível *ainda assim* medir antes de afirmar
+  (Regra zero). Decidir e errar dentro do write-set é reversível; perguntar o que já podia
+  medir custa um turno do dono.
+- **Pergunta não segura o resto:** enquanto a resposta não chega, siga o que **não** depende
+  dela e entregue o recorte; a pergunta fica nomeada com a fonte.
+
 ## Mantras (a régua de todo desenho)
 
 Toda decisão de arquitetura — e todo ADR — é julgada por estas bases, e o desenho **diz

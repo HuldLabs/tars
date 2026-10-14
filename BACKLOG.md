@@ -11,7 +11,11 @@
 
 | # | item | estado | detalhe |
 |---|---|---|---|
-| — | — | — | — |
+| END-SYNC-1 | **`tars sync` liga hooks indevidos no `PreToolUse` do Bash** | ready | reportado pelo coord Endurance (14/10); reprodução no §"Bugs" abaixo |
+| END-SYNC-2 | **`tars sync` não apaga guards removidos de `.ai/base`** | ready | o guard sai da fonte e fica vivo no consumidor; reportado pelo coord Endurance (14/10) |
+| END-SYNC-3 | **`.githooks` só é gerado se a pasta existir — e o `init` não avisa** | ready | consumidor novo fica sem hook e não sabe; reportado pelo coord Endurance (14/10) |
+| END-CLI-1 | **`tars identity` não existe** — bloqueia a v0.1.0 do Endurance | ready | subcomando ausente; reportado pelo coord Endurance (14/10) |
+| SYNC-PRE-TOOL | **`tars sync` sobrescreve `hooks.PreToolUse` e derruba hook posto à mão** | ready | achado 14/10 ao rodar o sync do próprio catálogo: o `prod-guard` está no PreToolUse do `.claude/settings.json` (não é `[tars].guards`), e o sync reescreve o evento só com os guards declarados — o hook do gate some calado. Não é desta fatia (pré-existente no HEAD); reprodução: `tars sync --tars . --project .` → `git diff .claude/settings.json` mostra o prod-guard removido. Correção provável: preservar entradas de PreToolUse cujo comando o sync não gerencia (posse por `OWNED`/caminho). |
 
 ## Bugs reportados por consumidores
 
@@ -29,3 +33,7 @@ Regra do dono (11/10, `.ai/rules/principles.md`): bug do Tars reportado por um c
 | # | repo | data | reprodução | estado |
 |---|---|---|---|---|
 | TARS-BUG-1 | segtools | 2026-10-11 | `node tools/framework/tars-doctrines.mjs` acusa PHANTOM em `fail/erro-nao-se-engole`: a prova escreve o fixture em `/tmp`, mas o gate lê os arquivos **staged** — então a prova nunca dispara e a doutrina passa por PHANTOM | a-confirmar (prova não exercita o gate; fatia irmã) |
+| TARS-BUG-2 | Endurance (coord) | 2026-10-14 | `tars sync` grava hook de catálogo no `PreToolUse` do **Bash** do consumidor — o hook só deveria valer para as ferramentas que o catálogo declara. Reprodução: consumidor novo + `tars sync` → `hooks.jsonc` do consumidor lista o hook em `PreToolUse:Bash` | a-confirmar (aguarda a saída literal do consumidor) |
+| TARS-BUG-3 | Endurance (coord) | 2026-10-14 | `tars sync` **não remove** do consumidor um guard que saiu de `.ai/base` (só acrescenta) — o consumidor fica com guard fantasma que o catálogo não tem mais | a-confirmar (aguarda execução) |
+| TARS-BUG-4 | Endurance (coord) | 2026-10-14 | `.githooks/` só é gerado quando a pasta **já existe** no consumidor, e o `tars init` **não avisa** — consumidor novo fica sem hook de commit/push silenciosamente | a-confirmar (aguarda execução) |
+| TARS-BUG-5 | Endurance (coord) | 2026-10-14 | `tars identity` **não existe** — subcomando necessário para a v0.1.0 do Endurance; `tars --help` não lista nada equivalente | a-confirmar (capacidade ausente, não bug de mecanismo) |

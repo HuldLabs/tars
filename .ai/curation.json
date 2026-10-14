@@ -1,0 +1,96 @@
+{
+  "repos": {
+    "dotfiles": {
+      "sha": "5c23430",
+      "iso": "2026-10-12T09:38:00Z",
+      "reviewed": "14/10 (leitura integral; branch fix/sops-age-key-canonica)"
+    },
+    "endurance": {
+      "sha": "e94897e",
+      "iso": "2026-10-13T23:29:00Z",
+      "reviewed": "14/10 (leitura integral; repo ausente do estado ate' aqui)"
+    },
+    "homelab-infra": {
+      "sha": "cb8c53b",
+      "iso": "2026-10-13T18:08:37-03:00",
+      "reviewed": "amostra (inventario 13/10) — NAO avanca"
+    },
+    "lazarus": {
+      "sha": "f633e77",
+      "iso": "2026-10-07T15:58:00Z",
+      "reviewed": "14/10 (leitura integral; delta desde 11/10 vazio por construcao)"
+    },
+    "huldlabs": {
+      "sha": "1f0fa30",
+      "iso": "2026-10-12T14:12:55Z",
+      "reviewed": "amostra (inventario 13/10) — NAO avanca"
+    },
+    "kipp": {
+      "sha": "772d236",
+      "iso": "2026-10-11T23:56:40-03:00",
+      "reviewed": "11/10 (coleta A/B/C + consolidacao)"
+    },
+    "nexus": {
+      "sha": "cf86b2d",
+      "iso": "2026-10-13T10:25:19Z",
+      "reviewed": "amostra (inventario 13/10) — NAO avanca"
+    },
+    "pion": {
+      "sha": "01163d5",
+      "iso": "2026-10-07T10:32:50Z",
+      "reviewed": "11/10 (coleta A/B/C + consolidacao)"
+    },
+    "segtools": {
+      "sha": "03e9363d",
+      "iso": "2026-10-13T14:28:16Z",
+      "reviewed": "13/10 (memorias do agente lidas por inteiro)"
+    },
+    "seo-brain": {
+      "sha": "a5b40d7",
+      "iso": "2026-10-13T22:21:14Z",
+      "reviewed": "amostra (inventario 13/10) — NAO avanca"
+    },
+    "sofon": {
+      "sha": "a5c6d95",
+      "iso": "2026-10-07T10:32:45Z",
+      "reviewed": "11/10 (coleta A/B/C + consolidacao)"
+    },
+    "tars": {
+      "sha": "7b4dce79",
+      "iso": "2026-10-11T13:53:28-03:00",
+      "reviewed": "11/10 (coleta A/B/C + consolidacao)"
+    },
+    "tomo": {
+      "sha": "48408fe",
+      "iso": "2026-10-07T10:32:47Z",
+      "reviewed": "11/10 (coleta A/B/C + consolidacao)"
+    }
+  },
+  "rodadas": [
+    {
+      "data": "2026-10-08",
+      "tipo": "base",
+      "ponteiro_tars": "8f71263",
+      "nota": "Primeira curadoria (23:34). Escreveu direto no catalogo — memoria perene + governanca; sem artefato."
+    },
+    {
+      "data": "2026-10-11",
+      "tipo": "coleta A/B/C + consolidacao",
+      "ponteiro_tars": "7b4dce79",
+      "artefatos": "docs/curation/historico/2026-10-11/",
+      "nota": "3 coletas (~80 itens) -> 38 deduplicados no PLANO-RELEASE-TARS.md. HEADs lidos: tars 7b4dce79, segtools chore/ecossistema-huldlabs, homelab-infra 6c79988b, huldlabs 50638daf, kipp a091e609."
+    },
+    {
+      "data": "2026-10-13",
+      "tipo": "delta por ponteiro",
+      "artefatos": "docs/curation/historico/2026-10-13/",
+      "nota": "Leu as memorias do agente do segtools por inteiro; o inventario por amostra NAO avanca ponteiro (--reviewed)."
+    },
+    {
+      "data": "2026-10-14",
+      "tipo": "coleta do ecossistema (delta) + plano de release",
+      "artefatos": "docs/curation/historico/2026-10-14/",
+      "nota": "5 coletas (~205 itens brutos) -> 58 itens no PLANO-RELEASE-TARS.md. F2: criados os ponteiros de endurance/lazarus/dotfiles (faltavam). F1: o ponteiro do SEGTOOLS NAO avanca nesta rodada — ha' 20+ arquivos de .ai/memory/agent/ lidos mas nao commitados; enquanto nao forem commitados o delta reaparece (regra: ponteiro so' avanca sobre leitura inteira E commitada)."
+    }
+  ]
+}

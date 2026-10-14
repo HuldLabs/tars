@@ -53,6 +53,27 @@ tabela; guarde o handle como texto). Migration de identidade combina `kind` com 
   fila de revisão, a precedência entre propostas concorrentes e o rigor do override; correção manual em
   dado de fonte oficial é **override auditado** (motivo estruturado, ator). (fonte: farmega/docs/strategy/roadmap-decisions.md:274,278,258,268)
 
+## Reconciliar o schema ANTES de portar (R1 aplicado a banco)
+
+Antes de portar schema de um repo para outro, **reconciliar** — levantar o que **já** foi portado. O
+achado do `seo-brain` (2026-10): a base do `seo-expert` já estava portada e o **gap era só o lado cliente**;
+portar de novo teria re-feito o que existia. A regra é o R1 ("já existe? onde?") aplicado ao banco, e o
+custo de pular é recolocar em produção uma migração que já rodou — e migrations não voltam.
+
+- **Medir o delta antes de escrever qualquer migration.** Compare schema-alvo × schema-origem pelos
+  **objetos** (tabela, coluna com tipo/largura, índice, constraint, `COMMENT ON`), não pelo que a doc diz.
+  O delta é a única coisa que entra; o resto já está lá.
+- **O gap se expressa por lado.** Nomeie o que falta com precisão: *"o gap é só o lado X"* (cliente, servidor,
+  ingestão, projection) evita a armadilha de "portar o módulo" quando só uma ponta mudou.
+- **A fonte da verdade é o banco vivo, não o repo de origem.** O ledger de migrations
+  (`platform.module_migrations`) diz o que foi aplicado; um arquivo de migration no repo de origem não prova
+  que ele chegou aqui. Reconcílie contra **o alvo**.
+- **Idempotência é a prova.** O resultado é uma migration que, rodada de novo num alvo já reconciliado, não
+  muda nada — e um diff de schema **vazio** depois de aplicar é a evidência de que o delta estava certo.
+- **Nunca reescreva migration já aplicada** para "encaixar" o delta: ela é imutável (doutrina
+  `migration-imutavel`); o delta vira migration **nova**.
+  (fonte: seo-brain/HANDOFF.md, seo-brain/docs/BACKUP.md)
+
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
 + `docs/operations/{data-foundation,database-environments}`. (Repos de terceiros: **somente leitura**.)

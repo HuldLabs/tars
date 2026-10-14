@@ -34,3 +34,22 @@ do lock e a atual — quem ja' esta' na ultima nao le' nada.
 `.ai/gates/release-guard` (pre-commit): commit que toca o motor (`tools/framework/tars-*.mjs`,
 `.ai/gates/`, `.ai/guards/`, `.ai/governance/`) sem subir `.ai/VERSION` E sem entrada no
 `CHANGELOG.md` e' REPROVADO.
+
+## D18 — extraido nasce versionado
+
+**Toda peca extraida nasce versionada (`0.0.1-dev.N`) e toda mudanca VISIVEL no consumidor
+sobe o `N`.** Nao existe "depois a gente versiona": a peca que sai do core sem versao ja'
+nasce com divida e o consumidor nao tem como saber o que mudou.
+
+- **O gatilho e' a VISIBILIDADE, nao o commit.** Mudanca que o consumidor ve' (arquivo que o
+  `sync` copia, comportamento de comando, contrato de gate) sobe o `N`; refactor interno sem
+  efeito no consumidor nao sobe — o escape `No-Release: <motivo>` fecha esse caso.
+- **A versao e' a do CATALOGO, nao a do app.** O `VERSION` versiona a **camada** que o
+  consumidor puxa, nunca o app que o consome (o app tem o versionamento dele). Duas pecas
+  extraidas do mesmo core recebem numeros independentes.
+- **Extrair ja' e' entregar.** No mesmo commit em que a peca nasce, ela nasce com a versao
+  inicial e a entrada no CHANGELOG; peca sem versao e' a divida que o proximo consumidor paga
+  sem saber.
+- **O consumidor trava a versao no lock** (`.ai/tars.lock`): a versao viaja com os hashes do
+  que ele instalou, e `tars upgrade-notes` imprime so' o delta desde o lock — versionamento
+  sem notas acionaveis repete o defeito que esta doutrina corrige.

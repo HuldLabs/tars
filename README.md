@@ -85,6 +85,7 @@ tars sync                          # puxa o declarado para .ai/base/
 tars check                         # só valida base × lock (o gate); exit 1 se inconsistente
 tars hooks <pre-commit|commit-msg|pre-push|local> [args]   # roda os gates do hook
 tars promote --area <memory|skill|gate> --item <nome>      # sobe item do projeto ao catálogo
+tars curation [--advance] [--json]                         # rotina por ponteiro (docs/CURATION.md)
 tars doctor [--json]                                       # confere doutrina × gate × prova
 tars verify <arquivo>                                      # roda os `verify` de um bloco de claims
 tars secrets refresh                                       # abre o cofre (1Password) e regrava o cache cifrado
@@ -323,14 +324,22 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
 `agent-coordination` · `app-extraction` · `security-testing` · `segtools-frontend` ·
 `segtools-database` · `segtools-sdd` · `segtools-content` · `segtools-writing` ·
 `shadcn` · `migrate-radix-to-base` · `daneel` (identidade de automação do ecossistema) ·
-e os `fabber-*` (front/api/nextjs/debug, transitórios).
+`senior-research` (pesquisa com fonte datada; **portada do vault `ai-brain`**) ·
+`backup-restore` (backup só é real quando restaura) · `telemetria` (capacidade core por hook;
+OTel como plugin) · `iac` (infra por ficha) · e os `fabber-*` (front/api/nextjs/debug,
+transitórios).
+
+**R1 antes de absorver:** nenhuma skill daqui é escrita do zero — antes de absorver, procure a
+versão que já existe (repo próprio, `/projects/*`, `ai-brain`); **porte a original**, marque o
+que for genuinamente novo, e registre origem em `docs/CURATION.md` §3.
 
 O inventário de acessos da Daneel é **gerado**: `tars acessos daneel [--out <arquivo.md>]`
 (GitHub, 1Password por nome, hosts SSH, ferramentas) — read-only e barrado por padrão de segredo.
 
 ### Regras, governança e guardas
 
-- `.ai/rules/` — `overview.md` e `claude.md` (regras de topo por alvo).
+- `.ai/rules/` — `overview.md`, `claude.md` (regras de topo por alvo) e `ambiente.md`
+  (**nunca cruzar sistemas de arquivos** — repo e ferramenta do mesmo lado).
 - `.ai/governance/` — autoridade, precedência, `EVOLUTION.md` (auto-evolução de sessão),
   `source-of-truth.md`, `perdas-por-alvo.md`, `novo-repo.md` (o **método de nascer repo**).
 - `.ai/governance/novo-repo.md` — **como nasce um repo/app novo do ecossistema** (8 passos:

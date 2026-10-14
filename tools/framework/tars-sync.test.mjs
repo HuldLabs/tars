@@ -430,6 +430,70 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     expect(fs.existsSync(path.join(project, ".ai", "base", "guards", "test-alpha-guard.sh"))).toBe(true);
   });
 
+  it("sync e' SIMETRICO: item que saiu do manifesto sai da base copiada (TARS-BUG-3)", async () => {
+    // Ate' aqui o sync so' ACRESCENTAVA: guard removido da declaracao (ou do catalogo)
+    // ficava vivo no consumidor como FANTASMA, rodando no PreToolUse sem ninguem ter
+    // declarado. Endurance, 14/10 (END-SYNC-2). A prova de posse e' o lock.
+    const { tars, project, base } = scaffold();
+    fs.writeFileSync(path.join(tars, ".ai", "guards", "guard-extra.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    const comExtra = MANIFEST.replace('guards  = ["alpha-guard"]', 'guards  = ["alpha-guard", "guard-extra"]');
+    fs.writeFileSync(path.join(project, ".ai", "tars.toml"), comExtra);
+    await sync({ tars, project, log: () => {} });
+    expect(fs.existsSync(path.join(base, "guards", "guard-extra.sh"))).toBe(true);
+
+    // O manifesto deixa de declarar o guard extra.
+    fs.writeFileSync(path.join(project, ".ai", "tars.toml"), MANIFEST);
+    await sync({ tars, project, log: () => {} });
+
+    expect(fs.existsSync(path.join(base, "guards", "guard-extra.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(base, "guards", "alpha-guard.sh"))).toBe(true);
+    // O lock perdeu a chave: sem isso o proximo sync acharia que o item ainda e' nosso.
+    expect(readLock(path.join(project, ".ai", "tars.lock")).files["guards/guard-extra.sh"]).toBeUndefined();
+    // Nada de guard fantasma no wiring.
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(s)).not.toContain("guard-extra.sh");
+  });
+
+  it("sync NAO apaga arquivo que ele nunca escreveu na base (posse e' o lock)", async () => {
+    // Apagar o que nao e' nosso e' o incident de 07/10 esperando acontecer de novo: arquivo
+    // posto a mao pelo consumidor em `.ai/base/` nao esta' no lock e fica intacto.
+    const { tars, project, base } = scaffold();
+    await sync({ tars, project, log: () => {} });
+    fs.writeFileSync(path.join(base, "guards", "do-projeto.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    await sync({ tars, project, log: () => {} });
+    expect(fs.existsSync(path.join(base, "guards", "do-projeto.sh"))).toBe(true);
+  });
+
+  it("guard de CONTEUDO nao vai para o Bash: matcher vem do `[hooks.guard]` (TARS-BUG-2)", async () => {
+    // O sync amarrava TODO guard declarado ao `PreToolUse:Bash` — um guard que julga o
+    // ESCRITO (ex.: `daneel-acoes`, Edicao de arquivo) nunca disparava na ferramenta que
+    // escreve. Endurance, 14/10. O matcher e' DECLARADO no manifesto, nunca inferido.
+    const { preToolUseFor } = await import("./tars-sync.mjs");
+    expect(preToolUseFor({ guards: ["alpha-guard", "daneel-acoes"], hooks: { guard: { "daneel-acoes": "Edit|Write" } } })).toEqual([
+      {
+        matcher: "Bash|PowerShell",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/alpha-guard.sh"' }],
+      },
+      {
+        matcher: "Edit|Write",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/daneel-acoes.sh"' }],
+      },
+    ]);
+
+    // Fim a fim: o settings do consumidor segue o manifesto.
+    const { tars, project } = scaffold({
+      manifest: `${MANIFEST}\n[hooks.guard]\n"alpha-guard" = "Edit|Write"\n`,
+    });
+    await sync({ tars, project, log: () => {} });
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(s.hooks.PreToolUse).toEqual([
+      {
+        matcher: "Edit|Write",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/alpha-guard.sh"' }],
+      },
+    ]);
+  });
+
   it("hook da base cita o caminho que EXISTE (projeto ou base copiada), nao `.ai/guards/` fixo", async () => {
     // O consumidor que so' usa a base copiada tem os guards em `.ai/base/guards/`. Emitir
     // `.ai/guards/<file>` fixo fazia o harness rodar `bash: no such file` (seo-brain, 07/10).
@@ -502,11 +566,34 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
 });
 
 describe("tars-sync — hooks do git (fatia 3b)", () => {
-  it("consumidor SEM `.githooks/` nao ganha hook nenhum (o Tars nao troca o hooksPath de quem nao pediu)", async () => {
+  it("declarar gate de hook git BASTA: consumidor novo ganha `.githooks/` e o hooksPath ligado (TARS-BUG-4)", async () => {
+    // O gatilho antigo era a PASTA `.githooks/` ja' existir: consumidor novo declarava
+    // `pre-commit` e ficava sem hook nenhum, calado (END-SYNC-3, Endurance 14/10). Agora o
+    // manifesto E' o pedido — o sync cria a pasta e liga `core.hooksPath`.
     const { tars, project } = scaffold();
+    execFileSync("git", ["-C", project, "init", "-q"]);
+    const r = await sync({ tars, project, log: () => {} });
+
+    expect(r.hooks).toContain(".githooks/pre-commit");
+    expect(fs.existsSync(path.join(project, ".githooks", "pre-commit"))).toBe(true);
+    expect(execFileSync("git", ["-C", project, "config", "--get", "core.hooksPath"], { encoding: "utf8" }).trim()).toBe(
+      ".githooks",
+    );
+  });
+
+  it("consumidor SEM gate de hook git nao ganha pasta nem troca o hooksPath (pedido explicito)", async () => {
+    const { tars, project } = scaffold({ manifest: MANIFEST.replace('[gates]\npre-commit = ["commit-msg"]\n', "[gates]\n") });
+    execFileSync("git", ["-C", project, "init", "-q"]);
     const r = await sync({ tars, project, log: () => {} });
     expect(r.hooks).toEqual([]);
     expect(fs.existsSync(path.join(project, ".githooks"))).toBe(false);
+    let hooksPath = "";
+    try {
+      hooksPath = execFileSync("git", ["-C", project, "config", "--get", "core.hooksPath"], { encoding: "utf8" }).trim();
+    } catch {
+      hooksPath = "";
+    }
+    expect(hooksPath).toBe("");
   });
 
   it("gera `.githooks/pre-commit` executavel apontando o motor, so' para o hook declarado", async () => {
@@ -806,8 +893,16 @@ describe("tars-sync — init", () => {
     expect(fs.existsSync(lock)).toBe(true);
   });
 
-  it("init repetido falha ruidoso e nao toca no manifesto do projeto", async () => {
+  it("init AVISA que sem gate de hook git o repo comita sem gate (TARS-BUG-4)", async () => {
+    // O `init` criava o manifesto com `[gates]` vazio e nao dizia nada: o consumidor novo
+    // comitava sem gate achando que estava coberto (END-SYNC-3, Endurance 14/10).
     const { tars, project } = scaffold({ manifest: null });
+    const linhas = [];
+    await init({ tars, project, log: (l) => linhas.push(l) });
+    expect(linhas.join("\n")).toMatch(/SEM GATE/);
+  });
+
+  it("init repetido falha ruidoso e nao toca no manifesto do projeto", async () => {    const { tars, project } = scaffold({ manifest: null });
     await init({ tars, project, log: () => {} });
     const antes = fs.readFileSync(path.join(project, ".ai", "tars.toml"), "utf8");
 

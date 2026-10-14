@@ -97,9 +97,13 @@ export function parseToml(text) {
       section = alvo[caminho.at(-1)] ??= {}
       continue
     }
-    const kv = trimmed.match(/^([A-Za-z_][\w.-]*)\s*=\s*(.+)$/)
+    // Chave entre ASPAS (`"meu-guard" = "Edit|Write"`) e' a forma do TOML para chave com
+    // hifen/ponto; o parser basico so' aceitava `[A-Za-z_][\w.-]*`, o que barraria o
+    // `[hooks.guard]` no nome do guard (TARS-BUG-2).
+    const kv = trimmed.match(/^(?:"([^"]+)"|([A-Za-z_][\w.-]*))\s*=\s*(.+)$/)
     if (!kv) throw new Error(`linha TOML nao entendida: ${trimmed}`)
-    const [, k, rest] = kv
+    const k = kv[1] ?? kv[2]
+    const rest = kv[3]
     if (rest.startsWith('[') && !rest.includes(']')) {
       key = k
       buffer = rest
@@ -175,6 +179,9 @@ export async function readManifest(project) {
     contracts: tars.contracts ?? [],
     // `[tars.env]` — ambiente extra do agente (o sync sempre injeta o NAO INTERATIVO).
     env: cfg.env ?? {},
+    // `[hooks.guard]` — em QUAIS ferramentas cada guard declarado roda (default
+    // `Bash|PowerShell`). Guard de conteudo declara o proprio matcher (TARS-BUG-2).
+    hooks: cfg.hooks ?? {},
     gates,
   }
 }
@@ -362,7 +369,29 @@ export async function plan({ tars, project, manifest, lock }) {
     if (locked && got !== locked) stale.push({ ...entry, want: locked, got })
     else copied.push(entry)
   }
-  return { missing, stale, absent, copied }
+  return { missing, stale, absent, copied, removed: removedFromBase(project, manifest, lock) }
+}
+
+/**
+ * SIMETRIA do sync (TARS-BUG-3 / END-SYNC-2): o que SAI do `.ai/base` sai do consumidor.
+ * Ate' aqui o sync so' ACRESCENTAVA — guard que deixou de ser declarado (ou saiu do
+ * catalogo) ficava vivo no consumidor como guard FANTASMA, rodando no PreToolUse sem que
+ * ninguem o tivesse declarado (Endurance, 14/10).
+ *
+ * A prova de posse e' a MESMA da poda de skill: o nome no lock de ANTES. So' remove o que o
+ * sync escreveu um dia (`lock.files`), nunca arquivo que o consumidor pos na base copiada —
+ * apagar o que nao e' nosso e' o incident de 07/10 esperando acontecer de novo. Roda com o
+ * lock de ANTES (o novo ja' perdeu o item removido).
+ */
+export function removedFromBase(project, manifest, lock) {
+  const declarados = new Set(declare(manifest, { tars: null }).map((e) => destOf(e)))
+  const out = []
+  for (const key of Object.keys(lock?.files ?? {})) {
+    if (declarados.has(key)) continue
+    const abs = join(project, '.ai', 'base', key)
+    if (existsSync(abs)) out.push(key)
+  }
+  return out.sort((a, b) => a.localeCompare(b))
 }
 
 /**
@@ -411,7 +440,7 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   const self = isSelf(tars, project)
   const lockPath = join(project, '.ai', 'tars.lock')
   const lock = existsSync(lockPath) ? JSON.parse(await readFile(lockPath, 'utf8')) : null
-  const { missing, stale, absent, copied } = await plan({ tars, project, manifest, lock })
+  const { missing, stale, absent, copied, removed } = await plan({ tars, project, manifest, lock })
   // Familia D: a saida gerada orfa e' calculada AQUI, com o manifesto de agora e o lock de
   // ANTES de a base ser reescrita (o lock novo ja' perdeu a skill removida).
   const { orphan, foreign } = prunePlan(project, manifest, lock)
@@ -421,7 +450,8 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     if (stale.length) for (const e of stale) log(`drift: ${e.area}/${e.item} (${e.got} != lock ${e.want})`)
     if (absent.length) for (const e of absent) log(`nao copiado: ${e.area}/${e.item}`)
     if (orphan.length) for (const o of orphan) log(`saida gerada orfa (rode \`tars sync\`): ${o}`)
-    return { missing, stale, absent, copied, wrote: [], pruned: orphan, foreign }
+    if (removed.length) for (const r of removed) log(`sobrou na base (rode \`tars sync\`): ${r}`)
+    return { missing, stale, absent, copied, wrote: [], pruned: orphan, foreign, removed }
   }
 
   // Falha RUIDOSA antes de escrever qualquer coisa: item declarado que o Tars nao tem.
@@ -453,6 +483,13 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     wrote.push(key)
     log(`copia ${key}  ${files[key].sha256}`)
   }
+  // SIMETRIA: item que saiu da declaracao (ou do catalogo) sai da base copiada. Depois da
+  // copia e ANTES do lock novo, que ja' nasce sem ele — a prova de posse e' o lock de antes.
+  for (const key of removed) {
+    await rm(join(project, '.ai', 'base', key), { recursive: true, force: true })
+    log(`remove .ai/base/${key} (fora do manifesto)`)
+  }
+  await pruneEmptyDirs(join(project, '.ai', 'base'))
 
   const next = {
     lockfileVersion: 1,
@@ -503,12 +540,36 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 /** Um guard DECLARADO vira o comando que o harness roda (relativo ao projeto). */
 const guardCommand = (item) => `bash "$CLAUDE_PROJECT_DIR/.ai/base/${destOf({ area: 'guards', item })}"`
 
-/** PreToolUse: um comando por guard declarado; entrada vazia se nenhum. */
+/**
+ * MATCHER do PreToolUse: em QUAIS ferramentas o guard roda. O default (`Bash|PowerShell`)
+ * vale para guard de SHELL, que julga linha de comando; guard que julga CONTEUDO/arquivo
+ * declarado pelo projeto traz o proprio matcher em `.ai/tars.toml`:
+ *
+ *   [hooks.guard]
+ *   "meu-guard" = "Edit|Write"
+ *
+ * Sem isso o sync amarrava TODO guard ao Bash: um guard de conteudo (ex.: `daneel-acoes`,
+ * que julga o ESCRITO) so' disparava em comando de shell — nunca na ferramenta que escreve
+ * (TARS-BUG-2, reportado pelo coord do Endurance em 14/10). O matcher e' DECLARADO, nunca
+ * inferido do nome do arquivo: adivinhar por prefixo quebraria no guard que muda de escopo.
+ */
+export const GUARD_MATCHERS = (manifest) => manifest.hooks?.guard ?? {}
+export const DEFAULT_GUARD_MATCHER = 'Bash|PowerShell'
+export const guardMatcher = (manifest, item) => GUARD_MATCHERS(manifest)[item] ?? DEFAULT_GUARD_MATCHER
+
+/** Agrupa comandos por matcher, preservando a ordem de declaracao (hook e' ORDEM). */
+function byMatcher(entries) {
+  const grupos = new Map()
+  for (const { matcher, command } of entries) {
+    if (!grupos.has(matcher)) grupos.set(matcher, [])
+    grupos.get(matcher).push({ type: 'command', command })
+  }
+  return [...grupos].map(([matcher, hooks]) => ({ matcher, hooks }))
+}
+
+/** PreToolUse: um comando por guard declarado, agrupado pelo matcher declarado. */
 export function preToolUseFor(manifest) {
-  const commands = hookGuards(manifest).map(guardCommand)
-  return commands.length
-    ? [{ matcher: 'Bash|PowerShell', hooks: commands.map((command) => ({ type: 'command', command })) }]
-    : []
+  return byMatcher(hookGuards(manifest).map((item) => ({ matcher: guardMatcher(manifest, item), command: guardCommand(item) })))
 }
 
 /**
@@ -577,9 +638,9 @@ export function projectGuardHooks(project, manifest) {
   for (const item of hookGuards(manifest)) {
     const rel = destOf({ area: 'guards', item })
     if (!existsSync(join(project, prefixo, rel))) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
-    out.push({ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/${prefixo}/${rel}"` })
+    out.push({ matcher: guardMatcher(manifest, item), command: `bash "$CLAUDE_PROJECT_DIR/${prefixo}/${rel}"` })
   }
-  return out.length ? [{ matcher: 'Bash|PowerShell', hooks: out }] : []
+  return byMatcher(out)
 }
 
 /** Hooks da base, agrupados por evento; sem `project` (teste puro) todos entram. */
@@ -673,13 +734,24 @@ export function hooksPathOf(project) {
   }
 }
 
+/** Os hooks do git que o manifesto de fato declara (`[gates].pre-commit`, etc.). */
+export function declaredGitHooks(manifest) {
+  return GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+}
+
 /**
- * O Tars so' escreve os hooks do git quando o consumidor JA' usa hooks proprios: o
- * `core.hooksPath` esta' declarado, ou a pasta `.githooks/` ja' existe. Sem isso o `sync`
- * trocaria o `core.hooksPath` de quem nunca pediu — wiring silencioso quebrado e' pior que
- * ausente. Quem nao usa hooks do git simplesmente nao ganha pasta nova.
+ * O Tars escreve os hooks do git quando o consumidor DECLAROU um `[gates]` de hook git —
+ * o manifesto e' o pedido explicito, e o sync passa a ligar `core.hooksPath` sozinho.
+ *
+ * Antes o gatilho era a PASTA `.githooks/` ja' existir (ou o `core.hooksPath` ja' apontar
+ * para la'): o consumidor novo declarava `pre-commit` e ficava SEM hook nenhum, calado
+ * (TARS-BUG-4 / END-SYNC-3, Endurance 14/10). Pedir o gate no manifesto E' pedir o hook.
+ *
+ * Quem nao declara gate de hook git nao ganha pasta nova — o `core.hooksPath` de quem
+ * nunca pediu continua intocado. Sem `manifest` (sonda pura) cai no sinal antigo da pasta.
  */
-export function usesGitHooks(project, hooksPath = hooksPathOf(project)) {
+export function usesGitHooks(project, hooksPath = hooksPathOf(project), manifest = null) {
+  if (manifest && declaredGitHooks(manifest).length) return true
   return hooksPath !== null || existsSync(join(project, DEFAULT_HOOKS_PATH))
 }
 
@@ -740,6 +812,31 @@ export function prunePlan(project, manifest, lock) {
 /** Remove as pastas orfas; idempotente (nada orfao = nada apagado). */
 export async function pruneOrphans(project, orphans) {
   for (const rel of orphans) await rm(join(project, rel), { recursive: true, force: true })
+}
+
+/**
+ * Tira as pastas VAZIAS da base copiada, de baixo para cima: remover `.ai/base/guards/x.sh`
+ * nao pode deixar `.ai/base/guards/` orfa, senao o consumidor acumula diretorio morto a cada
+ * item retirado. So' apaga pasta VAZIA — conteudo do projeto nunca entra na conta.
+ */
+export async function pruneEmptyDirs(root) {
+  if (!existsSync(root)) return
+  const sub = async (dir) => {
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return false
+    }
+    for (const e of entries) if (e.isDirectory()) await sub(join(dir, e.name))
+    const restantes = await readdir(dir)
+    if (!restantes.length && resolve(dir) !== resolve(root)) {
+      await rm(dir, { recursive: true, force: true })
+      return true
+    }
+    return false
+  }
+  await sub(root)
 }
 
 /**
@@ -824,6 +921,27 @@ async function writeGitHookMode(project, hooksPath, hook, file) {
   }
 }
 
+/**
+ * Liga `core.hooksPath` ao diretorio dos hooks quando o consumidor DECLAROU um gate de hook
+ * git e o `core.hooksPath` ainda nao aponta para la'. Sem isso o sync gera os arquivos e o
+ * git continua rodando o `.git/hooks` vazio — hook no disco, commit sem gate (TARS-BUG-4).
+ *
+ * So' mexe quando: (a) ha' gate git declarado, (b) o consumidor NAO tem `core.hooksPath`
+ * proprio apontando para outro lugar (idempotente: se ja' aponta, nada muda), e (c) o dir
+ * de destino e' o DESTE projeto (`.git` presente). Fora de um repo git, silencio: nao ha' o
+ * que ligar.
+ */
+async function wireHooksPath(project, hooksPath) {
+  if (hooksPathOf(project) === hooksPath) return false // ja' aponta (idempotente)
+  if (!existsSync(join(project, '.git'))) return false // fora de repo git: nada a ligar
+  try {
+    execFileSync('git', ['-C', project, 'config', 'core.hooksPath', hooksPath], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false // git ausente/indice somente-leitura: o disco ja' tem os hooks
+  }
+}
+
 /** Gera os hooks do git declarados; idempotente (mesmo conteudo, nada muda). */
 export async function writeGitHooks(
   project,
@@ -831,14 +949,17 @@ export async function writeGitHooks(
   hooksPath = effectiveHooksPath(project),
   adopt = [],
 ) {
-  if (!usesGitHooks(project, hooksPathOf(project))) return []
+  if (!usesGitHooks(project, hooksPathOf(project), manifest)) return []
   const dir = join(project, hooksPath)
   const wrote = []
   await mkdir(dir, { recursive: true })
+  // Declarar o gate E' pedir o hook: o `core.hooksPath` passa a apontar para ca' sem o
+  // consumidor ter de configurar o git a mao (era o buraco do TARS-BUG-4).
+  if (await wireHooksPath(project, hooksPath)) wrote.push(`git config core.hooksPath=${hooksPath}`)
   // `prepare-commit-msg` acompanha o `commit-msg`: e' quem INJETA o emoji do tipo (o
   // `validate-commit.mjs --inject`), sem o qual o `commit-msg` reprova a mensagem escrita
   // a mao sem emoji. Declarar `commit-msg` traz os dois — o par e' uma coisa so'.
-  const alvos = GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+  const alvos = declaredGitHooks(manifest)
   if (alvos.includes('commit-msg')) alvos.push('prepare-commit-msg')
   const alheios = []
   for (const hook of alvos) {
@@ -908,8 +1029,8 @@ export function hookVivo(file, { win32 = process.platform === 'win32' } = {}) {
  * inexistente). Devolve a mensagem de erro (R4) ou `null` quando esta' tudo certo.
  */
 export function deadHooks(project, manifest, hooksPath = effectiveHooksPath(project)) {
-  if (!usesGitHooks(project, hooksPathOf(project))) return null
-  const esperados = GIT_HOOKS.filter((h) => (manifest.gates?.[h] ?? []).length)
+  if (!usesGitHooks(project, hooksPathOf(project), manifest)) return null
+  const esperados = declaredGitHooks(manifest)
   if (!esperados.length) return null
   const dir = join(project, hooksPath)
   if (!existsSync(dir)) return `HOOKS MORTOS: core.hooksPath=${hooksPath} nao existe — nenhum gate roda (rode \`tars sync\`)`
@@ -935,11 +1056,25 @@ memory  = []                                        # fatias da memoria base por
 guards  = []                                        # ex.: ["block-secret-dump", "sessionstart-context-digest"]
 governance = []                                     # ex.: ["EVOLUTION", "source-of-truth"]
 
+# Matcher do PreToolUse por guard (opcional). Default: "Bash|PowerShell" (guard de shell).
+# Guard que julga CONTEUDO/arquivo roda na ferramenta que escreve, nao no Bash:
+# [hooks.guard]
+# "daneel-acoes" = "Edit|Write"
+
 # Ambiente extra do agente (opcional). O sync SEMPRE injeta o nao interativo
 # (GIT_TERMINAL_PROMPT=0, GCM_INTERACTIVE=never, GIT_SSH_COMMAND com BatchMode).
 # Descomente so' o que este projeto acrescenta:
 # [env]
 # MINHA_CHAVE = "valor"
+
+# Identidade de automacao do projeto (opcional; comando: tars identity). O campo bot e' a
+# REF no cofre (o mesmo 1Password do tars secrets), nunca o valor da chave:
+# [identity]
+# actor = "daneel"
+# bot = "op://secrets/daneel-bot/homelab/auth-ssh-key"
+# key_file = "/home/daneel/.ssh/id_daneel"
+# hosts = ["hermes", "nuc"]
+# known_hosts = "/home/daneel/.ssh/known_hosts"
 
 [gates]
 pre-commit = []                                     # do catalogo: commit-msg, gitleaks, no-add-all, layout-check, ds-gate
@@ -958,6 +1093,11 @@ export async function init({ tars = findTars(), project = process.cwd(), log = c
   await writeFile(manifestPath, MANIFEST_TEMPLATE.replace('${version}', version))
   const r = await sync({ tars, project, log })
   log(`init: ${relative(project, manifestPath)} + .ai/memory/ criados (Tars ${version}); rode \`tars sync\` apos declarar itens.`)
+  // O `init` NAO avisava que sem gate de hook git nao ha' commit-msg/pre-commit: o
+  // consumidor novo comitava sem gate nenhum achando que estava coberto (TARS-BUG-4).
+  const manifest2 = await readManifest(project)
+  if (!declaredGitHooks(manifest2).length)
+    log('init: nenhum gate de hook git declarado — sem `[gates].commit-msg`/`pre-commit` o repo comita SEM GATE (declare e rode `tars sync`).')
   return { manifest: manifestPath, version, wrote: r.wrote }
 }
 

@@ -4,6 +4,131 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.18
+
+### O que mudou
+- **`tars identity` (novo comando).** A identidade de automação do PROJETO — quem a
+  automação usa para falar com os hosts, de onde vem a chave e quem a autoriza. Fecha o
+  bloqueio da `v0.1.0` do Endurance (TARS-BUG-5 / END-CLI-1).
+  - `show [--json]` imprime ator, ref do cofre, chave e a impressão **pública** (nunca valor
+    de segredo); `verify` é read-only e confere chave (0600) × cofre × `known_hosts` (pinned)
+    × autorização no host, **FALHANDO nomeando o que falta**; `provision` e `revoke` são do
+    **DONO (TTY)** — fora de TTY recusam. `revoke` apaga a chave local e **nomeia** os hosts a
+    limpar (não escreve no host de terceiro sem ordem).
+  - A chave do bot vem do **mesmo cofre do `tars secrets`** (ref `op://` em `[identity].bot`);
+    o `fingerprintDe` e o `spawnOp` são reusados — nada de lógica própria no consumidor
+    (doutrina D3/R5 do Endurance). Desenho em `docs/identity.md`.
+- **`tars sync` simétrico (3 bugs reportados pelo coord do Endurance, 14/10).**
+  - **A1 (END-SYNC-1/TARS-BUG-2):** guard de conteúdo não vai mais para o `PreToolUse:Bash` —
+    o matcher é **declarado** no manifesto (`[hooks.guard] "daneel-acoes" = "Edit|Write"`);
+    default segue `Bash|PowerShell` para guard de shell.
+  - **A2 (END-SYNC-2/TARS-BUG-3):** o que sai da declaração (ou do catálogo) **sai da base
+    copiada** — guard fantasma deixa de ficar vivo. A posse é o lock; arquivo posto à mão
+    pelo consumidor fica intacto.
+  - **A3 (END-SYNC-3/TARS-BUG-4):** declarar gate de hook git **basta** — o sync cria
+    `.githooks/` e liga `core.hooksPath` sozinho; o `init` **avisa** que sem gate o repo
+    comita sem gate.
+- **A-cap: o orçamento de boot não pode zerar o índice com store cheio.** A guarda cobria o
+  store vazio, não o `cap`; agora `cap === 0` com memória cheia **falha alto** nomeando a
+  contagem e o teto (foi assim que o `INDEX.md` do segtools perdeu 264 entradas).
+- **Regra nova (D-1, decisão do dono 14/10):** matriz única de **quando perguntar e quando
+  decidir** — desconhecido/irreversível/produção → pergunta; reversível dentro do write-set →
+  decide e entrega. Substitui as versões conflitantes em `.ai/rules/principles.md`.
+- **Curadoria (F1/F2):** ponteiros de `endurance`/`lazarus`/`dotfiles` criados no
+  `.ai/curation.json`; `docs/CURATION.md` §5 ganha a segunda metade da regra — **conhecimento
+  não commitado não avança o ponteiro**.
+
+### Por que
+Os três bugs de sync vinham de um mecanismo só (o sync só acrescentava e amarrava tudo ao
+Bash); o Endurance travava a `v0.1.0` na ausência do `tars identity`; e o índice zerado era
+uma perda silenciosa de conhecimento. Cada correção tem teste no próprio repo (o Tars é o
+primeiro consumidor da regra).
+
+### Arquivos impactados
+`tools/framework/tars-identity.mjs` (+ teste), `tars-sync.mjs` (+ teste), `ai-memory.mjs`
+(+ teste), `tars.mjs`, `.ai/rules/principles.md`, `.ai/curation.json`, `docs/CURATION.md`,
+`docs/identity.md`, `BACKLOG.md`.
+
+### O que o consumidor faz
+Rodar **`tars sync`** — o sync passa a ser simétrico (remove guard que saiu) e a ligar
+`.githooks` sozinho quando você declarar gate de hook git. Declare `[identity]` se quiser o
+`tars identity`. Nada muda no que você não declarou. Uma dívida nomeada entra no BACKLOG:
+`SYNC-PRE-TOOL` (o sync ainda derruba hook manual do `PreToolUse`; pré-existente no HEAD).
+
+## 0.0.1-dev.17
+
+### O que mudou
+- **Curadoria do ecossistema: 10 absorcoes, generalizadas, sem dado de projeto.** O
+  conhecimento que vivia espalhado nos repos vizinhos (memoria, licoes, handoffs, estudos)
+  sobe ao catalogo. **Nenhuma e' escrita do zero: todas passaram por R1 (procurar a versao que
+  ja existia) e sao portadas da origem, com a origem registrada** — ver `docs/CURATION.md` §3.
+  - **`senior-research`** (skill **portada do `ai-brain`**, `.ai-brain/skills/senior-research` —
+    nao e' nova e nao foi reescrita; o Tars passa a ser a fonte). Pesquisa com sub-perguntas
+    antes de buscar, cada afirmacao com **fonte datada**, `nao encontrado` explicito em vez de
+    inferir, veredito de uma linha por sub-pergunta com confianca, marcacao DET/LLM/EXT como
+    criterio de desenho.
+  - **`backup-restore`** (skill portada de `homelab-infra/docs/restaurar-nuc.md` +
+    `seo-brain/docs/BACKUP.md`). Um repositorio por contexto; snapshot completo e
+    auto-contido; retencao **declarada** com o motivo do horizonte; **restore AO LADO, nunca
+    por cima**; **prova de restore agendada** (backup so e' real quando restaura); fonte unica
+    do que existe, reconciliada nos dois sentidos.
+  - **`ambiente`** (regra de boot nova). **Nunca cruzar sistemas de arquivos**: a ferramenta
+    roda do mesmo lado do repo; atravessar (9P/DrvFs) muda o COMPORTAMENTO (watcher que nao
+    dispara, symlink quebrado, chmod que nao cola); falhe ALTO em caminho nao-Linux.
+  - **`telemetria`** (portada de `homelab-infra/docs/estudos/2026-10-13-telemetria*.md` +
+    decisao do dono 14/10). Telemetria e' **capacidade CORE**: hooks antes/depois/falha
+    em tudo que o framework registra (rota, job, CLI, evento, acao de modulo) + porta neutra
+    `ctx.telemetria` (`evento/medir/span`), **no-op por padrao**. A implementacao (OTel) e'
+    **plugin** que assina os hooks; core/modulos/plugins **nunca** importam SDK OTel. Nomes
+    `<modulo>.<coisa>` + semconv oficial; **sem segredo/PII** em atributo (allowlist no
+    plugin). Dedup/amostragem/alertas no **coletor**, nunca no app; coletor fora nao derruba
+    app; liga/desliga por app/modulo/plugin na ficha (desligado = custo ~zero e comportamento
+    identico). Criterio de aceite: teste prova "desligado nao emite" e "comportamento
+    identico ligado/desligado".
+  - **`iac`** (portada de `homelab-infra` README/`decisoes.md`/`gitops-docker.md`; pyinfra+Pulumi
+    vem do Fabber). Infra por ficha: a declaracao e' a fonte unica do que existe;
+    FQDN nunca IP; apelido de painel e' codigo versionado; a receita **fecha com checagem que
+    falha alto** ("rodou" != "provou"); bootstrap (provisionar) separado da reconciliacao
+    (convergir); o manual fica escrito como manual.
+  - **D18 em `versionamento-de-extracao`**: extraido nasce versionado (`0.0.1-dev.N`); toda
+    mudanca VISIVEL no consumidor sobe o `N`; a versao e' a do catalogo, nao a do app.
+  - **`agent-coordination`** (extensao): a credencial carrega o **recurso** que autoriza, nao
+    so o ator (identidade presa ao projeto A nao escreve no B — BR-IAM-004); e o **revisor de
+    cobertura** como papel separado do adversarial (pega o item SEM status, o que o autor
+    esqueceu).
+  - **`segtools-database`** (extensao): **reconciliar o schema ANTES de portar** — medir o
+    delta por OBJETO contra o banco vivo; "o gap e' so o lado X"; migration aplicada nunca se
+    reescreve (o delta e' migration NOVA).
+- **`tars curation`** (comando novo) + **`docs/CURATION.md`**: a rotina de curadoria por
+  **ponteiro** — liga a metodologia que ja' existia (retrospectiva `EVOLUTION` + `tars
+  promote` + o mapa origem→destino do `skills-absorvidas`) num fluxo so'. Le' so' o delta
+  `<ponteiro>..HEAD` dos **caminhos de conhecimento** dos repos vizinhos; ponteiro em
+  `.ai/curation.json` (dado, como o `.ai/tars.lock`); **idempotente** (sem commit novo, nao
+  faz nada); `--advance` grava o HEAD lido. O registro origem→destino→situacao e a secao "o
+  que NAO entra e por que" vivem em `docs/CURATION.md`.
+
+### Por que
+- A fatia 1 (inventario do conhecimento do ecossistema, 13/10) mediu 11 temas: 5 COVERED, 1
+  PARTIAL e 5 MISSING. As absorcoes acima fecham os MISSING e o PARTIAL; a rotina fecha o
+  buraco que sobrava — o inventario era um retrato que envelhecia.
+- Sem a rotina por ponteiro, cada absorcao virava releitura manual de todos os repos. Com o
+  ponteiro, a rodada le' so' o que ANDOU.
+
+### Arquivos impactados no consumidor
+- `.ai/base/skills/{senior-research,backup-restore,telemetria,iac}/` (portadas; `senior-research`
+  veio do `ai-brain`), `.ai/base/skills/agent-coordination/SKILL.md`,
+  `.ai/base/skills/segtools-database/SKILL.md`, `.ai/base/rules/ambiente.md` (nova),
+  `.ai/base/governance/versionamento-de-extracao.md` — os itens que o consumidor DECLARAR em
+  `[tars].skills`/`rules`/`governance` passam a chegar.
+- `tools/framework/tars-curation.mjs` e `docs/CURATION.md` sao do CATALOGO (motor + doc), nao
+  vao para `.ai/base/`.
+
+### O que o consumidor faz
+Rodar **`tars sync`** e declarar o que quiser usar no `.ai/tars.toml`:
+`skills = [..., "senior-research", "backup-restore", "telemetria", "iac"]` e
+`rules = [..., "ambiente"]`. Depois, **`tars upgrade-notes`** imprime so' estas notas.
+Nada muda no comportamento do que o consumidor ja' tem — as skills so' carregam quando
+declaradas e a regra `ambiente` so' entra se declarada.
 ## 0.0.1-dev.16
 
 ### O que mudou

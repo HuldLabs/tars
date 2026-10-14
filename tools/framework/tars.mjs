@@ -25,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 // o do entrypoint, e o guard deles disparava o main no import — `--help` respondia `sync`).
 import './tars-as-module.mjs'
 import * as promote from './tars-promote.mjs'
+import * as curationMod from './tars-curation.mjs'
 import * as hooks from './tars-hooks.mjs'
 import * as syncMod from './tars-sync.mjs'
 import * as gitMod from './tars-git.mjs'
@@ -46,6 +47,10 @@ import * as secretsOps from './tars-secrets-ops.mjs'
 // `tars acessos daneel` (fase 3 da identidade de automacao): GERA o inventario de acessos da
 // Daneel. Read-only e sem valor de segredo; o julgamento mora no modulo dono (R3).
 import * as acessosMod from './tars-acessos.mjs'
+// `tars identity` (TARS-BUG-5): a identidade de automacao do projeto (chave SSH do bot,
+// provision/revoke/verify). Reusa o cofre do `tars secrets`; o julgamento mora no modulo
+// dono (R3) — aqui so' o despacho fino e a leitura de `[identity]`.
+import * as identityMod from './tars-identity.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -96,6 +101,8 @@ const USAGE = [
   '  check                      atalho de `sync --check` (o gate)',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
+  '  curation [--advance] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
+  '                             (<ponteiro>..HEAD) dos repos vizinhos e lista o que andou',
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
   '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
@@ -131,6 +138,12 @@ const USAGE = [
   '                             nomes (cofres/campos/repos/hosts), nunca valor de segredo',
   '  acessos check [--out <f>]  TESTA cada acesso e compara com o inventario commitado;',
   '                             divergencia = drift (exit != 0)',
+  '  identity show [--json]     IDENTIDADE de automacao do projeto: ator, ref do cofre,',
+  '                             impressao PUBLICA da chave, hosts (nunca valor de segredo)',
+  '  identity verify [--host H] confere chave (0600) x cofre x known_hosts (pinned) x',
+  '                             autorizacao no host; read-only; exit != 0 no que faltar',
+  '  identity provision         DONO (TTY): escreve a chave do bot (0600) a partir do cofre',
+  '  identity revoke            DONO: apaga a chave local e NOMEIA os hosts a limpar',
   '',
   '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
   '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
@@ -198,6 +211,17 @@ async function promoteCommand(rest, project) {
     item,
   })
   console.log('promocao escrita no working tree do Tars (nao commitada: revise antes).')
+}
+
+/** `tars curation` — rotina por PONTEIRO (docs/CURATION.md): mede o delta, nao generaliza. */
+async function curationCommand(rest, project) {
+  const mod = curationMod
+  const tars = resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars())
+  const reposDir = resolve(argValue(rest, '--repos') ?? join(tars, '..'))
+  const stateFile = resolve(argValue(rest, '--state') ?? join(tars, '.ai', 'curation.json'))
+  const r = mod.curate({ reposDir, stateFile, advance: rest.includes('--advance') })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else mod.report(r)
 }
 
 /** `tars git prune` — despacho fino para o modulo dono (nada de logica de git aqui). */
@@ -346,6 +370,19 @@ function acessosCommand(rest) {
   process.exit(r ? (r.ok === false ? 1 : 0) : 1)
 }
 
+/**
+ * `tars identity show|verify|provision|revoke` (TARS-BUG-5): a identidade de automacao do
+ * PROJETO. A tabela `[identity]` vem do `.ai/tars.toml` (o `bot` reusa a ref do cofre que o
+ * `tars secrets` ja' conhece). O julgamento mora no modulo dono (tars-identity).
+ */
+function identityCommand(rest, project) {
+  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  const file = join(raiz, '.ai', 'tars.toml')
+  const cfg = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')).identity ?? {} : {}
+  const r = identityMod.runIdentity({ sub: rest[0], rest: rest.slice(1), cfg })
+  process.exit(r && r.ok === false ? 1 : 0)
+}
+
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
 function argValue(list, name) {
   const i = list.indexOf(name)
@@ -385,12 +422,14 @@ const COMMANDS = {
   check: (rest, project) => sync('sync', [...rest, '--check'], project),
   hooks: runHooksCommand,
   promote: promoteCommand,
+  curation: curationCommand,
   doctor: doctorCommand,
   verify: verifyCommand,
   memory: memoryCommand,
   incident: incidentCommand,
   secrets: secretsCommand,
   acessos: acessosCommand,
+  identity: identityCommand,
   'check-refs': checkRefsCommand,
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,
