@@ -129,6 +129,41 @@ Rodar **`tars sync`** e declarar o que quiser usar no `.ai/tars.toml`:
 `rules = [..., "ambiente"]`. Depois, **`tars upgrade-notes`** imprime so' estas notas.
 Nada muda no comportamento do que o consumidor ja' tem — as skills so' carregam quando
 declaradas e a regra `ambiente` so' entra se declarada.
+## 0.0.1-dev.16
+
+### O que mudou
+- **Doutrina de OPERACAO DE HOST ganha gate real (B1.1/B1.2).** Duas regras que so'
+  existiam na cabeca de quem escreve o `compose up` entram no catalogo com prova que REPROVA:
+  - **`operacao/layout-srv`** — o dado de um app mora em `/srv/<amb>/<app>/{data,conf}`
+    (ambiente `dev|stg|prod`); `/data`, `/mnt/...` e `/srv/prod` sem app REPROVAM. Bind mount
+    sempre; volume NOMEADO do Docker esconde o dado dentro do engine.
+  - **`operacao/ambiente-e-projeto-compose`** — o ambiente e' o **projeto Compose**
+    (`name: <app>-<amb>`); o `profiles:` NAO serve (sobe a stack errada calado) e todo bind
+    tem `source:` (sem fonte = volume anonimo).
+  O gate `.ai/gates/doutrina-operacao.mjs` julga caminho (`--str`) e nome (`--name`); o
+  linter do HOST (`--path /srv`) mora no consumidor. O `esquema` de cada linha e' o que a
+  prova literal reproduz.
+- **ADRs da org como LINHAS do catalogo (B4.3).** As decisoes transversais da HuldLabs
+  deixam de morar so' no repo `huldlabs/adr`: entram 5 linhas no `.ai/doctrines.toml`, com
+  fonte e prova por linha — **binario portatil**, **manifesto como dado**, **SGBD do
+  ambiente**, **outbox na mesma transacao** e **canal indisponivel degrada**. O gate de
+  conformidade de cada uma e' divida nomeada (SEM GATE com motivo), nunca PHANTOM.
+- **`acessos/daneel.md` gerado** no repo privado `HuldLabs/huldlabs` pelo mecanismo pronto
+  (`tars acessos daneel`) — hosts, orgs, repos e ferramentas; so' nomes, nenhum valor de campo.
+
+### Por que
+B1.1/B1.2: o dado do host nao tinha lugar cobrado, entao cada host organizava do seu jeito e o
+backup nao achava o arquivo (volume nomeado). B4.3: o proprio ADR-0002 manda a decisao vir para
+o Tars; enquanto ela mora so' no `huldlabs`, cada consumidor a redescobre.
+
+### Arquivos impactados no consumidor
+- Novos no catalogo: `.ai/gates/doutrina-operacao.mjs` + `GATE-doutrina-operacao.md`; 5 linhas
+  `org/*` e 2 `operacao/*` no `.ai/doctrines.toml`. O consumidor declara a MESMA doutrina com a
+  propria fonte (`doutrina-operacao.md`) e a propria prova (`--path /srv`).
+
+### O que o consumidor faz
+Rode **`tars sync`**. Quem opera host declara as duas doutrinas `operacao/*` no proprio
+`.ai/tars.toml` apontando o linter do seu host; `tars doctor` deve sair sem PHANTOM novo.
 
 ## 0.0.1-dev.15
 
