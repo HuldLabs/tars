@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { classify, doctor, loadDoctrines, parseRef } from './tars-doctrines.mjs'
+import { classify, doctor, fonteIrmaOk, loadDoctrines, parseRef } from './tars-doctrines.mjs'
 import { NONINTERACTIVE_ENV } from './tars-sync.mjs'
 
 /** Projeto minimo: `.ai/tars.toml` + a fonte que as doutrinas declaram. */
@@ -35,9 +35,42 @@ const comRc = (rc) => (d, base) => classify(d, base, { spawn: () => ({ rc, out: 
 
 describe('parseRef', () => {
   it('le arquivo, linha e intervalo; e marca o que e de outro projeto', () => {
-    expect(parseRef('docs/GIT.md:44-54')).toEqual({ arquivo: 'docs/GIT.md', linha: 44, fim: 54, externo: false })
-    expect(parseRef('docs/GIT.md')).toEqual({ arquivo: 'docs/GIT.md', externo: false })
+    expect(parseRef('docs/GIT.md:44-54')).toEqual({ arquivo: 'docs/GIT.md', linha: 44, fim: 54, externo: false, doProjeto: false, repo: null })
+    expect(parseRef('docs/GIT.md')).toEqual({ arquivo: 'docs/GIT.md', externo: false, doProjeto: false, repo: null })
     expect(parseRef('segtools:docs/GIT.md:1').externo).toBe(true)
+  })
+
+  it('`<repo>:<relativo>` aponta a raiz de um repo IRMAO (nada de caminho absoluto)', () => {
+    expect(parseRef('huldlabs:adr/0002-x.md:16')).toEqual({ arquivo: 'adr/0002-x.md', linha: 16, fim: 16, externo: true, doProjeto: false, repo: 'huldlabs' })
+    // Caminho absoluto segue relativo (nao ganha repo): `/projects/...` continua lido como arquivo.
+    expect(parseRef('/projects/huldlabs/adr/x.md').repo).toBe(null)
+  })
+})
+
+describe('fonteIrmaOk — doutrina cuja fonte mora em repo irmao', () => {
+  it('repo irmao montado com a linha viva = ok', () => {
+    const r = fonteIrmaOk('/proj/tars/.worktrees/a4a', 'huldlabs:adr/0002-x.md:2', {
+      exists: (p) => p === '/proj/huldlabs' || p === '/proj/huldlabs/adr/0002-x.md',
+      read: () => 'a\nb\nc\n',
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('repo ausente = DRIFT alto e nomeado (nunca silencio)', () => {
+    const r = fonteIrmaOk('/proj/tars/.worktrees/a4a', 'huldlabs:adr/0002-x.md:2', { exists: () => false })
+    expect(r.status).toBe('DRIFT')
+    expect(r.porque).toContain('REPO AUSENTE: huldlabs')
+    // Nomeia a PASTA onde o irmao deveria estar (a mesma que o `tars curation` varre).
+    expect(r.porque).toContain('nao esta\' em /proj')
+  })
+
+  it('linha que saiu do texto = DRIFT (o punho mudou)', () => {
+    const r = fonteIrmaOk('/proj/tars/.worktrees/a4a', 'huldlabs:adr/0002-x.md:9', {
+      exists: () => true,
+      read: () => 'a\nb\n',
+    })
+    expect(r.status).toBe('DRIFT')
+    expect(r.porque).toContain('linha 9 de 3')
   })
 })
 
