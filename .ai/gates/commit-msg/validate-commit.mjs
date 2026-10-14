@@ -38,7 +38,8 @@ const NO_TRAILER_MIN = 10; // "nada novo" so vale se nomear (motivo >=10 chars)
 // o teste que REPROVA antes da correcao e' o que distingue conserto de palpite (R4).
 // Escape honesto: `No-Test: <motivo >=10 chars>` no corpo (ex.: typo, doc, config).
 const TEST_RE = /(^|\/)(test|tests|spec|specs|__tests__|__fixtures__)\//i;
-const TEST_FILE_RE = /\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)(test_[^/]+|[^/]+_test)\.py$|(^|\/)tests?\.py$|(^|\/)conftest\.py$/i;
+// Shell conta como teste (Endurance, 14/10: todo teste dele e' .sh/.bats).
+const TEST_FILE_RE = /\.(test|spec)\.([cm]?[jt]sx?|sh)$|_test\.sh$|\.bats$|(^|\/)(test_[^/]+|[^/]+_test)\.py$|(^|\/)tests?\.py$|(^|\/)conftest\.py$/i;
 
 // Licao/incidente em QUATRO CAMPOS (fabber LESSONS-LEARNED.md, item 36 do relatorio).
 // Um checklist sozinho pega o sintoma de novo; os 4 campos forcam a CAUSA. "be more careful"
@@ -220,7 +221,7 @@ function exigeTesteVermelho(msg, tr) {
   console.error('\ncommit-msg: fix/bug/hotfix sem TESTE no commit (TARS-RED-1).');
   console.error('  a correcao veio, mas nada prova que ela reprovava ANTES (R4).');
   console.error('  toque o arquivo de teste que cobre o caso (ou o que REPRODUZ a falha) —');
-  console.error('  no minimo um `*.test.*`/`*.spec.*`/`test_*`/`tests/`;');
+  console.error('  no minimo um `*.test.{js,ts,sh}`/`*.spec.*`/`*_test.sh`/`*.bats`/`test_*.py` ou algo em `test/`/`tests/`;');
   console.error(`  sem teste cabivel (typo, doc, config)? escape pelo corpo: No-Test: <motivo >=${NO_TRAILER_MIN} chars>\n`);
   process.exit(1);
 }
