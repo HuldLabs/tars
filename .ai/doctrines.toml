@@ -58,6 +58,15 @@ prova = "printf '\\u2728 feat(hub): mexe no motor\\n\\nLesson:\\n  erro: e\\n  p
 onde = "commit-msg"
 
 [[doctrine]]
+id = "metodo/fail-closed"
+titulo = "Ausencia de trava REPROVA: a composicao monta o gate ou falha alto; `if (!gate) return` e fail-open e e' defeito"
+fonte = ".ai/gates/lint-swallow/GATE.md:4-7"
+gate = "../../.ai/gates/lint-swallow"
+prova = "printf 'try { f() } catch {}\n' > tars-doc-swallow.probe.mjs && git add -- tars-doc-swallow.probe.mjs && node .ai/gates/lint-swallow/gate.mjs; rc=$?; git rm -q --cached -- tars-doc-swallow.probe.mjs; rm -f tars-doc-swallow.probe.mjs; exit $rc"
+onde = "pre-commit"
+motivo = "a prova cobra o CASO (erro engolido no que entra) e o gate AVISA quando nao tem o que julgar; o fail-open em composition root em si e' cobrado no consumidor que monta o servico (doutrina `segtools/contramedida-testada` la'), divida nomeada"
+
+[[doctrine]]
 id = "fail/erro-nao-se-engole"
 titulo = "`catch {}` vazio e `except: pass` REPROVAM no staged (TARS-SWALLOW-1)"
 fonte = ".ai/gates/lint-swallow/GATE.md:1-14"
