@@ -66,6 +66,33 @@ Do small fixes yourself when the fastest path is a 2-3 file edit. Delegate at ~5
 tool calls or context-polluting work. Relaying a summary without checking it adds
 latency and removes verification — strictly worse than doing nothing.
 
+**The coordinator writes the spec; the worker implements it.** The design, the migration
+plan and the acceptance criterion are the **coordinator's** — checked against the owner's
+decisions before any dispatch — never something the worker invents while coding. A worker
+is sent to **research a fact** (short answer with a source) or to **implement from a
+prompt that already carries the `file:line`**. A worker that has to decide the design is
+a dispatch that was not bounded.
+
+**A worker's task in the tracker is the prompt.** The tracker item holds the prompt, the
+comments hold question/answer, the state holds the flow — so the same test applies to both:
+if the task text would not survive as a prompt to a stranger, it is underspecified.
+
+**The dispatch title carries the key AND a short title** (e.g. `<KEY> · short title — one
+line`), never the key alone: the background-task list is read by a human, and a list of
+bare keys tells nothing.
+
+**The prompt learns from the answers — that is a loop, not a virtue.** Reading a worker's
+reply, extract what was a **prompt failure** (ambiguity, a bug the prompt caused, a bug it
+could have prevented, a question the worker had to ask) and register it, tagged `prompt`,
+so the template improves. A manual run consumes those insights from a pointer and turns
+them into template changes — the same idempotent-pointer design as the curation pointer
+(`.ai/curation.json`), never a fresh read of everything.
+
+**Every dispatch and every coordinator action names which skills/docs it applied, and the
+delivery cites them.** Loading the context bundle is not enough — the delivery says which
+skills were read and how they were applied, so the next reader can audit the method
+instead of trusting the outcome.
+
 ## 2. Write-set isolation
 
 Every dispatched task declares exactly what it owns and what it must not touch.
@@ -200,7 +227,60 @@ cherry-pick — caught by the coordinator checking git state directly (not the
 worker's report), no damage landed, but it was luck (an interrupted stash/checkout
 sequence), not the worker's own judgment, that prevented it.
 
+**Resource collision — two workers on the same checkout kill each other, silently.**
+Isolated write sets are not enough: the checkout, the accelerator, the port or the
+container is a **unique object**, and two runs sharing it serialise on it and can kill
+each other. Real case (2026-10-13, cross-project): one issue dispatched to two slots
+pointing at the **same** checkout — foreign processes competing for the same local
+inference host, one run overwriting the other's `.cache/` artefact, concurrent edits to
+the same untracked file. No error surfaces; only slow, aborted measurement.
+
+- **Detect it before the first write, cheaply.** List the command lines of the live
+  processes and compare the **slot/outdir** of each against your own
+  (`for p in /proc/[0-9]*; do tr '\0' ' ' <"$p/cmdline"; done`, then `readlink /proc/<pid>/fd/1`
+  and the process cwd). A peer on the same checkout is a finding to report, never
+  something to work around in silence.
+- **Never kill a pid that is not yours.** A broad "cleanup" kill is the documented way
+  one worker kills another. Kill only the exact pid you started.
+- **Write to a PRIVATE `--outdir`** (`.cache/<your-slot>/`), never the shared one, so the
+  two runs cannot clobber each other's artefacts.
+- **Report the duplicate dispatch in the delivery** — the double dispatch is the defect,
+  not the symptom.
+
+**Sibling workers in a shared slot share the branch AND the commit identity.** In shared-slot
+mode (FAST/hub: several workers in the same folder and branch, all signing as the same bot
+actor) authorship does **not** tell whose commit is whose. Real case (2026-10-13): a session
+opened a slot and found the HEAD already carrying a sibling's commit for the **exact same
+issue**, three minutes old; consecutive reads returned different content from the same file
+because a peer was editing live.
+
+- **Before writing or committing in a shared slot:** `git log --oneline -3`, plus the current
+  time against the file mtimes. A **fresh HEAD or an mtime newer than ~3 min means an active
+  peer**.
+- **Active peer → do NOT write.** Read what has already been delivered (read-only) and report
+  `partial`/collision to the coordinator instead of redoing the work — committing a peer's
+  working tree misattributes their work.
+- Both rules are the named **exception** to "never a shared checkout": the shared mode exists,
+  so the skill describes how to survive it instead of assuming isolation always holds.
+
+**The coordinator checks its OWN dependency before authorising anyone to free a resource.**
+Disk, drive, port, container, volume: before telling a peer, worker or the owner that a
+resource is free to move, stop or unplug, check whether **this** session depends on it
+(cwd, script paths, deliverables, volumes) and state that first. Real case (2026-10-09): the
+coordinator answered a sibling session that the owner could detach a drive, while its own cwd
+lived on that drive — the whole shell (watchdog, dispatches, pending batch) was lost until the
+path was restored. Symmetric to the worker-resource singleton above: the coordinator's own
+resource is a singleton too.
+
 ## 3. Dispatching
+
+- **Coordination cost scales with the size of the change — a simple tweak never pays for a
+  worker, a worktree or an e2e run.** Owner order (2026-09-26): worktree + worker + e2e +
+  review turned a 1-3 minute change into 20+ minutes with no gain. Simple means one to three
+  files with no logic of their own: edit **directly in the current checkout**, with the app
+  running so hot reload shows it, look at the actual screen, commit. Worktree and worker are
+  for real logic or genuinely parallel work. When the owner asks for "a quick one, no e2e, no
+  machinery", that is the exception — written here, not improvised.
 
 - **Slice before dispatch — never dispatch a big item (owner order, 2026-09-29).** Before launching, check the item
   against the slicing triggers in `segtools-sdd` §8 (>10 min of worker, >1 acceptance boundary, >~15 code files, an "and"
@@ -780,6 +860,33 @@ updates on one task is as hard to skim cold as the state-file bloat this
 section already warns against — same failure, applied to the durable doc
 instead of the scratchpad.
 
+**Intake: an arrow or a mark on a screenshot is an explicit request.** Owner marks on a
+print/screenshot are a **priority ask** and get **their own issue** — never a note inside
+someone else's — same turn, before doing anything else about it. And before saying "there
+is no issue for this", look in the **recent conversation** as well, not only in the tracker:
+a negative claim without that pass is not a proof.
+
+**The reviewer reads the WHOLE block before accusing.** Before pointing at a defect in a
+worker's code, read the entire function/component/server action — never the single line
+the grep returned. Review mistakes are made of the missing two lines above the match.
+
+**The channel IS the tracker — do not build a second one.** Issue = queue, assign =
+claim/lease, comment = heartbeat, `delivery` = result, inbox = cancel. Every state of a
+task has a home in the tracker already, so a parallel status file, a bespoke endpoint or
+a "coordination service" duplicates what exists and immediately drifts (R3). What a
+coordination channel must have, if one is being built or extended: a stable API (CLI +
+endpoint), the coordination fields on the item itself (prompt, the `claim|verify|expect`
+criterion, branch/worktree, evidence) and notification events — nothing more.
+
+**Who may move the item — the owner keeps homologation, the coordinator keeps the rest.**
+Queue → in-progress → `done` is the coordinator's, moved without asking; **only
+homologation is the owner's**, because that is the acceptance of product value. The flow
+is: PASS → `qa-done` and move on; FIX → `fix-needed` and a re-dispatch. Never close `done`
+on your own, and warn when the homologation queue grows (a queue nobody drains looks like
+silence). Anything the owner must decide is escalated as one of exactly four things:
+**decision, personal secret, an action outside the machine, or homologation** — nothing
+else is theirs.
+
 ## 8. Escalation — never decided by an agent
 
 - Anything that can destroy data.
@@ -792,6 +899,33 @@ instead of the scratchpad.
 
 A worker hitting one of these escalates to you; you escalate to the operator. Never
 let a worker guess and proceed.
+
+**The four things that are the owner's — and the rest is not.** Only these go up: a
+**decision**, a **personal secret**, an **action outside the machine**, and
+**homologation**. Anything else the coordinator resolves and reports. "Pending on the
+owner" that is none of the four is a coordinator hiding behind the owner.
+
+**Raising the environment and running the proof is the coordinator's job.** Bringing up
+the hub/database/service and running the acceptance test is part of the delivery — never
+answered with "I'll run it once you bring it up". Handing the environment back to the
+owner inverts the split: the owner decides, the agent executes.
+
+**Status is scoped to the project of THIS session.** A status/overview/pending request
+means the current project only; another project appears only if the owner names it.
+(Generalised deliberately — the rule is "one project per session", not the name of any
+one project.)
+
+**Every answer to the owner is in Portuguese (PT-BR), accents included** — report, summary,
+comment, commit narrative. Identifiers (file, folder, module, plugin, table, column, type,
+function) stay in **English**; screen text, docs, tracker, commit and comment text are
+Portuguese. Both halves of the rule are the same rule.
+
+**Two sessions that cannot talk to each other talk through the owner — and the block to
+paste comes first.** When a report is meant for another agent/session, the **first thing**
+in the answer is the ready-to-paste text, before any commentary of your own. A turn whose
+purpose is that text carries **no tool call at all**: the harness collapses the turn and
+the owner only sees a summary, so the block is lost exactly when it was the point.
+
 
 ## 9. Quick checklist
 
@@ -822,6 +956,10 @@ whole section exists to make visible instead of silent. Real incident, 2026-09-2
 a coordinator over-applied the infra-singleton rule (see its own correction above)
 to four ready, unrelated repo-only tasks and reported "waiting on T-S2" with no
 named collision — none of the four actually touched T-S2's write set.
+
+**Which skills were applied** — the delivery cites them, and the prompt named them;
+the collision check of §2 ran (own slot/outdir, no peer writing to the same object);
+no second tracker/status file was invented.
 
 **On delivery** — artifact read, not the summary; claims re-run now, negative tests
 included; any self-assigned "qa-done" reverted; out-of-scope findings landed
