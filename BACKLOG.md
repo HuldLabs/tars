@@ -29,6 +29,13 @@ A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mes
 
 ## Bugs reportados por consumidores
 
+### Fila da dev.23 (14/10)
+- **[BUG] CHANGELOG com data no título engole seções** (Endurance): `## 0.0.1-dev.2 — 13/10/2026` não é reconhecido como cabeçalho, e o `release-notes` junta a dev.2 e a dev.1 dentro da dev.3, sem avisar (fere a R4). Fazer: aceitar sufixo após a versão **e** falhar alto se uma linha `## ` não for parseável.
+- **`release-notes` para imagem/artefato OCI** (Endurance): a verificação diz "binário provado na sua libc" (o endurance troca com `sed`, frágil) e o `--image` diz "binário em /<bin>", que não serve para imagem base. Fazer: `--kind bin|image` (ou `--verify`/`--image-note`) com o texto de cada caso.
+- **`tars self-update`**: baixa a Release, confere o sha256, troca o binário e roda o `sync --upgrade`. Atualizar vira um comando, sem `gh` e sem compilar (o Tomo mandou compilar).
+- **Teste de upgrade real** no CI: instalar a versão N-1, rodar `sync --upgrade` para N e conferir que os arquivos mudaram. Os bugs da dev.20/21 passaram porque nenhum teste cobria isso.
+- **DRIFT `org/*` no consumidor**: as 5 doutrinas `org/*` dependem do catálogo do huldlabs, que não chega ao binário (o Kipp contornou com symlink). Fazer: embutir no catálogo ou marcar como de outro escopo.
+
 Regra do dono (11/10, `.ai/rules/principles.md`): bug do Tars reportado por um consumidor
 **entra na próxima release** e o `CHANGELOG` **lista os reportados que fechou**. O consumidor
 **reporta aqui** com **repo, data e reprodução** — três campos, nesta ordem. Contorno local só
