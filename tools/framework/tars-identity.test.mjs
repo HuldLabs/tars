@@ -4,11 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import {
   carregarIdentidade,
+  configAssinatura,
   lerKnownHosts,
   montarIdentidade,
   renderIdentidade,
   revoke,
   runIdentity,
+  signSetup,
   verify,
 } from "./tars-identity.mjs";
 
@@ -152,5 +154,97 @@ describe("lerKnownHosts — pinned, sem TOFU", () => {
   });
   it("arquivo ausente devolve null (verify nomeia, nao estoura)", () => {
     expect(lerKnownHosts("/nao/existe/known_hosts")).toBeNull();
+  });
+});
+
+// Fatia a3a (14/10): `sign-setup` (assinatura de commit por SSH, porta do Endurance) e o
+// `verify` que recusa por identidade AUSENTE nomeando o comando do DONO.
+describe("tars identity verify — sem identidade: falha alta nomeando o DONO", () => {
+  const SEM = { existsSync: () => false, readFileSync: () => "" };
+
+  it("sem [identity]/chave: FALHA dizendo `tars identity provision` (DONO, TTY)", () => {
+    const logs = [];
+    const r = runIdentity({ sub: "verify", cfg: {}, deps: { fs: SEM, sshDeHost: () => ({ ok: true, out: "" }) }, log: (l) => logs.push(l) });
+    expect(r.ok).toBe(false);
+    const texto = logs.join("\n");
+    expect(texto).toContain("tars identity provision");
+    expect(texto).toMatch(/TTY/);
+    expect(texto).toMatch(/auto-provisiona/);
+  });
+
+  it("com identidade declarada NAO dispara o atalho (segue o verify normal)", () => {
+    const logs = [];
+    const r = runIdentity({
+      sub: "verify",
+      cfg: { ...CFG, key_file: "/nao/existe/id" },
+      deps: { fs: SEM, sshDeHost: () => ({ ok: true, out: "" }) },
+      log: (l) => logs.push(l),
+    });
+    // A chave declarada mas ausente: a falha e' a da CHAVE, nao o atalho de identidade ausente.
+    expect(r.itens.some((i) => i.nome === "chave presente")).toBe(true);
+    expect(logs.join("\n")).not.toMatch(/auto-provisiona/);
+  });
+});
+
+describe("tars identity sign-setup — assinatura SSH idempotente (porta do Endurance)", () => {
+  const ID = { chave: "/home/d/id_bot", actor: "daneel" };
+  const RA = "/proj";
+
+  it("monta a tríade a partir do key_file (.pub) e do [secrets].allowed_signers", () => {
+    const d = configAssinatura({ id: ID, allowedSigners: "/home/d/.allowed_signers" });
+    expect(d).toEqual({
+      "gpg.format": "ssh",
+      "user.signingkey": "/home/d/id_bot.pub",
+      "gpg.ssh.allowedSignersFile": "/home/d/.allowed_signers",
+    });
+  });
+
+  it("config limpa: aplica as 3 chaves", () => {
+    const exec = [];
+    const r = signSetup({ raiz: RA, desejado: configAssinatura({ id: ID, allowedSigners: "/a" }), atual: {}, exec: (k, v) => exec.push([k, v]) });
+    expect(r.ok).toBe(true);
+    expect(r.aplicados).toHaveLength(3);
+    expect(exec.map(([k]) => k)).toContain("user.signingkey");
+  });
+
+  it("idempotente: config ja' igual nao escreve NADA", () => {
+    const desejado = configAssinatura({ id: ID, allowedSigners: "/a" });
+    const r = signSetup({ raiz: RA, desejado, atual: { ...desejado }, exec: () => { throw new Error("nao devia escrever"); } });
+    expect(r.ok).toBe(true);
+    expect(r.aplicados).toHaveLength(0);
+    expect(r.inalterados).toHaveLength(3);
+  });
+
+  it("config do dono divergente SEM --force: FALHA e nao escreve (nomeia o conflito)", () => {
+    const exec = [];
+    const r = signSetup({ raiz: RA, desejado: configAssinatura({ id: ID, allowedSigners: "/a" }), atual: { "gpg.format": "openpgp" }, exec: (k, v) => exec.push([k, v]) });
+    expect(r.ok).toBe(false);
+    expect(r.conflitos.map((c) => c.chave)).toEqual(["gpg.format"]);
+    expect(exec.some(([k]) => k === "gpg.format")).toBe(false);
+  });
+
+  it("--force sobrescreve o conflito (decisao explicita do dono)", () => {
+    const exec = [];
+    const r = signSetup({ raiz: RA, desejado: configAssinatura({ id: ID, allowedSigners: "/a" }), atual: { "gpg.format": "openpgp" }, force: true, exec: (k, v) => exec.push([k, v]) });
+    expect(r.ok).toBe(true);
+    expect(exec).toContainEqual(["gpg.format", "ssh"]);
+  });
+
+  it("runIdentity sign-setup le a config atual pelo git e marca exit != 0 no conflito", () => {
+    const logs = [];
+    const escritos = [];
+    const r = runIdentity({
+      sub: "sign-setup",
+      cfg: { ...CFG, raiz: RA, allowed_signers: "/a" },
+      deps: {
+        fs: { existsSync: () => false, readFileSync: () => "" },
+        lerGitConfig: (k) => (k === "gpg.format" ? "openpgp" : null),
+        exec: (k, v) => escritos.push([k, v]),
+      },
+      log: (l) => logs.push(l),
+    });
+    expect(r.ok).toBe(false);
+    expect(logs.join("\n")).toMatch(/CONFLITO/);
+    expect(escritos.some(([k]) => k === "gpg.format")).toBe(false);
   });
 });
