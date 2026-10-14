@@ -240,6 +240,25 @@ sequence), not the worker's own judgment, that prevented it.
   (`project-bindings.md`), with the full prompt file (context, scope, ACs, protocol, secret rules) — never an ad-hoc
   command. Launch it with the shell tool's **`run_in_background: true`** — that is what puts it in the app sidebar.
   **Never `&`, `nohup` or `disown` inside the command**: that detaches the process from the app and hides it.
+- **A command that takes more than ~10-20s runs in the background, and is polled —
+  never a `sleep` loop (ported from `seg-agentmem-1` #18, `coleta-segtools` 2.4,
+  `eco.md` 2.7e).** A foreground long command blocks the whole session and reads as a
+  hang: a suite, an image build, a clone, an install. The shape is always the same —
+  the shell tool's background mode (the one that also keeps it visible in the
+  sidebar, above), then check on it when it reports back. What is forbidden is
+  `sleep N && check` chained by hand: it burns the clock without gaining information,
+  the loop usually outlives the need, and a stuck command looks identical to a slow
+  one until the timeout. If a wait is genuinely unavoidable, bound it and say what
+  ending the wait depends on — never wait blindly.
+- **Coordination cost is proportional to the size of the change (ported from
+  `seg-agentmem-1` #4).** A one-line fix, a config value, a typo: the coordinator does
+  it directly on the current checkout with HMR/dev-reload, commits, and is done — no
+  worker, no worktree, no dispatch script, no e2e. Spinning up the full apparatus
+  (worktree + prompt file + worker + review + suite) for a change smaller than the
+  apparatus itself costs more than the fix and delays it. The heavy path is reserved for
+  work that actually needs isolation: multiple files, an unknown root cause, a
+  measurement, a suite run. Choosing the light path is not sloppiness — the verification
+  is still due (the diff read, the real command run), just not a fleet to run it.
 - The prompt is the contract — follow `worker-prompt-template.md`'s required
   sections; missing the secret-handling section makes a prompt invalid to dispatch.
 - Full task text inline, never "go read file X" — a durable prompt file can still
