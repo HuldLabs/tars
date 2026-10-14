@@ -38,3 +38,8 @@ commit-msg = ["commit-msg", "release-guard"]
 # sem a ordem direta do dono. Fica no PreToolUse do harness (como o no-add-all), nao no hook
 # do git — o par doutrina->gate->prova esta' no `.ai/doctrines.toml`
 # (`operacao/nada-em-prod-sem-ordem`).
+#
+# colocacao-arquivo (B1.1/B1.2) NAO entra no hook `pre-commit` do Tars: ele julga pela MATRIZ
+# do projeto e o Tars (modo `self`) nao tem `config/file_placement.toml` — sem matriz o gate
+# reprova por desenho (fail-closed). O par doutrina->gate->prova vive no `.ai/doctrines.toml`
+# (`colocacao/matriz-de-familias`), com prova por `--arquivos`.

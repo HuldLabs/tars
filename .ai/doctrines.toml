@@ -390,3 +390,20 @@ motivo = "doutrina do plano de comunicacao; o gate e' o teste de conformidade do
 prova = "grep -q 'canal indisponivel' /projects/huldlabs/adr/0001-mensageria-e-jobs.md"
 onde = "ci"
 escopo = "catalogo"
+
+# --- Colocacao de arquivo (B1.1/B1.2) — a MATRIZ como DADO: o catalogo traz a REGRA e o
+# consumidor traz a matriz (`config/file_placement.toml`). A prova julga um arquivo real
+# contra uma matriz MINIMA e exige REPROVAR (ele sai 1); prova que reproduz o defeito, nunca
+# PHANTOM — a prosa sozinha nao segurava a regra, porque o catalogo nao tinha o `layout-check`. ----
+
+[[doctrine]]
+id = "colocacao/matriz-de-familias"
+titulo = "Toda familia de arquivo declara o LOCAL (`allowed`); `nao-classificado` BLOQUEIA"
+fonte = ".ai/gates/colocacao-arquivo/GATE.md:1-18"
+gate = ".ai/gates/colocacao-arquivo/gate.mjs"
+esquema = "gate.mjs --matriz <matriz.toml> --arquivos <a,b>"
+# A prova escreve a matriz minima em `.cache/` (descartavel, nunca no versionado) e julga
+# `apps/hub/gate.mjs`: um caminho que a matriz permite SO' em `tools/`. O gate sai 1.
+prova = "printf '[[family]]\nname = \"global\"\npaths = [\"apps/\"]\nallowed = [\"tools/\"]\n' > .cache/matriz-prova.toml && node .ai/gates/colocacao-arquivo/gate.mjs --matriz .cache/matriz-prova.toml --arquivos apps/hub/gate.mjs"
+onde = "pre-commit"
+escopo = "catalogo"
