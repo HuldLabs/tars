@@ -6,7 +6,7 @@
 #   2. anexa os binarios + `sha256sums` a GitHub Release da tag;
 #   3. publica `ghcr.io/huldlabs/tars:<versao>` multi-arch com SO' o binario (base minima —
 #      ver `.github/release.Dockerfile`: o `--compile` do Bun nao emite estatico de verdade,
-#      entao `FROM scratch` nao roda; a base `alpine` + `libstdc++` e' o minimo provado).
+#      entao `FROM scratch` nao roda; a base e' `debian:bookworm-slim`, glibc como o consumidor).
 #
 # A versao vem da TAG (`v0.0.1-dev.18` -> `0.0.1-dev.18`); o binario embute o catalogo
 # (`.ai/` + `templates/`) e roda num ambiente SEM checkout e SEM `TARS_HOME` (fatia 2a, item 2).
@@ -43,12 +43,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # glibc: Ubuntu/WSL/Debian e a imagem OCI. musl: containers Alpine. Cada binario
+          # e' PROVADO rodando na sua libc e arquitetura (QEMU para o arm64), nunca so' compilado.
           - alvo: linux-x64
-            bun: bun-linux-x64-musl
+            bun: bun-linux-x64
             out: tars-linux-amd64
+            prova: debian:bookworm-slim
+            plat: linux/amd64
           - alvo: linux-arm64
-            bun: bun-linux-arm64-musl
+            bun: bun-linux-arm64
             out: tars-linux-arm64
+            prova: debian:bookworm-slim
+            plat: linux/arm64
+          - alvo: linux-x64-musl
+            bun: bun-linux-x64-musl
+            out: tars-linux-amd64-musl
+            prova: alpine:3.20
+            plat: linux/amd64
+          - alvo: linux-arm64-musl
+            bun: bun-linux-arm64-musl
+            out: tars-linux-arm64-musl
+            prova: alpine:3.20
+            plat: linux/arm64
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,21 +84,26 @@ jobs:
           node tools/framework/tars-embed-catalog.mjs --tars . --out tools/framework/tars-embedded.mjs
           bun build --compile --target=${{ matrix.bun }} tools/framework/tars.mjs --outfile "${{ matrix.out }}"
 
-      - name: Provar o binario (roda SEM checkout, SEM TARS_HOME)
+      - name: Setup QEMU (prova do arm64)
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b60017a # v3.7.0
+
+      - name: Provar o binario (roda SEM checkout, SEM TARS_HOME, na libc do alvo)
         run: |
           set -euo pipefail
-          # Copia o binario para um tmpdir SEM `.ai/` acima: exatamente o asset da Release.
-          # Se ele nao responder, o defeito e' o "sem checkout" (fatia 2a, item 2). O alvo musl
-          # NAO roda no runner amd64 sem o loader — por isso a prova so' roda no alvo da maquina.
+          # Tmpdir SEM `.ai/` acima, exatamente o asset da Release, rodado num container da
+          # libc e da arquitetura do alvo. A primeira tentativa da dev.19 compilou musl e provou
+          # no runner glibc: "No such file or directory" (loader ausente). Aqui cada binario
+          # roda onde o consumidor dele roda; o alpine recebe a `libstdc++` que o Bun exige.
           dir="$(mktemp -d)"
           cp "${{ matrix.out }}" "${dir}/tars"
+          chmod +x "${dir}/tars"
           versao="${GITHUB_REF_NAME#v}"
-          if [ "${{ matrix.alvo }}" = "linux-x64" ]; then
-            saida="$(env -u TARS_HOME TARS_EMBED_CACHE="${dir}/cache" "${dir}/tars" --version)"
-            test "${saida}" = "${versao}" || { echo "binario respondeu '${saida}', esperava '${versao}'"; exit 1; }
-          else
-            echo "alvo ${{ matrix.alvo }}: cross-compilado, a prova de execucao e' o smoke da imagem"
-          fi
+          prep=""
+          case "${{ matrix.prova }}" in alpine*) prep="apk add --no-cache -q libstdc++ >/dev/null && " ;; esac
+          saida="$(docker run --rm --platform "${{ matrix.plat }}" -v "${dir}:/t" -e TARS_EMBED_CACHE=/t/cache \
+            "${{ matrix.prova }}" sh -c "${prep}/t/tars --version")"
+          echo "${{ matrix.alvo }} respondeu: ${saida}"
+          test "${saida}" = "${versao}" || { echo "esperava '${versao}'"; exit 1; }
 
       - name: Subir o binario como artefato
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -112,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum tars-linux-amd64 tars-linux-arm64 > sha256sums
+          sha256sum tars-linux-amd64 tars-linux-arm64 tars-linux-amd64-musl tars-linux-arm64-musl > sha256sums
           cat sha256sums
 
       - name: Anexar a Release da tag
@@ -125,9 +146,11 @@ jobs:
           files: |
             dist/tars-linux-amd64
             dist/tars-linux-arm64
+            dist/tars-linux-amd64-musl
+            dist/tars-linux-arm64-musl
             dist/sha256sums
 
-  # Publica a imagem multi-arch `FROM scratch` com SO' `/tars`. Usa o `build-push-action`
+  # Publica a imagem multi-arch (base glibc minima) com SO' `/tars`. Usa o `build-push-action`
   # com um Dockerfile embutido num contexto de uma linha: cada plataforma INJETA o binario
   # ja' compilado (nunca recompila no Docker) pela tag que o buildx resolve.
   imagem:
@@ -148,7 +171,7 @@ jobs:
       - name: Normalizar os nomes (o Dockerfile espera `tars`)
         run: |
           set -euo pipefail
-          cp dist/tars-linux-amd64 tars
+          cp dist/tars-linux-amd64 tars.amd64
           cp dist/tars-linux-arm64 tars.arm64
 
       - name: Setup QEMU
@@ -189,7 +212,7 @@ jobs:
           provenance: true
 
   # Smoke da imagem: confere que o manifest multi-arch existe e que o container amd64
-  # responde `--version` com a versao da tag, provando a imagem `FROM scratch` de verdade.
+  # responde `--version` com a versao da tag, provando a imagem de verdade.
   imagem-smoke:
     name: smoke da imagem
     needs: imagem

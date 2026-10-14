@@ -9,8 +9,10 @@ Guia prático do consumidor: como instalar o `tars`, ligar um repo **novo**, ado
 O `tars` é um binário único: roda sem Node, sem checkout do Tars e sem `TARS_HOME`, porque
 o catálogo (`.ai/` e `templates/`) vem embutido. Toda tag `v*` publica três coisas:
 
-- os binários `tars-linux-amd64` e `tars-linux-arm64` na Release do GitHub, com `sha256sums`;
-- a imagem `ghcr.io/huldlabs/tars:<versão>` (multi-arch, só o binário em `/tars`);
+- os binários na Release do GitHub, com `sha256sums`: `tars-linux-amd64` e `tars-linux-arm64`
+  (glibc: Ubuntu, WSL, Debian) e `tars-linux-amd64-musl` e `tars-linux-arm64-musl` (Alpine,
+  que precisa de `apk add libstdc++`). Cada um é provado no CI rodando na sua libc e arquitetura;
+- a imagem `ghcr.io/huldlabs/tars:<versão>` (multi-arch, base glibc mínima, binário em `/tars`);
 - a atestação de procedência das imagens.
 
 **Na máquina (ou numa imagem com rede):**
