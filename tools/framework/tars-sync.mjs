@@ -369,7 +369,29 @@ export async function plan({ tars, project, manifest, lock }) {
     if (locked && got !== locked) stale.push({ ...entry, want: locked, got })
     else copied.push(entry)
   }
-  return { missing, stale, absent, copied }
+  return { missing, stale, absent, copied, removed: removedFromBase(project, manifest, lock) }
+}
+
+/**
+ * SIMETRIA do sync (TARS-BUG-3 / END-SYNC-2): o que SAI do `.ai/base` sai do consumidor.
+ * Ate' aqui o sync so' ACRESCENTAVA — guard que deixou de ser declarado (ou saiu do
+ * catalogo) ficava vivo no consumidor como guard FANTASMA, rodando no PreToolUse sem que
+ * ninguem o tivesse declarado (Endurance, 14/10).
+ *
+ * A prova de posse e' a MESMA da poda de skill: o nome no lock de ANTES. So' remove o que o
+ * sync escreveu um dia (`lock.files`), nunca arquivo que o consumidor pos na base copiada —
+ * apagar o que nao e' nosso e' o incident de 07/10 esperando acontecer de novo. Roda com o
+ * lock de ANTES (o novo ja' perdeu o item removido).
+ */
+export function removedFromBase(project, manifest, lock) {
+  const declarados = new Set(declare(manifest, { tars: null }).map((e) => destOf(e)))
+  const out = []
+  for (const key of Object.keys(lock?.files ?? {})) {
+    if (declarados.has(key)) continue
+    const abs = join(project, '.ai', 'base', key)
+    if (existsSync(abs)) out.push(key)
+  }
+  return out.sort((a, b) => a.localeCompare(b))
 }
 
 /**
@@ -418,7 +440,7 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   const self = isSelf(tars, project)
   const lockPath = join(project, '.ai', 'tars.lock')
   const lock = existsSync(lockPath) ? JSON.parse(await readFile(lockPath, 'utf8')) : null
-  const { missing, stale, absent, copied } = await plan({ tars, project, manifest, lock })
+  const { missing, stale, absent, copied, removed } = await plan({ tars, project, manifest, lock })
   // Familia D: a saida gerada orfa e' calculada AQUI, com o manifesto de agora e o lock de
   // ANTES de a base ser reescrita (o lock novo ja' perdeu a skill removida).
   const { orphan, foreign } = prunePlan(project, manifest, lock)
@@ -428,7 +450,8 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     if (stale.length) for (const e of stale) log(`drift: ${e.area}/${e.item} (${e.got} != lock ${e.want})`)
     if (absent.length) for (const e of absent) log(`nao copiado: ${e.area}/${e.item}`)
     if (orphan.length) for (const o of orphan) log(`saida gerada orfa (rode \`tars sync\`): ${o}`)
-    return { missing, stale, absent, copied, wrote: [], pruned: orphan, foreign }
+    if (removed.length) for (const r of removed) log(`sobrou na base (rode \`tars sync\`): ${r}`)
+    return { missing, stale, absent, copied, wrote: [], pruned: orphan, foreign, removed }
   }
 
   // Falha RUIDOSA antes de escrever qualquer coisa: item declarado que o Tars nao tem.
@@ -460,6 +483,13 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     wrote.push(key)
     log(`copia ${key}  ${files[key].sha256}`)
   }
+  // SIMETRIA: item que saiu da declaracao (ou do catalogo) sai da base copiada. Depois da
+  // copia e ANTES do lock novo, que ja' nasce sem ele — a prova de posse e' o lock de antes.
+  for (const key of removed) {
+    await rm(join(project, '.ai', 'base', key), { recursive: true, force: true })
+    log(`remove .ai/base/${key} (fora do manifesto)`)
+  }
+  await pruneEmptyDirs(join(project, '.ai', 'base'))
 
   const next = {
     lockfileVersion: 1,
@@ -771,6 +801,31 @@ export function prunePlan(project, manifest, lock) {
 /** Remove as pastas orfas; idempotente (nada orfao = nada apagado). */
 export async function pruneOrphans(project, orphans) {
   for (const rel of orphans) await rm(join(project, rel), { recursive: true, force: true })
+}
+
+/**
+ * Tira as pastas VAZIAS da base copiada, de baixo para cima: remover `.ai/base/guards/x.sh`
+ * nao pode deixar `.ai/base/guards/` orfa, senao o consumidor acumula diretorio morto a cada
+ * item retirado. So' apaga pasta VAZIA — conteudo do projeto nunca entra na conta.
+ */
+export async function pruneEmptyDirs(root) {
+  if (!existsSync(root)) return
+  const sub = async (dir) => {
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return false
+    }
+    for (const e of entries) if (e.isDirectory()) await sub(join(dir, e.name))
+    const restantes = await readdir(dir)
+    if (!restantes.length && resolve(dir) !== resolve(root)) {
+      await rm(dir, { recursive: true, force: true })
+      return true
+    }
+    return false
+  }
+  await sub(root)
 }
 
 /**
