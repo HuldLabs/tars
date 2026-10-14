@@ -73,12 +73,33 @@ docs/adr{,_s}/**   BACKLOG.md
 ```sh
 tars curation                 # lê o delta e lista o que andou (não escreve nada)
 tars curation --json          # mesma medição, para o coordenador/dashboard
-tars curation --advance       # avança o ponteiro dos repos que andaram (grava o HEAD lido)
+tars curation --advance --reviewed <repo,...>   # avança SÓ o que foi lido por inteiro
 tars curation --repos <dir>   # pasta dos repos vizinhos (default: o irmão do Tars)
 ```
 
 O fluxo de uma rodada: `curation` (medir) → ler o delta → `promote` por item aprovado →
-registrar a linha neste doc (§3) → `curation --advance` (fechar a rodada).
+registrar a linha neste doc (§3) → `curation --advance --reviewed <o que foi lido>`.
+
+### O ponteiro só avança sobre LEITURA INTEIRA (§5)
+
+Rodada que olhou só uma **amostra** não avança ponteiro: avancar sobre amostra apagaria para
+sempre o delta entre a amostra e a leitura completa — ele nunca mais apareceria no
+`git diff <ponteiro>..HEAD`. Por isso o `--advance` exige `--reviewed <repo,...>` (ou
+`--reviewed '*'`, quando a rodada leu tudo o que andou). Sem `--reviewed`, o comando **mede e
+avisa**, mas não grava nada — o arquivo de estado fica byte-idêntico.
+
+## 5. O histórico por rodada
+
+Cada rodada fecha deixando o registro em `docs/curation/historico/<AAAA-MM-DD>/`:
+
+| Rodada | O que deixou | Ponteiro |
+|---|---|---|
+| **08/10** | a rodada-base — escreveu direto no catálogo (memória perene + governança); sem artefato | `8f71263` (08/10 23:34) |
+| **11/10** | fase 1 (3 coletas A/B/C, ~80 itens) + fase 1b (`PLANO-RELEASE-TARS.md`, 38 deduplicados) | `7b4dce79` (tars) + HEAD de cada repo |
+| **13/10** | a rodada do **ponteiro**: leu as memórias do agente; o inventário por amostra **não** avança | memória do agente lida por inteiro |
+
+Os **templates** reaproveitáveis de coleta e consolidação (sem dado de projeto) moram em
+`docs/curation/templates/` — a próxima rodada parte deles, não de um prompt novo.
 
 ## 3. O registro origem → destino → situação
 
