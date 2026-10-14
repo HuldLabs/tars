@@ -136,7 +136,71 @@ funciona. A fatia resolve isso em três passos, cada um **sozinho** seguro de ap
   é vazio; e o passo 2 se prova rodando com as duas formas presentes.
 
 Origem (R1): curadoria 14/10, `seg-agentmem-1` #3.
+## Porta × adapter — o driver não sobe de camada
+
+Portar de `nexus/docs/architecture/database-agnostic.md` + ADRs 001/002/004/006 (R1: lógica, nunca dado do projeto).
+
+- **Domínio conhece `Protocol`/porta, nunca driver.** O driver só existe dentro de `adapters/`/`engines/`; nenhum
+  `if engine == ...` fora deles (parte de sessão também não resolve caminho: quem resolve o default de conexão é o
+  adapter, não o objeto de sessão).
+- **Engine novo = módulo novo com `register()`; zero arquivo pré-existente editado.** Discovery por registro; o
+  bootstrap não se edita para acomodar engine. Se plugar exigiu mexer no núcleo, não é plugin.
+- **Enforcement por teste, não por memória de quem coda (gate).** Prova mecânica: nenhum import de driver fora de
+  `adapters/`/`engines/`, nenhum `if engine ==`, e toda exceção em allowlist carrega comentário justificando.
+  A regra que só vive na cabeça do revisor não é regra.
+  alternativo **explícito** (ex.: engine de dev), com imports lazy na factory — nunca escolher sozinho em runtime.
+- **Alternativas rejeitadas ficam registradas com o motivo**, e o critério é durável: **não adotar o que quebra o
+  backup** (`pg_dump`) nem o que exige privilégio interno para funcionar.
+- **Aceleração por tipo de conexão, não por DDL.** Perfil analítico é forçado **por sessão**, atrás de parâmetro do
+  caller, para não tocar o CRUD.
+- **Porta × Hook**: extensão central = `Protocol`; opcional = hook. Protocol primeiro; hook é complemento.
+
+### Checklist de adapter novo (reusar como checklist de PR)
+
+1. A porta é um `Protocol`/DTO sem driver; o adapter é o único que importa o driver.
+2. `register()` no módulo do engine — e **nenhum** arquivo pré-existente alterado.
+3. Resolução de engine explícita, com erro no fim da cascata (sem fallback silencioso).
+4. Ciclo de vida de conexão por chamada, `close()` garantido no `finally`.
+5. Fake/in-memory equivalente, com a mesma semântica da porta, para teste.
+6. Teste do gate de camadas (sem import de driver fora de `adapters/`/`engines/`; sem `if engine ==`).
+7. Exceção, se houver, em allowlist **com comentário justificando**.
+
+### Antes de tocar persistência (as 5 perguntas)
+
+1. Onde mora esta regra — na porta, no adapter ou no schema? (uma casa só)
+2. Isto é extensão central (`Protocol`) ou complemento (hook)?
+3. Quem mais usa este ponto? **Inventarie os callers antes de mudar o perfil de conexão** — mapa
+   operacional × analítico de todo ponto que usa o banco, com classificação.
+4. A resolução é explícita (sem fallback silencioso) e o default está declarado?
+5. Qual a prova? (teste/gate que reprova se a fronteira for violada)
+
+## 4. Jobs duráveis: lease, idempotência e o teste do agendador
+
+Portado de `coleta-eco` §5.6 e do mapa de 13/10 (C6 do plano de 14/10).
+
+- **Lease, não lock eterno.** Um job pega o item com **lease** (prazo), renova com **heartbeat** e
+  devolve à fila quando o prazo vence — um job morto não pode segurar trabalho para sempre
+  (`SKIP LOCKED` + heartbeat + stalled + dead-letter, ver Filosofia).
+- **Três idempotências, não uma:** (1) o job rodar de novo não duplica efeito; (2) o lease vencido
+  e retomado não duplica efeito; (3) o retry após falha parcial não duplica efeito. Cada uma tem
+  prova própria — "é idempotente" sem as três é meia idempotência.
+- **Teste de agendador não espera o relógio.** Dispare o **caminho** (o gatilho determinístico do
+  scheduler) e aguarde o resultado real; esperar o minuto virar é teste lento e instável. E **nunca**
+  aumentar teto/`sleep` nem afrouxar a asserção para o teste passar: se o agendamento não dispara no
+  caminho, o defeito é do caminho.
+- **Contrato de tempo e locale é declarado.** Fuso, formato de data e locale do banco/job são
+  **explícitos** no schema/código (UTC no armazenamento; locale só na borda de apresentação) — o
+  "funcionou na minha máquina" de data é sempre locale ambiente vazando para o dado.
+- **Ledger de IA**: toda chamada de modelo que gera dado persistido registra **qual modelo, qual
+  versão/prompt e quando** — sem o ledger, o derivado não é reproduzível nem auditável.
+
+## 5. Um engine de jobs só
+
+Um segundo orquestrador/agendador **não roda em paralelo**: ele entra atrás da **mesma porta**
+(`OrchestratorPort`), com o caminho de migração escrito (ver skill `iam` §3). Duas filas é duas
+verdades sobre o que está rodando.
 
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
-+ `docs/operations/{data-foundation,database-environments}`. (Repos de terceiros: **somente leitura**.)
++ `docs/operations/{data-foundation,database-environments}`. Camada porta × adapter: `nexus`
+`docs/architecture/database-agnostic.md` + `adr-001/002/004/006`. (Repos de terceiros: **somente leitura**.)
