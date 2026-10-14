@@ -14,13 +14,20 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   `.ai/tars.lock` para o motor atual e registra `upgrade declarado: Tars X -> Y`.
 - `sync` sem `--upgrade` continua recusando a divergência (nada escrito) — o motivo da dev.19
   (sync com o motor errado apagava item da base) segue valendo.
+- **`tars upgrade-notes` no binário publicado.** O catálogo embutido não trazia o
+  `CHANGELOG.md`, e o comando falhava com "CHANGELOG.md ausente no catalogo". Agora vem junto.
+- **Lock em versão que o CHANGELOG não conhece** (esquema antigo, ex.: `1.0.0`): o
+  `upgrade-notes` dizia "já em dia" e escondia tudo; agora mostra todas as notas até a atual
+  e avisa por quê.
 
 ### Por que
-Achado pelo seo-brain ao atualizar para a dev.19: o lock dele vinha de `1.0.0` (esquema de
-versão antigo) e a única saída citada pelo erro não existia.
+Achado pelo seo-brain e pelo Kipp ao atualizar para a dev.19: o lock vinha de `1.0.0`
+(esquema de versão antigo), a única saída citada pelo erro não existia e o `upgrade-notes`
+do binário não tinha o CHANGELOG.
 
 ### Arquivos impactados
-`tools/framework/tars-sync.mjs`, `tools/framework/tars.mjs` (+ testes), `docs/adocao.md`.
+`tools/framework/tars-sync.mjs`, `tars.mjs`, `tars-upgrade.mjs`, `tars-embed-catalog.mjs`
+(+ testes), `docs/adocao.md`.
 
 ### O que o consumidor faz
 Para sair de qualquer versão anterior (inclusive lock `1.0.0`): troque o binário e rode

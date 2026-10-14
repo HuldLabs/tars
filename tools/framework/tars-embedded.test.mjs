@@ -27,6 +27,8 @@ describe('catalogo embutido — geracao', () => {
     // Os arquivos que `sync`/`doctor`/`hooks` leem: o manifesto, a versao e os gates.
     expect(Object.keys(ARQUIVOS)).toContain('.ai/VERSION')
     expect(Object.keys(ARQUIVOS)).toContain('.ai/tars.toml')
+    // O `upgrade-notes` do binario le o CHANGELOG do catalogo embutido (Kipp, 14/10).
+    expect(Object.keys(ARQUIVOS)).toContain('CHANGELOG.md')
     expect(Object.keys(ARQUIVOS).some((p) => p.startsWith('.ai/gates/'))).toBe(true)
     expect(Object.keys(ARQUIVOS).some((p) => p.startsWith('.ai/guards/'))).toBe(true)
   })

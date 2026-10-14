@@ -90,6 +90,11 @@ export function upgradeNotes({ tars, project, from } = {}) {
   const blocos = parseChangelog(readFileSync(changelogPath, 'utf8'))
   if (origem && compareVersions(origem, version) === null)
     return { version, from: origem, notas: [], faltando: `versao do lock ilegivel: '${origem}' (esperado X.Y.Z[-dev.N])` }
+  // Versao do lock que o CHANGELOG nao conhece (esquema antigo, ex.: `1.0.0` antes do
+  // `0.0.1-dev.N`): comparar diria "ja' em dia" e esconderia tudo (seo-brain, 14/10). Sem
+  // ponto de partida conhecido, mostra TODAS as notas ate' a atual e diz por que.
+  if (origem && !blocos.some((b) => b.version === origem))
+    return { version, from: origem, notas: notesBetween(blocos, null, version), faltando: null, aviso: `versao do lock '${origem}' nao consta do CHANGELOG (esquema antigo?) — mostrando todas as notas ate' ${version}` }
   const notas = notesBetween(blocos, origem, version)
   return { version, from: origem, notas, faltando: null }
 }
@@ -100,7 +105,8 @@ export function format(r, log = console.log) {
     log(`tars upgrade-notes: ${r.faltando}`)
     return
   }
-  if (!r.from) log(`tars upgrade-notes — sem lock no consumidor; notas ate' ${r.version}:`)
+  if (r.aviso) log(`tars upgrade-notes — ${r.aviso}:`)
+  else if (!r.from) log(`tars upgrade-notes — sem lock no consumidor; notas ate' ${r.version}:`)
   else if (!r.notas.length) log(`tars upgrade-notes — nada entre ${r.from} e ${r.version} (ja' em dia).`)
   else log(`tars upgrade-notes — de ${r.from} para ${r.version}:`)
   for (const n of r.notas) {
