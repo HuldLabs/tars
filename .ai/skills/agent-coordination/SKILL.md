@@ -838,6 +838,23 @@ nothing to attack. Coverage is a different question — *what is missing from th
 
 ## 7. Continuous bookkeeping
 
+**The channel IS the tracker — one meaning per verb, and no second ledger (ported from
+`seg-agentmem-3` #10).** Every state a task passes through has one place it is written
+and one verb that writes it; anything kept elsewhere (a chat aside, a private note, a
+status muttered in the summary) is not state, only a claim about it:
+
+| verb | meaning |
+|---|---|
+| opens an issue | the work enters the queue |
+| assigns itself | the claim — this worker owns it now |
+| comments | the heartbeat — what happened since the last one |
+| delivery | the result — what was proven, with evidence |
+
+Read the tracker for the truth and write to it for every transition; the coordinator
+that keeps a private convention alongside it eventually reports a state neither the
+tracker nor reality agrees with. The corollary is that a tracker row is the artifact —
+it must be updated the moment the state changes, not reconstructed at the end.
+
 Not a wrap-up checklist — as it happens:
 - On dispatch → tracker row to in-progress, right then.
 - On a new demand surfacing (a finding, a correction, a new ask) → register it
