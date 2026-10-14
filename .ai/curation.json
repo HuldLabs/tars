@@ -6,19 +6,13 @@
       "reviewed": "14/10 (leitura integral; branch fix/sops-age-key-canonica)"
     },
     "endurance": {
-      "sha": "e94897e",
-      "iso": "2026-10-13T23:29:00Z",
-      "reviewed": "14/10 (leitura integral; repo ausente do estado ate' aqui)"
+      "sha": "103a825",
+      "iso": "2026-10-14T02:35:09-03:00"
     },
     "homelab-infra": {
       "sha": "cb8c53b",
       "iso": "2026-10-13T18:08:37-03:00",
       "reviewed": "amostra (inventario 13/10) — NAO avanca"
-    },
-    "lazarus": {
-      "sha": "f633e77",
-      "iso": "2026-10-07T15:58:00Z",
-      "reviewed": "14/10 (leitura integral; delta desde 11/10 vazio por construcao)"
     },
     "huldlabs": {
       "sha": "1f0fa30",
@@ -29,6 +23,11 @@
       "sha": "772d236",
       "iso": "2026-10-11T23:56:40-03:00",
       "reviewed": "11/10 (coleta A/B/C + consolidacao)"
+    },
+    "lazarus": {
+      "sha": "f633e77",
+      "iso": "2026-10-07T15:58:00Z",
+      "reviewed": "14/10 (leitura integral; delta desde 11/10 vazio por construcao)"
     },
     "nexus": {
       "sha": "cf86b2d",
@@ -65,32 +64,5 @@
       "iso": "2026-10-07T10:32:47Z",
       "reviewed": "11/10 (coleta A/B/C + consolidacao)"
     }
-  },
-  "rodadas": [
-    {
-      "data": "2026-10-08",
-      "tipo": "base",
-      "ponteiro_tars": "8f71263",
-      "nota": "Primeira curadoria (23:34). Escreveu direto no catalogo — memoria perene + governanca; sem artefato."
-    },
-    {
-      "data": "2026-10-11",
-      "tipo": "coleta A/B/C + consolidacao",
-      "ponteiro_tars": "7b4dce79",
-      "artefatos": "docs/curation/historico/2026-10-11/",
-      "nota": "3 coletas (~80 itens) -> 38 deduplicados no PLANO-RELEASE-TARS.md. HEADs lidos: tars 7b4dce79, segtools chore/ecossistema-huldlabs, homelab-infra 6c79988b, huldlabs 50638daf, kipp a091e609."
-    },
-    {
-      "data": "2026-10-13",
-      "tipo": "delta por ponteiro",
-      "artefatos": "docs/curation/historico/2026-10-13/",
-      "nota": "Leu as memorias do agente do segtools por inteiro; o inventario por amostra NAO avanca ponteiro (--reviewed)."
-    },
-    {
-      "data": "2026-10-14",
-      "tipo": "coleta do ecossistema (delta) + plano de release",
-      "artefatos": "docs/curation/historico/2026-10-14/",
-      "nota": "5 coletas (~205 itens brutos) -> 58 itens no PLANO-RELEASE-TARS.md. F2: criados os ponteiros de endurance/lazarus/dotfiles (faltavam). F1: o ponteiro do SEGTOOLS NAO avanca nesta rodada — ha' 20+ arquivos de .ai/memory/agent/ lidos mas nao commitados; enquanto nao forem commitados o delta reaparece (regra: ponteiro so' avanca sobre leitura inteira E commitada)."
-    }
-  ]
+  }
 }

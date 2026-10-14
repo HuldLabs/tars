@@ -49,6 +49,22 @@ falsificável**.
 
 Origem (R1): `coleta-eco` 2.9.
 
+## O bit de execução mora no índice, não no disco
+
+Script, hook e teste que o CI executa precisam do modo `100755` **no índice do git**. Com
+`core.filemode=false` (padrão em montagem Windows/WSL e ligado de propósito por imagens de
+dev), o `chmod +x` local some no commit: no disco o arquivo roda, no runner morre com
+`Permission denied` (exit 126). O mesmo buraco desligou os hooks de uma worktree inteira.
+
+- Ao criar script executável: `git update-index --chmod=+x <arquivo>` e conferir com
+  `git ls-files -s <arquivo>` (tem de mostrar `100755`).
+- Hook que não roda por falta do bit é commit **inválido**: a saída `hook was ignored because
+  it's not set as executable` para tudo, não é aviso.
+
+Origem (R1): Endurance `063cd08` (9 jobs de CI vermelhos, 13/10); Fabber, incidente de
+20/09 (`docs/dev/prompts/LESSONS-LEARNED.md` #70: 57 execuções vermelhas e ~1.800 minutos de
+Actions queimados).
+
 ## Proibido
 
 - `git branch -D` (perde trabalho calado; a poda usa `-d`, que barra o não

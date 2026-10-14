@@ -189,4 +189,23 @@ aqui.
 - **Gate.** Regra de revisão (a decisão sobe com o `GH013` citado e o estado local
   declarado); sem gate automático — `n/a` enquanto a resposta é procedimento.
 
+### 17. Allowlist de scanner de segredo é por linha ou valor, nunca um modo global
+
+Para liberar um falso positivo do gitleaks, marque **a própria linha** (`gitleaks:allow`) ou
+o valor exato. Um modo global (ex.: `regexTarget = "line"` numa regra de allowlist) afrouxa as
+regras antigas: liberava a linha inteira de qualquer `op://`, inclusive um segredo real ao
+lado. Allowlist por padrão de formato é o mesmo defeito: libera toda credencial futura daquele
+formato.
+
+Origem: Endurance `ff5164a` (re-revisão de segurança, 13/10).
+
+### 18. Cadeia de suprimento: confere a origem antes de confiar
+
+- Chave de repositório apt só vira `signed-by` depois de conferida pela **impressão digital
+  completa** (bloqueante, não aviso).
+- Binário baixado vem de versão fixa com **sha256 fixado** no código; nunca `curl | bash`.
+- Item sem pino possível (ex.: navegador de canal estável) é **exceção declarada**, com a
+  razão, e arquitetura não suportada falha cedo.
+
+Origem: Endurance `ce9fd76` (revisão adversarial das features, 13/10).
 
