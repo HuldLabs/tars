@@ -16,6 +16,25 @@ Os três mecanismos antigos **não** são substituídos — são **ligados** na 
 |---|---|---|---|
 | **1 · Medir** | `tars curation` (novo, DET) | lê o **delta** de conhecimento desde o ponteiro e lista o que andou | rotina (por ponteiro) |
 | **2 · Julgar** | `EVOLUTION.md` (retrospectiva) + skill `senior-research` | decide o que entra, generalizado — e o que **não** entra, com motivo | na leitura do delta |
+
+### Julgar começa por R1: **portar, nunca reescrever**
+
+Antes de absorver **qualquer** coisa (skill, regra, doutrina), a primeira pergunta do passo 2
+é **R1**: *isso já existe? onde?* Procure, nesta ordem:
+
+1. o próprio repo (skills, docs, memória, testes);
+2. os repos vizinhos — `/projects/*/.ai/skills`, `/projects/*/.claude/skills`, `/projects/*/docs`,
+   `/projects/fabber*` (front/api/IaC);
+3. o vault `ai-brain` (`.ai-brain/skills/**`) — é onde mora o método pessoal do dono.
+
+- **Existia?** → **porte a original** como base (traga o corpo dela, não um resumo), mantenha o
+  que for **genuinamente novo** e de método — **marcado** como novo — e registre a origem.
+  Reescrever do zero o que já existia é o defeito que esta regra existe para barrar: perde o
+  trabalho de curadoria do original e cria uma segunda fonte (fere R3).
+- **Não existia?** → diga **"não existia"** e **cite a busca feita** (onde procurou). "Nova"
+  sem a busca registrada é afirmação sem prova.
+- **Toda absorção registra a origem** na tabela do §3 (`arquivo:linha` no repo de origem) —
+  seja porte ou ideia nova. A coluna `origem` é obrigatória, nunca "—".
 | **3 · Subir** | `tars promote --area <memory\|skill\|gate> --item <nome>` | escreve o item no catálogo (working tree, para revisão) | por item aprovado |
 
 O passo 1 é **determinístico** (git, sem julgamento); o 2 é **julgamento** (LLM, com fonte); o
@@ -68,11 +87,11 @@ portado: uma tabela com origem, destino, situação e o commit que a subiu.
 
 | # | origem | destino no Tars | situação | release |
 |---|---|---|---|---|
-| 1 | segmentos `seo-brain/docs/COMO-PENSAMOS.md`, `homelab-infra/.../telemetria-instrumentacao.md` | `.ai/skills/senior-research/SKILL.md` | absorvido (generalizado) | fatia 2 |
+| 1 | **vault `ai-brain`** (`.ai-brain/skills/senior-research`) — + segmentos `seo-brain/docs/COMO-PENSAMOS.md` | `.ai/skills/senior-research/SKILL.md` | **portada** (o Tars vira a fonte) | fatia 2 |
 | 2 | `homelab-infra/docs/restaurar-nuc.md`, `seo-brain/docs/BACKUP.md` | `.ai/skills/backup-restore/SKILL.md` | absorvido (generalizado) | fatia 2 |
 | 3 | `segtools/AGENTS.md`, `seo-brain/AGENTS.md`, `segtools/docs/devcontainer-lessons.md` | `.ai/rules/ambiente.md` | absorvido (regra de boot) | fatia 2 |
-| 4 | `homelab-infra/docs/estudos/2026-10-13-telemetria*.md` + decisão do dono 14/10 | `.ai/skills/telemetria/SKILL.md` | absorvido (generalizado) | fatia 2 |
-| 5 | `homelab-infra/README.md`, `docs/decisoes.md`, `.../gitops-docker.md` | `.ai/skills/iac/SKILL.md` | absorvido (generalizado) | fatia 2 |
+| 4 | `homelab-infra/docs/estudos/2026-10-13-telemetria*.md` + decisão do dono 14/10 (R1: não existia skill equivalente nos vizinhos nem no `ai-brain`) | `.ai/skills/telemetria/SKILL.md` | absorvido (generalizado) | fatia 2 |
+| 5 | `homelab-infra/README.md`, `docs/decisoes.md`, `.../gitops-docker.md`; pyinfra+Pulumi do **Fabber** (R1: não existia skill equivalente) | `.ai/skills/iac/SKILL.md` | absorvido (generalizado) | fatia 2 |
 | 6 | `kipp/docs/extracao-dossie.md:207` (D18) | `.ai/governance/versionamento-de-extracao.md` | absorvido (doutrina) | fatia 2 |
 | 7 | `segtools/HANDOFF.md` (BR-IAM-004) | `.ai/skills/agent-coordination/SKILL.md` | absorvido (extensão) | fatia 2 |
 | 8 | `seo-brain/docs/kb/metodologia/orchestration.md` | `.ai/skills/agent-coordination/SKILL.md` | absorvido (extensão) | fatia 2 |
@@ -97,8 +116,12 @@ rodada re-avalia o mesmo e o registro perde valor.
 Antes de `promote`, cada item do delta responde:
 
 - [ ] **Generalizado?** Zero dado de projeto (host, IP, cofre, cliente, número de retenção).
+- [ ] **Procurou a versão existente ANTES de criar?** (R1) — se existia (repo próprio,
+      `/projects/*`, `ai-brain`), **portou a original**; se não, **"não existia" com a busca
+      citada**.
 - [ ] **Já existe no catálogo?** (R1) — se existe, é PARTIAL: estende, não duplica (R3).
-- [ ] **Onde é a fonte?** `arquivo:linha` no repo de origem, datado.
+- [ ] **Onde é a fonte?** `arquivo:linha` no repo de origem, datado — **a origem está registrada
+      na linha do §3** (porte ou ideia nova; nunca "—").
 - [ ] **Destino decidido?** skill nova · regra de boot · extensão de skill · doutrina — e o nome.
 - [ ] **Se não entra, o motivo está escrito?** (tabela acima).
 - [ ] **Sobe a versão?** Mudança visível no consumidor sobe `N` (D18); `No-Release: <motivo>` só

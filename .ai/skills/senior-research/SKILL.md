@@ -1,114 +1,104 @@
 ---
 name: senior-research
-description: How to research before deciding — decompose the question into sub-questions, answer each with a dated primary source, declare "not found" instead of inferring, and close with a one-line verdict per sub-question. Covers source quality, cross-checking, the DET/LLM/EXT design mark, and how to hand the result to a decision. Load BEFORE any "what is the best way to…", "does X support Y", or architecture choice that leans on the outside world.
+description: Runs a disciplined, adversarial research pass — web search, source triage, cross-verification, explicit citation — instead of a single-shot search-and-summarize. Use when the user asks for research, investigation, a comparison, "o que existe sobre X", fact-checking, or when an answer would otherwise rest on a single unverified source.
 ---
 
-# Senior research
+# Senior Research
 
-Research is not "search and summarise". It is a **falsifiable procedure**: the output is a
-set of answers that a reader could re-check, each one carrying its source and its date —
-or the explicit admission that it was not found. This skill is method, not domain; it works
-for a benchmark, an architecture choice, a library comparison or a "does this exist".
+> **Origem (R1):** **portada** do vault `ai-brain` (`.ai-brain/skills/senior-research`) — não
+> escrita do zero. O Tars passa a ser a **fonte** do método; a original fica como proveniência.
+> Registro em `docs/CURATION.md` §3.
 
-## 1. Sub-questions before searching (owner rule)
+The default failure mode this skill exists to prevent: one search, one source,
+one confident-sounding answer. A senior researcher never stops there.
 
-**Never search the question.** Decompose first, in writing, then search each piece. One
-search on the whole question returns prose that *sounds* like an answer; sub-questions
-return facts you can check one by one.
+## Workflow
 
-- Write the question verbatim at the top of the working note — the **literal** one, not a
-  cleaned-up version. The wording is data: it tells you which ambiguity the asker had.
-- Split into **2–6 sub-questions**, each answerable independently and each starting from
-  the **primary artifact** (`docs`, `changelog`, `release notes`, source), not from a
-  blog that summarises it.
-- A sub-question that is itself a decision ("should we use X?") is not a sub-question —
-  rewrite it as the fact that would settle it ("does X hold property Y, and at what cost?").
-- **Cheap first, expensive last.** If sub-question 1 answers it, stop. Do not research the
-  whole tree to justify a conclusion reached at the root.
+1. **Decompose the question first.** Split it into the specific sub-claims that
+   need an answer. A vague question ("o que existe sobre X") still decomposes into
+   concrete sub-claims before searching — don't search on the vague version.
+2. **Fan-out** — for each sub-claim, generate a *set* of parallel queries, not one
+   reused phrasing (this is how Google AI Mode, Perplexity, Copilot and ChatGPT
+   retrieve — one prompt → many sub-queries, run in parallel):
+   - **semantic variants:** equivalent/rephrase, synonyms, PT↔EN (our repos are
+     bilingual), canonicalization (standardize the term), specification (narrow)
+     and generalization (broaden), follow-up (adjacent angle).
+   - **source classes:** primary/official, critique/disconfirming, alternative framing.
+   - **sources we control** (for this repo/vault work): the real projects
+     (`D:\onedrive\clients\fabber`, `X:\nexus`, WSL projects) **and** their
+     `HANDOFF*`, **tests**, `BACKLOG`/`ROADMAP` — they concentrate decisions, bugs
+     and "how we avoided it", and stay fresher than prose docs.
+   - scale the number of queries to the claim's complexity (AI Mode fires ~8–12;
+     Deep Search, dozens–hundreds) and run them in parallel.
+   - **record the queries you fire** so the search is auditable and repeatable.
+3. **Fan-in** — merge the results, **de-duplicate** overlapping hits (fan-out often
+   returns the same "perfect chunk" for several variants), group by theme, then
+   rank by authority for the claim (next step) — never by which phrasing surfaced it.
+4. **Intent anchor & drift guard.** Hold the original sub-claim fixed and reject
+   variants that drifted from it. Named failure modes to actively avoid:
+   **semantic drift** (e.g. "runner headphones" → "sports equipment" → "fitness gear"),
+   **iterative expansion divergence** (each query spawning ever more tangential
+   ones), and **filter bubble** (one source's/project's framing treated as consensus).
+5. **Rank sources by authority for the specific claim**, not by convenience:
+   - primary/official source (spec, vendor docs, the standard itself, the paper)
+   - beats a reputable secondary analysis
+   - beats a blog/listicle repeating the primary source
+   - beats an AI-generated summary of the topic (including this skill's own
+     unverified first pass)
+6. **Cross-verify every load-bearing claim against a second, independent
+   source** before it goes in the answer. "Independent" means not the same
+   author, not one citing the other in a chain. A claim that only one source
+   makes gets flagged as single-sourced, not stated as fact.
+7. **Actively look for disagreement and disconfirming evidence**, not just
+   confirmation. If two sources conflict, say so and give both, with dates —
+   don't silently pick the more convenient one.
+8. **Track freshness.** Note publication/update dates. A fact from a 2019 page
+   answering a question about current behavior needs a newer check before it's
+   trusted, especially for anything that changes often (pricing, APIs, product
+   features, algorithms/rankings).
+9. **Cite inline as you go**, not reconstructed from memory at the end — one
+   source per claim, linked or pathed, so every non-obvious statement in the
+   final answer is traceable to where it came from.
+10. **Report confidence explicitly per claim**: confirmed (2+ independent
+    sources agree), single-sourced (only one source, name it), or unresolved
+    (sources disagree or nothing authoritative found) — never blend these into
+    one uniformly confident-sounding paragraph.
 
-## 2. Every claim carries a source and a date
+## What to flag instead of silently smoothing over
 
-A claim without a dated source is an opinion wearing a lab coat.
+- A claim you could only find one source for.
+- Sources that disagree, especially when one is more authoritative than the
+  other but the less authoritative one is more convenient to cite.
+- A source that is itself an AI-generated summary, an SEO listicle with no
+  named author/institution, or otherwise low-provenance — usable as a lead to
+  the primary source, never as the citation itself.
+- Anything time-sensitive where the source's date isn't visible or is old.
+- A sub-claim the search genuinely couldn't resolve — say so, don't paper over
+  the gap with a plausible-sounding guess.
 
-- **Primary over secondary.** Official docs, the changelog, the release notes, the source
-  file. A blog post that summarises the changelog is a *pointer*, never the citation.
-- **Date it.** Software changes; the citation is `source + date` (or version/commit), never
-  the source alone. "The docs say X" ages into "the docs said X in 2024".
-- **Cite the smallest unit** — `file:line`, a section anchor, a specific version — not "the
-  docs" or "somewhere in the repo".
-- **Quote or paraphrase-exactly.** If you quote, quote; if you paraphrase, stay close enough
-  that a reader can grep the original and land on it.
-- When a source **contradicts** another, both are reported with their dates — the newer does
-  not silently win. Say which you believe and why.
+## Output shape
 
-## 3. "Not found" is a result, not a failure
+- Lead with the direct answer to what was asked.
+- Then the sub-claims, each with its confidence level and citation(s).
+- Close with what's still open/unresolved, if anything is.
+- Skip the workflow narration ("first I searched X, then I searched Y") in the
+  final answer — the citations carry the provenance, not a search diary.
 
-The characteristic failure of research is filling the gap with what is merely *plausible*.
+## Guardrails
 
-- After a real attempt (the primary source and 2–3 independent angles), if the answer is not
-  there, write **"not found"** — literally — and say **where you looked**. Do not infer, do
-  not extrapolate, do not write the answer you expected to find.
-- Never present a guess in the same voice as a sourced fact. If you must hypothesise, label
-  it: `hipótese (não verificado)`.
-- An unverifiable claim is worse than a missing one: the missing one costs a second search,
-  the unverifiable one costs the decision built on it.
-
-## 4. Cross-check before you conclude
-
-- Any claim that drives a decision needs **two independent sources** or one **primary**
-  source plus a confirmation. Independent means *not* both quoting a third source.
-- When they agree, say so and move on. When they disagree, the disagreement **is** the
-  finding — report it with both citations, dates and your call.
-- Prefer the source you can inspect over the source you must trust. A repo's own
-  `CHANGELOG` beats a blog; a running command beats both.
-
-## 5. Verdict per sub-question, one line
-
-Close the research with a table, one row per sub-question: **sub-question → verdict (1 line)
-→ source + date**. The verdict is the answer, not the journey; the journey is the citations.
-
-- The whole result must be re-checkable **from the table alone**: someone with the table and
-  a browser can falsify any line.
-- No prose without a row. If a paragraph carries a new claim, it needs a row (or is it
-  decoration?).
-- State the **confidence**, not just the answer: `confirmado (2 fontes)` · `único (1 fonte)`
-  · `não encontrado`.
-
-## 6. The DET / LLM / EXT mark (design, not domain)
-
-Every step of the method is one of three kinds — mark it, because it decides where the step
-belongs in a design:
-
-| mark | meaning | where it belongs in code |
-|---|---|---|
-| **DET** | deterministic — a rule, a lookup, an arithmetic | a unit with a test; no model |
-| **LLM** | judgement — decomposition, ranking, "does this feel right" | behind an interface; expect to swap the model |
-| **EXT** | external context — a search, a fetch, a human's knowledge | a boundary that can fail; cache it; never inline it |
-
-A method whose steps are unmarked drifts into "the model does all of it". Marking pulls the
-**DET** steps out into testable code and leaves the **LLM** steps where a model is honestly
-the right tool. (This is the `senior-research` step list from the ecosystem's
-`COMO-PENSAMOS`, generalised — the 9-step walkthrough with each step marked.)
-
-## 7. Handing off to a decision
-
-Research ends at the **decision boundary**, not past it. The output is the table from §5
-plus, if asked, a **recommendation** with its cost — never a plan, never an implementation.
-Whoever owns the decision owns it; the researcher hands over the material to decide, marked
-with what is confirmed and what is not.
-
-- State the **cost** of each option (time, resource, risk), because a verdict without cost
-  is not decidable.
-- When two options are within noise, say "tie" and name the tiebreaker the owner should use
-  — do not invent a winner to look useful.
-- Anything you could not settle is listed as **open**, with the test that would settle it.
-
-## Checklist before delivering
-
-- [ ] The literal question is written at the top.
-- [ ] Every sub-question has a dated source, or an explicit "not found" with where you looked.
-- [ ] Every decision-driving claim has two independent sources or one primary + confirmation.
-- [ ] The verdict table stands alone (re-checkable without the prose).
-- [ ] Confidence is stated per row.
-- [ ] Steps that are DET are marked so, and pulled out of the model path.
-- [ ] Nothing is inferred into the gap; hypotheses are labelled.
+- **Fan-out is not free.** Scale the number of queries to the claim and stop when a
+  variant adds nothing new. Fan out wide for cheap/local searches (grep, repo reads)
+  and narrow for expensive/rate-limited ones.
+- **Don't let fan-out dilute specificity.** Broadening is a variant, not the goal —
+  the narrow, exact query must stay in the set and in the ranking.
+- **Drift guard is mandatory:** after fanning out, re-check that each kept result
+  still answers the *original* sub-claim (semantic drift / iterative divergence /
+  filter bubble — see workflow step 4).
+- Do not present a single source's framing as the consensus view.
+- Do not cite a source you did not actually check the content of.
+- Do not let a well-written low-authority source outrank a terse
+  high-authority one.
+- Do not silently drop a disconfirming source because it complicates the
+  narrative.
+- Do not fabricate a citation, a date, or a number when the search didn't
+  actually surface it — say it wasn't found.

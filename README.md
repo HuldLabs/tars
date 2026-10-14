@@ -324,9 +324,14 @@ entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só d
 `agent-coordination` · `app-extraction` · `security-testing` · `segtools-frontend` ·
 `segtools-database` · `segtools-sdd` · `segtools-content` · `segtools-writing` ·
 `shadcn` · `migrate-radix-to-base` · `daneel` (identidade de automação do ecossistema) ·
-`senior-research` (pesquisa com fonte datada) · `backup-restore` (backup só é real quando
-restaura) · `telemetria` (capacidade core por hook; OTel como plugin) · `iac` (infra por
-ficha) · e os `fabber-*` (front/api/nextjs/debug, transitórios).
+`senior-research` (pesquisa com fonte datada; **portada do vault `ai-brain`**) ·
+`backup-restore` (backup só é real quando restaura) · `telemetria` (capacidade core por hook;
+OTel como plugin) · `iac` (infra por ficha) · e os `fabber-*` (front/api/nextjs/debug,
+transitórios).
+
+**R1 antes de absorver:** nenhuma skill daqui é escrita do zero — antes de absorver, procure a
+versão que já existe (repo próprio, `/projects/*`, `ai-brain`); **porte a original**, marque o
+que for genuinamente novo, e registre origem em `docs/CURATION.md` §3.
 
 O inventário de acessos da Daneel é **gerado**: `tars acessos daneel [--out <arquivo.md>]`
 (GitHub, 1Password por nome, hosts SSH, ferramentas) — read-only e barrado por padrão de segredo.

@@ -9,18 +9,23 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 ### O que mudou
 - **Curadoria do ecossistema: 10 absorcoes, generalizadas, sem dado de projeto.** O
   conhecimento que vivia espalhado nos repos vizinhos (memoria, licoes, handoffs, estudos)
-  sobe ao catalogo:
-  - **`senior-research`** (skill nova). Pesquisa com sub-perguntas antes de buscar, cada
-    afirmacao com **fonte datada**, `nao encontrado` explicito em vez de inferir, veredito de
-    uma linha por sub-pergunta com confianca, marcacao DET/LLM/EXT como criterio de desenho.
-  - **`backup-restore`** (skill nova). Um repositorio por contexto; snapshot completo e
+  sobe ao catalogo. **Nenhuma e' escrita do zero: todas passaram por R1 (procurar a versao que
+  ja existia) e sao portadas da origem, com a origem registrada** — ver `docs/CURATION.md` §3.
+  - **`senior-research`** (skill **portada do `ai-brain`**, `.ai-brain/skills/senior-research` —
+    nao e' nova e nao foi reescrita; o Tars passa a ser a fonte). Pesquisa com sub-perguntas
+    antes de buscar, cada afirmacao com **fonte datada**, `nao encontrado` explicito em vez de
+    inferir, veredito de uma linha por sub-pergunta com confianca, marcacao DET/LLM/EXT como
+    criterio de desenho.
+  - **`backup-restore`** (skill portada de `homelab-infra/docs/restaurar-nuc.md` +
+    `seo-brain/docs/BACKUP.md`). Um repositorio por contexto; snapshot completo e
     auto-contido; retencao **declarada** com o motivo do horizonte; **restore AO LADO, nunca
     por cima**; **prova de restore agendada** (backup so e' real quando restaura); fonte unica
     do que existe, reconciliada nos dois sentidos.
   - **`ambiente`** (regra de boot nova). **Nunca cruzar sistemas de arquivos**: a ferramenta
     roda do mesmo lado do repo; atravessar (9P/DrvFs) muda o COMPORTAMENTO (watcher que nao
     dispara, symlink quebrado, chmod que nao cola); falhe ALTO em caminho nao-Linux.
-  - **`telemetria`** (skill nova). Telemetria e' **capacidade CORE**: hooks antes/depois/falha
+  - **`telemetria`** (portada de `homelab-infra/docs/estudos/2026-10-13-telemetria*.md` +
+    decisao do dono 14/10). Telemetria e' **capacidade CORE**: hooks antes/depois/falha
     em tudo que o framework registra (rota, job, CLI, evento, acao de modulo) + porta neutra
     `ctx.telemetria` (`evento/medir/span`), **no-op por padrao**. A implementacao (OTel) e'
     **plugin** que assina os hooks; core/modulos/plugins **nunca** importam SDK OTel. Nomes
@@ -29,7 +34,8 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
     app; liga/desliga por app/modulo/plugin na ficha (desligado = custo ~zero e comportamento
     identico). Criterio de aceite: teste prova "desligado nao emite" e "comportamento
     identico ligado/desligado".
-  - **`iac`** (skill nova). Infra por ficha: a declaracao e' a fonte unica do que existe;
+  - **`iac`** (portada de `homelab-infra` README/`decisoes.md`/`gitops-docker.md`; pyinfra+Pulumi
+    vem do Fabber). Infra por ficha: a declaracao e' a fonte unica do que existe;
     FQDN nunca IP; apelido de painel e' codigo versionado; a receita **fecha com checagem que
     falha alto** ("rodou" != "provou"); bootstrap (provisionar) separado da reconciliacao
     (convergir); o manual fica escrito como manual.
@@ -58,7 +64,8 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   ponteiro, a rodada le' so' o que ANDOU.
 
 ### Arquivos impactados no consumidor
-- `.ai/base/skills/{senior-research,backup-restore,telemetria,iac}/` (novas), `.ai/base/skills/agent-coordination/SKILL.md`,
+- `.ai/base/skills/{senior-research,backup-restore,telemetria,iac}/` (portadas; `senior-research`
+  veio do `ai-brain`), `.ai/base/skills/agent-coordination/SKILL.md`,
   `.ai/base/skills/segtools-database/SKILL.md`, `.ai/base/rules/ambiente.md` (nova),
   `.ai/base/governance/versionamento-de-extracao.md` — os itens que o consumidor DECLARAR em
   `[tars].skills`/`rules`/`governance` passam a chegar.
