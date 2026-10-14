@@ -90,7 +90,7 @@ describe('tars curation — delta por ponteiro', () => {
     expect(siblingRepos(root).map((p) => p.slice(root.length + 1))).toEqual(['alpha', 'zeta'])
   })
 
-  it('avanca o ponteiro so de quem andou, e o estado e ordenado (diff limpo)', () => {
+  it('avanca o ponteiro so de quem andou E foi declarado lido, e o estado e ordenado', () => {
     const a = join(root, 'aa')
     const b = join(root, 'bb')
     mkdirSync(a); mkdirSync(b)
@@ -100,11 +100,47 @@ describe('tars curation — delta por ponteiro', () => {
     const stateFile = join(root, 'state.json')
     writeState(stateFile, { repos: { aa: { sha: headOf(a).sha, iso: '2026-01-01' } } })
     // bb nunca teve ponteiro: ganha o inicial; aa nao andou mas ja' tinha ponteiro -> nao muda.
-    curate({ reposDir: root, stateFile, advance: true })
+    curate({ reposDir: root, stateFile, advance: true, reviewed: ['bb'] })
     const st = readState(stateFile).repos
     expect(Object.keys(st)).toEqual(['aa', 'bb'])
     expect(st.aa.iso).toBe('2026-01-01')
     expect(st.bb.sha).toBe(headOf(b).sha)
+  })
+
+  it('leitura PARCIAL nao avanca ponteiro (a regra da rodada de 13/10)', () => {
+    const a = join(root, 'aa')
+    const b = join(root, 'bb')
+    mkdirSync(a); mkdirSync(b)
+    gitInit(a); gitInit(b)
+    commit(a, { 'docs/estudos/a.md': 'x' }, 'estudo a')
+    commit(b, { 'BACKLOG.md': '# b' }, 'backlog b')
+    const stateFile = join(root, 'state.json')
+    const base = { sha: '0000000', iso: '2026-01-01' }
+    writeState(stateFile, { repos: { aa: { ...base }, bb: { ...base } } })
+    const before = readFileSync(stateFile, 'utf8')
+
+    // `--advance` sem `--reviewed` = amostra: mede, avisa e NAO grava nada.
+    const semLeitura = curate({ reposDir: root, stateFile, advance: true })
+    expect(semLeitura.advanced).toEqual([])
+    expect(readFileSync(stateFile, 'utf8')).toBe(before)
+
+    // Declarando so' `aa` lido por inteiro: `bb` (o que ficou na amostra) NAO avanca.
+    const parcial = curate({ reposDir: root, stateFile, advance: true, reviewed: ['aa'] })
+    expect(parcial.advanced).toEqual(['aa'])
+    const st = readState(stateFile).repos
+    expect(st.aa.sha).toBe(headOf(a).sha)
+    expect(st.bb.sha).toBe('0000000')
+  })
+
+  it('`--reviewed *` avanca os que andaram (rodada que leu tudo)', () => {
+    const a = join(root, 'aa')
+    mkdirSync(a); gitInit(a)
+    commit(a, { 'docs/estudos/a.md': 'x' }, 'estudo a')
+    const stateFile = join(root, 'state.json')
+    writeState(stateFile, { repos: { aa: { sha: '0000000', iso: '2026-01-01' } } })
+    const r = curate({ reposDir: root, stateFile, advance: true, reviewed: ['*'] })
+    expect(r.advanced).toEqual(['aa'])
+    expect(readState(stateFile).repos.aa.sha).toBe(headOf(a).sha)
   })
 
   it('os caminhos de conhecimento cobrem os dois padroes de estudo (docs/ e raiz)', () => {

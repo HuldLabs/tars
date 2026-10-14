@@ -7,7 +7,9 @@
 //      caminhos de conhecimento (`.ai/memory/**`, `HANDOFF*`, `*-lessons.md`,
 //      `docs/estudos/**`, `estudos/**`, `docs/adr{,_s}/**`, `BACKLOG.md`);
 //   3. imprime o que ANDOU (commits + arquivos) e o que NAO andou (silencio = ja' curado);
-//   4. com `--advance`, grava o HEAD de cada repo andado no ponteiro.
+//   4. com `--advance`, grava o HEAD de cada repo andado no ponteiro — mas SO' quem foi
+//      declaradamente lido por inteiro (`--reviewed`). Leitura parcial (amostra) nao avanca:
+//      avancar sobre amostra apaga para sempre o delta entre a amostra e a leitura completa.
 //
 // IDEMPOTENTE por construcao: sem commit novo nos repos, o delta e' vazio e ele nao faz
 // nada. O ponteiro e' DADO (`.ai/curation.json`), nao codigo — o mesmo desenho do
@@ -21,7 +23,9 @@
 //   node tools/framework/tars-curation.mjs [--repos <dir>] [--state <arquivo>] [--advance] [--json]
 //   --repos    pasta com os repos vizinhos (default: o irmao do Tars, `..`)
 //   --state    arquivo de estado (default: <tars>/.ai/curation.json)
-//   --advance  avanca o ponteiro de cada repo andado (grava o HEAD lido)
+//   --advance  avanca o ponteiro (grava o HEAD lido); sem `--reviewed`, NAO avanca nada
+//   --reviewed lista de repos LIDOS por inteiro (`a,b`; `*` para "todos os que andaram") —
+//              so' esses avancam. A rodada que leu so' uma amostra declara so' o que leu.
 //   --json     saida em JSON (para o coordenador/dashboard)
 
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
@@ -111,7 +115,7 @@ export function siblingRepos(reposDir) {
 }
 
 /** A curadoria inteira: mede todos os repos, opcionalmente avanca o ponteiro. */
-export function curate({ reposDir, stateFile, advance = false }) {
+export function curate({ reposDir, stateFile, advance = false, reviewed = [] }) {
   const state = readState(stateFile)
   const repos = siblingRepos(reposDir).map((dir) => {
     const name = dir.slice(dir.lastIndexOf('/') + 1)
@@ -120,17 +124,29 @@ export function curate({ reposDir, stateFile, advance = false }) {
     return { name, ...d }
   })
   const moved = repos.filter((r) => r.novel)
+  // Leitura PARCIAL nunca avanca (regra da rodada de 13/10): so' avanca o repo que o
+  // chamador declarou LIDO por inteiro em `reviewed`. `*` = todos os que andaram. Sem
+  // `reviewed`, `--advance` mede e avisa — nao grava. Avancar sobre amostra apagaria o
+  // delta entre a amostra e a leitura completa, e ele nunca voltaria.
+  const wants = (name) => reviewed.includes('*') || reviewed.includes(name)
+  const advanced = []
   let nextState = state
   if (advance) {
     nextState = { repos: { ...state.repos } }
     for (const r of repos) {
       if (!r.head) continue
-      // Avanca so' quem andou (ou quem nunca teve ponteiro e agora ganha o inicial).
-      if (r.novel || !state.repos[r.name]) nextState.repos[r.name] = { sha: r.head.sha, iso: r.head.iso }
+      if (r.novel && wants(r.name)) {
+        nextState.repos[r.name] = { sha: r.head.sha, iso: r.head.iso }
+        advanced.push(r.name)
+      } else if (!state.repos[r.name] && wants(r.name)) {
+        // Repo novo no ponteiro: ganha o inicial — mas so' se declarado lido.
+        nextState.repos[r.name] = { sha: r.head.sha, iso: r.head.iso }
+        advanced.push(r.name)
+      }
     }
-    writeState(stateFile, nextState)
+    if (advanced.length > 0) writeState(stateFile, nextState)
   }
-  return { repos, moved, stateFile, advance }
+  return { repos, moved, stateFile, advance, reviewed, advanced }
 }
 
 /** Grava o estado com chaves ORDENADAS (diff limpo a cada rodada — idempotencia visivel). */
@@ -148,8 +164,9 @@ function arg(name) {
   return i === -1 ? null : process.argv[i + 1]
 }
 
-function report({ repos, moved, stateFile, advance }) {
-  console.log(`# curadoria — ponteiro em ${stateFile}${advance ? ' (avancado)' : ''}`)
+function report({ repos, moved, stateFile, advance, reviewed = [], advanced = [] }) {
+  const tag = advance ? (advanced.length ? ` (avancado: ${advanced.join(', ')})` : ' (nada avancado)') : ''
+  console.log(`# curadoria — ponteiro em ${stateFile}${tag}`)
   console.log(`# ${repos.length} repos, ${moved.length} andaram\n`)
   for (const r of repos) {
     if (r.novel) {
@@ -163,6 +180,10 @@ function report({ repos, moved, stateFile, advance }) {
       console.log(`· ${r.name}  (${r.reason ?? 'sem novidade'})`)
     }
   }
+  if (advance && reviewed.length === 0) {
+    console.log('\n# --advance sem --reviewed: nada foi avancado (leitura parcial nao avanca ponteiro).')
+    console.log('# declare o que foi LIDO por inteiro: `--reviewed <repo,...>` (ou `--reviewed \'*\'`).')
+  }
   console.log('\n# a proxima perna (julgamento, LLM): ler o delta, chamar `tars promote` e registrar')
   console.log('# a linha origem→destino→situacao em docs/CURATION.md — com "o que nao entra e por que".')
 }
@@ -172,7 +193,8 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     const tars = resolve(arg('--tars') ?? process.env.TARS_HOME ?? findTars())
     const reposDir = resolve(arg('--repos') ?? join(tars, '..'))
     const stateFile = resolve(arg('--state') ?? join(tars, '.ai', 'curation.json'))
-    const r = curate({ reposDir, stateFile, advance: process.argv.includes('--advance') })
+    const reviewed = (arg('--reviewed') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const r = curate({ reposDir, stateFile, reviewed, advance: process.argv.includes('--advance') })
     if (process.argv.includes('--json')) console.log(JSON.stringify(r, null, 2))
     else report(r)
   } catch (err) {
