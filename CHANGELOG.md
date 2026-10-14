@@ -4,6 +4,43 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.28
+
+### O que mudou
+- **O sync só mexe no hook que ele mesmo gera.** No `.claude/settings.json`, o sync é dono do
+  comando `bash "$CLAUDE_PROJECT_DIR/.ai/[base/]guards/..."`. Entrada de outro dono no
+  `PreToolUse`, `PreCompact` ou `SessionStart` (o `prod-guard` do Tars, hook posto à mão no
+  consumidor) fica. Antes o sync reescrevia o evento inteiro e a derrubava calado. Guard que saiu
+  do manifesto continua sumindo, como deve.
+- **O binário reconhece o repo do Tars.** Rodado no checkout do catálogo, o `tars sync` do
+  binário entra no modo `self` (só wiring e hooks do git). Antes ele comparava o repo com o
+  catálogo embutido no cache, tratava o Tars como consumidor e criava `.ai/base/` e
+  `.ai/tars.lock`.
+- **A base copiada vence a cópia local de `.ai/guards/`.** O consumidor que tinha `.ai/VERSION`
+  próprio (segtools) era tratado como o catálogo: o hook citava `.ai/guards/`, cópias locais que
+  ninguém atualiza, e não `.ai/base/guards/`. Agora só o checkout do catálogo usa `.ai/guards/`; no
+  consumidor o sync aponta sempre para a base.
+- **A suíte não escreve mais no repo.** O teste de dogfood compara o `settings.json` com o que o
+  sync geraria, em memória; antes rodava o sync de verdade e reescrevia o arquivo.
+
+Bugs que esta versão fecha: SYNC-PRE-TOOL, TARS-SELF-1, TEST-MUTA-REPO (achados do coord na dev.27) e
+SEG-SELF (segtools, 14/10: guards de 02/10 sem o fail-closed nem as regras de git).
+
+### Por que
+Os três derrubavam o `prod-guard` do Tars, o gate que impede mudança em produção sem a ordem do
+dono, e nada acusava.
+
+### Arquivos impactados
+`tools/framework/tars-sync.mjs` (+ `tars-sync-posse.test.mjs`), `tools/framework/tars-self.test.mjs`,
+`.claude/settings.json`.
+
+### O que o consumidor faz
+`tars self-update` e `tars sync --upgrade`. Hook que você pôs à mão no `PreToolUse` e o sync
+apagou: ponha de novo — agora ele fica. Se o repo tem `.ai/guards/` com cópias dos guards do
+catálogo (segtools): depois do sync o hook aponta para `.ai/base/guards/` e essas cópias ficam
+órfãs — confira `git diff .claude/settings.json` e apague-as. Guard próprio do projeto vai pelo
+mecanismo de gate local.
+
 ## 0.0.1-dev.27
 
 ### O que mudou

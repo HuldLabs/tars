@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gitHooksCheck } from './tars-doctrines.mjs'
-import { readManifest, sync } from './tars-sync.mjs'
+import { claudeSettings, readManifest } from './tars-sync.mjs'
 
 const TARS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -30,9 +30,12 @@ describe('Tars — dogfood: o catalogo consome a si mesmo', () => {
     // Modo self: nada de `.ai/base/` (a base e' o `.ai/` do catalogo) nem `.ai/tars.lock`.
     expect(fs.existsSync(path.join(TARS, '.ai', 'base'))).toBe(false)
     expect(fs.existsSync(path.join(TARS, '.ai', 'tars.lock'))).toBe(false)
-    // Idempotente: rodar de novo nao escreve nada (o repo esta' em dia apos o commit).
-    const r = await sync({ tars: TARS, project: TARS, log: () => {} })
-    expect(r.hooks).toEqual([])
+    // Em dia = o settings do repo e' exatamente o que o sync geraria. Calculado EM MEMORIA:
+    // chamar o `sync` aqui ESCREVIA no repo real quando ele divergia (TEST-MUTA-REPO, 14/10 —
+    // derrubava o `prod-guard` a cada `vitest run`). Teste reprova; nao conserta calado.
+    const file = path.join(TARS, '.claude', 'settings.json')
+    const atual = JSON.parse(fs.readFileSync(file, 'utf8'))
+    expect(claudeSettings(await readManifest(TARS), TARS, atual)).toEqual(atual)
     expect(fs.existsSync(path.join(TARS, '.githooks', 'commit-msg'))).toBe(true)
   })
 })
