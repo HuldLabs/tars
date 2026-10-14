@@ -78,6 +78,17 @@ present. Exit 0 from the last command in a script is not a proof.
 - Checks are **cheap and local** to the recipe — the point is that the recipe cannot lie
   about its own result.
 - A recipe without a check is a plan, not a delivery. (R4: fail fast and loud.)
+- **`--version` is not a healthcheck (ported from `coleta-homelab` #12).** A binary
+  answering its own version proves the file is on disk and the interpreter starts — it
+  passes identically on a crash-looping service, a service stuck on a bad config, or one
+  listening on the wrong port. The check that counts **exercises the function**: a
+  `GET /healthz` from **inside** the container (asking from the host proves the publisher,
+  not the workload), and the post-apply step **asserts** the answer, exiting non-zero
+  naming what was missing.
+- **The assertion lives in the post-apply, not in the operator's eyes.** "I watched the
+  apply finish and it looked fine" is the manual version of a check that never runs again.
+  The recipe's last step is the assertion, so a drift the next apply introduces fails on
+  its own, without anyone re-reading a log.
 
 ## 4. Bootstrap ≠ reconciliation
 
