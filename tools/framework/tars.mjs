@@ -25,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 // o do entrypoint, e o guard deles disparava o main no import — `--help` respondia `sync`).
 import './tars-as-module.mjs'
 import * as promote from './tars-promote.mjs'
+import * as curationMod from './tars-curation.mjs'
 import * as hooks from './tars-hooks.mjs'
 import * as syncMod from './tars-sync.mjs'
 import * as gitMod from './tars-git.mjs'
@@ -96,6 +97,8 @@ const USAGE = [
   '  check                      atalho de `sync --check` (o gate)',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
+  '  curation [--advance] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
+  '                             (<ponteiro>..HEAD) dos repos vizinhos e lista o que andou',
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
   '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
@@ -198,6 +201,17 @@ async function promoteCommand(rest, project) {
     item,
   })
   console.log('promocao escrita no working tree do Tars (nao commitada: revise antes).')
+}
+
+/** `tars curation` — rotina por PONTEIRO (docs/CURATION.md): mede o delta, nao generaliza. */
+async function curationCommand(rest, project) {
+  const mod = curationMod
+  const tars = resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars())
+  const reposDir = resolve(argValue(rest, '--repos') ?? join(tars, '..'))
+  const stateFile = resolve(argValue(rest, '--state') ?? join(tars, '.ai', 'curation.json'))
+  const r = mod.curate({ reposDir, stateFile, advance: rest.includes('--advance') })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else mod.report(r)
 }
 
 /** `tars git prune` — despacho fino para o modulo dono (nada de logica de git aqui). */
@@ -385,6 +399,7 @@ const COMMANDS = {
   check: (rest, project) => sync('sync', [...rest, '--check'], project),
   hooks: runHooksCommand,
   promote: promoteCommand,
+  curation: curationCommand,
   doctor: doctorCommand,
   verify: verifyCommand,
   memory: memoryCommand,
