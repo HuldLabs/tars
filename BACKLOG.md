@@ -16,6 +16,14 @@
 | END-SYNC-3 | **`.githooks` só é gerado se a pasta existir — e o `init` não avisa** | ready | consumidor novo fica sem hook e não sabe; reportado pelo coord Endurance (14/10) |
 | END-CLI-1 | **`tars identity` não existe** — bloqueia a v0.1.0 do Endurance | ready | subcomando ausente; reportado pelo coord Endurance (14/10) |
 | SYNC-PRE-TOOL | **`tars sync` sobrescreve `hooks.PreToolUse` e derruba hook posto à mão** | ready | achado 14/10 ao rodar o sync do próprio catálogo: o `prod-guard` está no PreToolUse do `.claude/settings.json` (não é `[tars].guards`), e o sync reescreve o evento só com os guards declarados — o hook do gate some calado. Não é desta fatia (pré-existente no HEAD); reprodução: `tars sync --tars . --project .` → `git diff .claude/settings.json` mostra o prod-guard removido. Correção provável: preservar entradas de PreToolUse cujo comando o sync não gerencia (posse por `OWNED`/caminho). |
+| REL-26 | **Release da dev.26 não saiu** (tag `v0.0.1-dev.26` em `8f0d390`) | blocked | run `38620411824` barrado por billing de Actions; repo segue `PRIVATE` (conferido 14/10). Destrava: repo público ou billing → `gh run rerun`; depois avisar consumidores (seo-brain espera). Ver `HANDOFF.md` |
+| PUB-PAT | **Revisar "precisa de PAT"** (CHANGELOG dev.24, `docs/adocao.md`, notas do self-update) | blocked | com o repo público o token vira opcional (só evita limite de taxa); depende do repo virar público |
+| PUB-GHCR | **Visibilidade de `ghcr.io/huldlabs/tars`** | a-confirmar | o pacote tem visibilidade própria; decisão do dono |
+| GITLEAKS-FP | **Allowlist do gitleaks para `.ai/governance/licoes-plataforma.md:12`** | ready | varredura do histórico inteiro (319 commits, 14/10): 1 achado `private-key`, falso positivo (texto da lição cita o cabeçalho `BEGIN OPENSSH PRIVATE KEY`) |
+| WT-CLEAN | **Limpar worktrees antigas** (`rel19` e 12 com alteração: a3, a4, daneel, g2, g3, hook-main, hookexec, k0, licoes, novo-repo, rel2, rel3) | ready | conferir cada uma antes de apagar |
+| ADOPT-GHCR | **Secret GHCR por repo no `tars adopt`** | nao-refinado | herdado do coord anterior (14/10) |
+| IMG-TRIXIE | **Imagem em trixie** | nao-refinado | herdado do coord anterior (14/10) |
+| SUITE-LOCAL | **3 falhas locais de ambiente na suíte** (verdes no CI) | nao-refinado | ai-layer-check (rulesync e `.ai/rules/ambiente.md` sem `root:true`); embutido gerado desatualizado; "sem motor" com `~/.local/bin` no PATH |
 
 ## Metodologias do ecossistema (pedido do dono, 14/10)
 
