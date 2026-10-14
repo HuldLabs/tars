@@ -592,11 +592,16 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     const locked = lock?.files?.[key]?.sha256
     const dest = join(project, '.ai', 'base', destOf(entry))
     const got = existsSync(dest) && locked ? await hashSource(dest) : null
-    if (got === locked) {
-      files[key] = lock.files[key] // idempotente: nao reescreve
+    // Idempotente so' quando a base bate com o lock E o catalogo nao mudou. Comparar so' base x
+    // lock deixava o `--upgrade` sem efeito: item ja' copiado nunca recebia a versao nova
+    // (Endurance, 14/10: os guards fail-closed da dev.21 nao chegaram a consumidor nenhum).
+    // `origem` = hash do item no CATALOGO (a copia pode transformar, ex.: JSONL ganha `source`).
+    const origem = await hashSource(join(tars, '.ai', sourceOf(entry)))
+    if (got === locked && lock.files[key].origem === origem) {
+      files[key] = lock.files[key]
       continue
     }
-    files[key] = { area: entry.area, item: entry.item, sha256: await copyItem(tars, project, entry) }
+    files[key] = { area: entry.area, item: entry.item, sha256: await copyItem(tars, project, entry), origem }
     wrote.push(key)
     log(`copia ${key}  ${files[key].sha256}`)
   }

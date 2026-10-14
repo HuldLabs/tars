@@ -4,6 +4,27 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.22
+
+### O que mudou
+- **O `sync --upgrade` atualiza de verdade.** O sync considerava "em dia" todo item cuja
+  base batia com o lock, sem olhar se o catálogo tinha mudado: nenhum arquivo já copiado
+  recebia a versão nova. Na dev.21, os guards fail-closed não chegaram a consumidor nenhum.
+  O lock agora guarda o hash da origem no catálogo (`origem`), e o item é recopiado quando
+  ela muda.
+
+### Por que
+O Endurance (14/10) rodou o upgrade dev.20 → dev.21, recebeu "nada mudou, 10 itens já em dia"
+e os guards continuaram aprovando sem a lib. O mesmo aconteceu no segtools.
+
+### Arquivos impactados
+`tools/framework/tars-sync.mjs` (+ `tars-sync.test.mjs`).
+
+### O que o consumidor faz
+Troque o binário e rode **`tars sync --upgrade`**. Na primeira vez, todo item é recopiado, porque o
+lock antigo não tem `origem`; depois o sync volta a ser idempotente. Confira:
+`grep -c "lib-json.sh ausente" .ai/base/guards/block-secret-dump.sh` tem de dar `1`.
+
 ## 0.0.1-dev.21
 
 ### O que mudou

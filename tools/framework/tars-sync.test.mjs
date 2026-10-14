@@ -191,6 +191,18 @@ describe("tars-sync — so' o declarado e' copiado", () => {
 });
 
 describe("tars-sync — idempotencia", () => {
+  it("item que MUDOU no catalogo e' atualizado no consumidor (upgrade de verdade)", async () => {
+    // dev.21: o sync so' comparava base x lock; o guard novo do catalogo nunca chegava.
+    const { tars, project, base } = scaffold();
+    await sync({ tars, project, log: () => {} });
+    const src = path.join(tars, ".ai", "guards", "alpha-guard.sh");
+    fs.writeFileSync(src, fs.readFileSync(src, "utf8") + "# versao nova\n");
+    const logs = [];
+    await sync({ tars, project, log: (m) => logs.push(m) });
+    expect(fs.readFileSync(path.join(base, "guards", "alpha-guard.sh"), "utf8")).toContain("# versao nova");
+    expect(logs.join("\n")).toMatch(/copia guards\/alpha-guard\.sh/);
+  });
+
   it("rodar de novo sem mudanca nao reescreve nada", async () => {
     const { tars, project, base, lock } = scaffold();
     await sync({ tars, project, log: () => {} });
