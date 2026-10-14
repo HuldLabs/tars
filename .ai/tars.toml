@@ -26,12 +26,15 @@ guards = [
 # release-guard cobra versao+CHANGELOG em commit que toca o motor (tools/framework/tars-*,
 # .ai/gates, .ai/guards, .ai/governance) — o Tars e' o primeiro consumidor da propria regra.
 # no-add-all fica no guard de agente, nao no hook do git.
+# healthcheck (B6.1): `--version` nao e' healthcheck — reprova a declaracao de saude que
+# so' pergunta a versao (o crash-loop passa). backup-coverage (B2.6): backup so' e' real com
+# prova de restore, e o app com dir de dado fora da lista de fontes REPROVA nomeando o campo.
 #
 # release-guard no commit-msg, NAO no pre-commit: o escape `No-Release:` vive na MENSAGEM e
 # o arquivo dela so' existe a partir do `prepare-commit-msg`/commit-msg — no pre-commit ele
 # ainda nao foi escrito, entao o escape era invisivel e o gate reprovava quem o declarava.
 # (Medido: pre-commit roda antes de o COMMIT_EDITMSG existir; commit-msg o recebe em argv.)
-pre-commit = ["gitleaks"]
+pre-commit = ["gitleaks", "healthcheck"]
 commit-msg = ["commit-msg", "release-guard"]
 
 # prod-guard (B1.4): o agente nao muda producao (compose/systemctl/kubectl/helm/force-push)
