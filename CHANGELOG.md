@@ -4,6 +4,33 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.27
+
+### O que mudou
+- **`tars self-update` sem token por padrão.** O repo e a imagem do Tars são públicos: o
+  self-update baixa a Release sem token. Se uma requisição falhar (limite de taxa do GitHub,
+  repo privado), repete com `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token`. O "precisa de PAT"
+  da dev.24 deixa de valer: o CI do consumidor baixa a Release sem segredo.
+- **`tars self-update` concorrente.** O temporário do binário leva o pid do processo. Dois
+  self-update no mesmo HOME (container compartilhado entre sessões) não disputam mais o mesmo
+  `.tmp`, e os dois rodam o `sync --upgrade`.
+
+Bugs reportados que esta versão fecha:
+- segtools (14/10): `tars self-update` falhou com ENOENT no rename de
+  `.tars-0.0.1-dev.26.tmp` e não rodou o `sync --upgrade`.
+
+### Por que
+Exigir token para baixar de um repo público era atrito sem ganho; e o `segtools-dev` roda várias
+sessões no mesmo container, onde dois self-update ao mesmo tempo quebravam um deles.
+
+### Arquivos impactados
+`tools/framework/tars-self-update.mjs` (+ `tars-self-update.test.mjs`), `docs/adocao.md`,
+`templates/AVISO-CONSUMIDORES.tpl.md`, `.ai/governance/release.md`.
+
+### O que o consumidor faz
+`tars self-update` e depois `tars sync --upgrade`. Pode tirar do CI o PAT que só servia para
+baixar a Release do Tars.
+
 ## 0.0.1-dev.26
 
 ### O que mudou
