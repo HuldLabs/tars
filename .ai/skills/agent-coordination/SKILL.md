@@ -288,6 +288,20 @@ resource is a singleton too.
   subtasks first, then dispatch one worker per slice, disjoint write sets in parallel. Real incident: SEG-662
   ("workspace **and** rename") went out whole and came back as a 214-file commit that also rewrote test identities.
 
+- **The dispatch carries the CAUSE, not just the order.** A prompt that says *what* to do without
+  *why* puts the worker in the position of guessing the reason and "improving" the design it was
+  never asked to touch. Two lines of cause prevent most rework (owner order, 2026-10-11).
+- **"PROHIBITED to write" is listed with examples, not as a general warning.** Name the concrete
+  paths/actions the worker must not do — a bare "don't touch infra" is interpreted, an explicit
+  list is obeyed. Same for the inverse: the write set is explicit path by path.
+- **Sync before the first commit.** A worker whose checkout is behind is writing against a stale
+  base; fetch/rebase onto the named base branch **before** the first commit, not after a conflict
+  shows up mid-task.
+- **The command to bring anything up is `task` (the project's Taskfile), never a hand-rolled
+  command.** `task dev`, `task check`, `task ops:*` are surfaces that orchestrate the real API/CLI;
+  running `next dev`/`bun run dev`/a script by hand in parallel produces a second truth about how
+  the project starts and hides whatever the task wraps. A task **orchestrates**, it never
+  reimplements the rule (see skill `iam`/Taskfile convention).
 - **How to launch, every time (owner order, 2026-09-26):** only through the project's dispatch script
   (`project-bindings.md`), with the full prompt file (context, scope, ACs, protocol, secret rules) — never an ad-hoc
   command. Launch it with the shell tool's **`run_in_background: true`** — that is what puts it in the app sidebar.
