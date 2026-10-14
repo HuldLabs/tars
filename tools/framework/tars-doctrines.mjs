@@ -27,6 +27,7 @@ import { findTars, parseToml, NONINTERACTIVE_ENV, effectiveHooksPath, usesGitHoo
 // TARS-REC-1: a classe que repetiu no ledger e' cobrada pelo doctor (a camada "acusa o estado
 // errado" da doutrina incidente-vira-prevencao). A CONTAGEM mora no ai-memory — aqui so' se le'.
 import { classesRecorrentes, readJsonl } from './ai-memory.mjs'
+import { releaseHealth } from './tars-release-health.mjs'
 // S3 (dev.9): o doctor de SEGREDOS mora no modulo dono (`tars-secrets.mjs`) — aqui so' se
 // anexa o que ele julga quando o projeto declara `[secrets]`/`[identity]` (R3).
 import { doctorDoProjeto } from './tars-secrets.mjs'
@@ -166,7 +167,7 @@ function rodaProva(prova, base) {
  *   SEM GATE  — orfa declarada com motivo: divida nomeada (aviso, nao derruba o build)
  *   DRIFT     — a `fonte` sumiu ou a linha declarada saiu do texto: o punho mudou
  */
-export function classify(d, base = process.cwd(), { spawn = rodaProva, tars = base } = {}) {
+export function classify(d, base = process.cwd(), { spawn = rodaProva, tars = base, projeto = base } = {}) {
   const ref = parseRef(d.fonte)
   // Doutrina de OUTRO projeto (`segtools:`): nem a fonte nem a prova rodam aqui — o catalogo
   // so' descreve o par. Julgar aqui daria DRIFT falso (o arquivo mora no projeto, nao aqui).
@@ -175,6 +176,12 @@ export function classify(d, base = process.cwd(), { spawn = rodaProva, tars = ba
   // raiz dos vizinhos e' conhecida, entao repo ausente vira FALHA alta em vez de link quebrado.
   if (ref.repo) {
     const irmao = fonteIrmaOk(tars, d.fonte)
+    // No CONSUMIDOR (base != catalogo) o repo da org nao esta' montado ao lado: quem confere a
+    // doutrina da org e' o doctor do proprio Tars, no CI dele. Aqui ela so' e' descrita — DRIFT
+    // nesse caso era falso e empurrava o consumidor a symlink a mao (Kipp, 14/10).
+    if (!irmao.ok && resolve(projeto) !== resolve(tars)) {
+      return { ...d, status: 'PROJETO', detalhe: `doutrina da org (${ref.repo}): conferida no doctor do Tars, nao aqui` }
+    }
     return irmao.ok
       ? { ...d, status: 'SEM GATE', detalhe: `${d.motivo} (fonte ${irmao.porque})`, prova: d.prova }
       : { ...d, status: 'DRIFT', detalhe: irmao.porque }
@@ -317,7 +324,7 @@ export function doctor({ tars, project, env = process.env } = {}) {
   // contra a raiz do Tars, a do projeto (`[[doctrine]]` no `.ai/tars.toml`) contra a raiz do
   // projeto. Sem isso a prova do consumidor rodaria contra os arquivos do catalogo.
   const itens = loadDoctrines({ tars: catalogo, project: root }).map((d) =>
-    classify(d, d.escopo === 'catalogo' ? catalogo : root),
+    classify(d, d.escopo === 'catalogo' ? catalogo : root, { tars: catalogo, projeto: root }),
   )
   const porStatus = Object.fromEntries(
     ['OK', 'PHANTOM', 'SEM GATE', 'DRIFT', 'PROJETO'].map((s) => [s, itens.filter((i) => i.status === s).length]),
@@ -351,10 +358,16 @@ export function doctor({ tars, project, env = process.env } = {}) {
   const segredosFalha = (segredos?.linhas ?? [])
     .filter((l) => !l.ok)
     .map((l) => ({ id: `segredos/${l.nome}`, status: 'FALHA', onde: 'ci', gate: 'doctor', detalhe: l.detalhe }))
+  // dev.23: o formato das releases do PROJETO, so' depois da primeira tag (antes, nada cobra).
+  const releases = releaseHealth(root)
+  const releasesFalha = releases.linhas
+    .filter((l) => !l.ok)
+    .map((l) => ({ id: `releases/${l.nome}`, status: 'FALHA', onde: 'ci', gate: 'doctor', detalhe: l.detalhe }))
   return {
     tars: catalogo,
     project: root,
     itens,
+    releases,
     porStatus,
     wiring,
     segredos,
@@ -369,12 +382,13 @@ export function doctor({ tars, project, env = process.env } = {}) {
       ...(wiring.ok ? [] : [{ id: 'wiring/settings', status: 'FALHA' }]),
       ...classesFalha,
       ...segredosFalha,
+      ...releasesFalha,
     ],
   }
 }
 
 /** Uma linha por doutrina: `STATUS  id  onde  gate`, com o detalhe abaixo quando ha' o que dizer. */
-export function format({ itens, porStatus, tars, project, wiring, classes, incidentes, segredos, divida }, log = console.log) {
+export function format({ itens, porStatus, tars, project, wiring, classes, incidentes, segredos, divida, releases }, log = console.log) {
   log(`tars doctor — ${itens.length} doutrina(s) · catalogo ${tars} · projeto ${project}`)
   for (const i of itens) {
     log(`${i.status.padEnd(9)} ${i.id}  [${i.onde}]  gate=${i.gate}`)
@@ -405,6 +419,14 @@ export function format({ itens, porStatus, tars, project, wiring, classes, incid
     log(`\nLINHA DE BASE (divida adotada): ${divida.total}`)
     for (const l of divida.linhas) log(`  ${String(l.n).padStart(4)}  ${l.gate}`)
     if (!divida.total) log('  (nenhuma — o gate cobra tudo)')
+  }
+  // Zero release tambem IMPRIME: saida ausente nao distingue "nao olhou" de "nada a cobrar".
+  if (releases) {
+    if (!releases.ativo) log('\nRELEASES: nenhuma ainda (o formato passa a valer na primeira tag v*)')
+    else {
+      log(`\nRELEASES (ultima v${releases.ultima}):`)
+      for (const l of releases.linhas) log(`  ${(l.ok ? 'OK    ' : 'FALHA ')}${l.nome.padEnd(12)}  ${l.detalhe}`)
+    }
   }
   if (wiring) log(`${(wiring.ok ? 'OK' : 'FALHA').padEnd(9)} wiring/settings  [session-start]  ${wiring.detalhe}`)
   log(

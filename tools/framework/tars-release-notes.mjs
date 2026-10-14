@@ -45,6 +45,8 @@ export function assets(dist) {
 
 /** A secao `## <versao>` do CHANGELOG; ausente = erro alto (release sem notas nao sai). */
 export function secao(changelog, version) {
+  const ruins = changelog.split('\n').filter((l) => /^##\s/.test(l) && !/^##\s+\d+\.\d+\.\d+(?:-dev\.\d+)?\s*$/.test(l))
+  if (ruins.length) throw new Error(`CHANGELOG com cabecalho fora do formato "## X.Y.Z[-dev.N]" (sem data/texto): ${ruins.slice(0, 3).join(' | ')}`)
   const b = parseChangelog(changelog).find((x) => x.version === version)
   if (!b) throw new Error(`CHANGELOG sem a secao "## ${version}" — escreva as notas antes de cortar a tag.`)
   return b.corpo

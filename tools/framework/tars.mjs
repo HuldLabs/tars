@@ -37,6 +37,8 @@ import * as handoffMod from './tars-handoff.mjs'
 import * as upgradeMod from './tars-upgrade.mjs'
 // `tars release-notes` (dev.20): as notas da Release geradas do CHANGELOG + artefatos.
 import * as releaseNotesMod from './tars-release-notes.mjs'
+// `tars self-update` (dev.23): baixa a Release, confere o sha256, troca o binario e roda o sync.
+import * as selfUpdateMod from './tars-self-update.mjs'
 // `tars gates baseline` (item B3.3 do eixo de gates): a linha de base da adocao — a divida
 // velha fica nomeada e o gate so' reprova o que e' novo. O dono mora no modulo proprio.
 import * as gatesBaselineMod from './tars-gates-baseline.mjs'
@@ -126,6 +128,7 @@ const USAGE = [
   '                             (<ponteiro>..HEAD) dos repos vizinhos e lista o que andou',
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
   '  release-notes --version V  notas da Release (CHANGELOG + --dist/--image/--repo/--run/--prev)',
+  '  self-update [--version V]  baixa a Release, confere o sha256, troca o binario e roda sync --upgrade',
   '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
   '  gates baseline [--prune]   grava a LINHA DE BASE da adocao (.ai/gates-baseline.json): o',
@@ -511,6 +514,8 @@ const COMMANDS = {
   handoff: handoffCommand,
   'upgrade-notes': upgradeCommand,
   'release-notes': (rest) => releaseNotesMod.cli(rest),
+  'self-update': (rest, project) =>
+    selfUpdateMod.cli(rest, { atual: syncMod.readVersion(resolve(process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars())), project }),
   git: gitCommand,
 }
 
