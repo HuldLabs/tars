@@ -363,6 +363,38 @@ describe("gate lint-swallow — erro engolido (TARS-SWALLOW-1)", () => {
   });
 });
 
+describe("gate lint-swallow — LINHA DE BASE (B3.3)", () => {
+  const gate = GATE("lint-swallow", "gate.mjs");
+  const lib = path.join(HERE, "..", "..", ".ai", "gates", "lib-baseline.mjs");
+  const repoCom = (conteudo) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-base-"));
+    const g = (a) => spawnSync("git", a, { cwd: dir, encoding: "utf8" });
+    g(["init", "-q"]); g(["config", "user.email", "t@t.local"]); g(["config", "user.name", "t"]);
+    fs.writeFileSync(path.join(dir, "a.mjs"), conteudo);
+    g(["add", "--", "a.mjs"]);
+    return dir;
+  };
+  const roda = (dir) => rodar([gate], { env: { TARS_PROJECT: dir, TARS_GATE: "lint-swallow" } });
+  const gravaBase = (dir, hash) => {
+    fs.mkdirSync(path.join(dir, ".ai"), { recursive: true });
+    fs.writeFileSync(path.join(dir, ".ai", "gates-baseline.json"), JSON.stringify({ versao: 1, gates: { "lint-swallow": [{ key: "a.mjs:1", hash }] } }));
+  };
+
+  it("o adotado na base ISENTA; so' o NOVO reprova", async () => {
+    const mod = await import(lib);
+    const dir = repoCom("try { f() } catch {}\n");
+    gravaBase(dir, mod.hashTrecho("try { f() } catch {}")); // a linha crua do disco
+    const r = roda(dir);
+    expect(r.status).toBe(0); // o achado e' divida adotada
+  });
+
+  it("base com hash de OUTRO trecho NAO isenta (o conteudo manda)", () => {
+    const dir = repoCom("try { f() } catch {}\n");
+    gravaBase(dir, "0000000000000000");
+    expect(roda(dir).status).toBe(1);
+  });
+});
+
 describe("gate gitleaks", () => {
   const gate = GATE("gitleaks", "gate.mjs");
 

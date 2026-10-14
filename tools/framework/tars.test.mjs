@@ -16,7 +16,9 @@ describe('tars — despacho', () => {
     // `curation` entrou com a fatia 2 da curadoria: a rotina por PONTEIRO (docs/CURATION.md).
     // `identity` entrou com a release 14/10 (TARS-BUG-5): a identidade de automacao que o
     // Endurance precisa para a v0.1.0 (docs/decisoes-20260808 §Sequence/§SSH).
-    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'check', 'check-refs', 'curation', 'doctor', 'git', 'handoff', 'hooks', 'identity', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
+    // `gates` entrou com a curadoria a1 (item B3.3): a LINHA DE BASE da adocao
+    // (`tars gates baseline [--prune]`) — o gate reprova so' o que nao esta' na base.
+    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'check', 'check-refs', 'curation', 'doctor', 'gates', 'git', 'handoff', 'hooks', 'identity', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {

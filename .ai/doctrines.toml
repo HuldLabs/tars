@@ -66,6 +66,14 @@ prova = "printf 'try { f() } catch {}\\n' > /tmp/tars-doc-swallow.mjs && node .a
 onde = "pre-commit"
 
 [[doctrine]]
+id = "gates/linha-de-base"
+titulo = "Adocao com divida: a violacao VELHA entra na linha de base (`.ai/gates-baseline.json`); o gate reprova so` o que e' NOVO e a base so` encolhe (ratchet)"
+fonte = "tools/framework/tars-gates-baseline.mjs:1-20"
+gate = "../../tools/framework/tars-gates-baseline.mjs"
+prova = "d=$(mktemp -d) && git -C $d init -q && printf 'try { f() } catch {}\\n' > $d/a.mjs && git -C $d add a.mjs && TARS_PROJECT=$d node .ai/gates/lint-swallow/gate.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
 id = "git/branch-name"
 titulo = "Branch `<tipo>/<slug>`"
 fonte = ".ai/governance/git.md:5-16"

@@ -35,6 +35,9 @@ import * as memoryMod from './tars-memory.mjs'
 import * as refsMod from './tars-check-refs.mjs'
 import * as handoffMod from './tars-handoff.mjs'
 import * as upgradeMod from './tars-upgrade.mjs'
+// `tars gates baseline` (item B3.3 do eixo de gates): a linha de base da adocao — a divida
+// velha fica nomeada e o gate so' reprova o que e' novo. O dono mora no modulo proprio.
+import * as gatesBaselineMod from './tars-gates-baseline.mjs'
 // `tars incident` (TARS-INCIDENTE-AUTO): o ledger deixa de ser escrito a mao. O modulo DONO
 // mora em tars-incident.mjs; aqui so' o despacho fino (R3).
 import * as incidentMod from './tars-incident.mjs'
@@ -106,6 +109,9 @@ const USAGE = [
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
   '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
+  '  gates baseline [--prune]   grava a LINHA DE BASE da adocao (.ai/gates-baseline.json): o',
+  '                             gate reprova so` o que NAO esta` na base. `--prune` aplica o',
+  '                             ratchet (tira o que ja` nao reprova — a base so` encolhe)',
   '  verify <arquivo>           roda os `verify` de um bloco de claims e cobra o `expect` (exit',
   '                             != 0 em PHANTOM/sem negativo/excesso de [ASSUMED]); `-` le stdin',
   '  check-refs <prompt.md>     cobra que a DECISAO citada no despacho exista na arvore: sha',
@@ -261,6 +267,36 @@ async function doctorCommand(rest, project) {
   if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
   else doctorMod.format(r)
   if (r.faltando.length) process.exit(1)
+}
+
+/**
+ * `tars gates baseline [--prune] [--json]` — a LINHA DE BASE da adocao (item B3.3).
+ *
+ * Numa adocao a divida ja' existe: exigir tudo verde de uma vez vira o `--no-verify`. Aqui as
+ * violacoes de HOJE vao para `.ai/gates-baseline.json` (versionado, por gate, `arquivo:linha` +
+ * hash do trecho) e o gate passa a reprovar so' o que NAO esta' na base. `--prune` aplica o
+ * ratchet: tira da base o que ja' nao reprova (a base so' encolhe).
+ *
+ * O que COLETA mora no modulo dono (`tars-gates-baseline.mjs`); aqui so' se despacha (R3).
+ */
+async function gatesCommand(rest, project) {
+  const root = resolve(argValue(rest, '--project') ?? project ?? process.cwd())
+  const coleta = gatesBaselineMod.coletarProjeto(root)
+  if (rest.includes('--prune')) {
+    const base = gatesBaselineMod.podar(gatesBaselineMod.lerBaseline(root), coleta)
+    const r = gatesBaselineMod.gravarBaseline(root, base)
+    if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+    else console.log(`tars gates: base podada — ${r.itens} isencao(oes) em ${r.gates} gate(s) (${r.caminho})`)
+    return
+  }
+  const base = gatesBaselineMod.consolidar(coleta)
+  const r = gatesBaselineMod.gravarBaseline(root, base)
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else {
+    console.log(`tars gates: linha de base gravada — ${r.itens} violacao(oes) em ${r.gates} gate(s)`)
+    console.log(`  ${r.caminho}`)
+    console.log('  O gate reprova so` o que NAO esta` na base. Conserte e rode --prune (a base encolhe).')
+  }
 }
 
 /** `tars verify <arquivo>` — despacho fino: o parser e o julgamento moram no modulo dono. */
@@ -424,6 +460,7 @@ const COMMANDS = {
   promote: promoteCommand,
   curation: curationCommand,
   doctor: doctorCommand,
+  gates: gatesCommand,
   verify: verifyCommand,
   memory: memoryCommand,
   incident: incidentCommand,
