@@ -238,14 +238,12 @@ export const isGuardTest = (item) => /(^|\/)test-/.test(item)
  *   - lib (`lib-*`): e' `source`ada pelo guard, nao roda sozinha;
  *   - arquivo que nao e' shell (`ensure_memory_link.py`): e' chamado PELO guard `.sh`; o hook
  *     rodava `bash x.py` e saia com "import: command not found";
- *   - guard de outro evento: os da base (PreCompact/SessionStart) e o `stop-unfinished-work`
- *     (Stop), que no PreToolUse bloqueavam o proprio commit que pediam.
+ *   - guard de outro evento (`BASE_HOOKS`: PreCompact, SessionStart e o `stop-unfinished-work`
+ *     no Stop), que no PreToolUse bloqueava o proprio commit que pedia.
  */
-const FORA_DO_PRETOOL = new Set(['stop-unfinished-work'])
 const ehGuardDeFerramenta = (g) =>
   !g.startsWith('lib-') &&
   !/\.(py|mjs|js|ts)$/.test(g) &&
-  !FORA_DO_PRETOOL.has(g.replace(/\.sh$/, '')) &&
   !BASE_HOOKS.some((h) => h.file === `${g.replace(/\.sh$/, '')}.sh`)
 const hookGuards = (manifest) => (manifest.guards ?? []).filter((g) => !isGuardTest(g) && ehGuardDeFerramenta(g))
 
@@ -751,6 +749,9 @@ export const BASE_HOOKS = [
   { event: 'PreCompact', matcher: 'manual|auto', file: 'precompact-persist-state.sh' },
   { event: 'SessionStart', matcher: 'startup|resume|clear|compact', file: 'sessionstart-context-digest.sh' },
   { event: 'SessionStart', matcher: 'startup|resume|clear|compact', file: 'ensure-memory-link.sh' },
+  // Stop nao tem matcher. Antes ninguem o gerava: o `Stop` posto a mao ficava apontando para a
+  // copia velha de `.ai/guards/` no consumidor (STOP-WIRING, segtools 14/10).
+  { event: 'Stop', file: 'stop-unfinished-work.sh' },
 ]
 
 /**
@@ -796,13 +797,13 @@ export function projectGuardHooks(project, manifest) {
 
 /** Hooks da base, agrupados por evento; sem `project` (teste puro) todos entram. */
 function baseHooks(project) {
-  const eventos = { PreToolUse: [], PreCompact: [], SessionStart: [] }
+  const eventos = { PreToolUse: [], PreCompact: [], SessionStart: [], Stop: [] }
   for (const h of BASE_HOOKS) {
     // O caminho do hook e' o que o `resolveGuardFile` ACHOU (projeto ou base copiada); fixo em
     // `.ai/guards/` o harness rodaria um arquivo que nao existe (defeito do seo-brain).
     const rel = project ? guardRelPath(project, h.file) : `.ai/guards/${h.file}`
     if (!rel) continue
-    const entry = { matcher: h.matcher, hooks: [{ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/${rel}"` }] }
+    const entry = { ...(h.matcher && { matcher: h.matcher }), hooks: [{ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/${rel}"` }] }
     const slot = eventos[h.event] ??= []
     const same = slot.find((e) => e.matcher === h.matcher)
     if (same) same.hooks.push(...entry.hooks)
@@ -851,6 +852,7 @@ export function claudeSettings(manifest, project = null, atual = null) {
       PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest)), ...fora('PreToolUse')],
       PreCompact: [...base.PreCompact, ...fora('PreCompact')],
       SessionStart: [...base.SessionStart, ...fora('SessionStart')],
+      Stop: [...base.Stop, ...fora('Stop')],
     },
   }
 }

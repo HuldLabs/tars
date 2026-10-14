@@ -26,7 +26,7 @@ describe("posse do sync no settings (SYNC-PRE-TOOL)", () => {
     expect(cmds).toContain(PROD);
     expect(cmds).not.toContain(VELHO);
     expect(s.hooks.PreToolUse.find((e) => e.hooks.some((h) => h.command === PROD)).matcher).toBe("Bash");
-    expect(s.hooks.Stop).toEqual(atual.hooks.Stop);
+    expect(s.hooks.Stop.flatMap((e) => e.hooks.map((h) => h.command))).toContain("x");
     expect(s.permissions).toEqual(atual.permissions);
   });
 
@@ -53,5 +53,30 @@ describe("isCatalog (TARS-SELF-1)", () => {
   it("consumidor que versiona o proprio .ai/ (segtools) nao e'", () => {
     const d = tmp(); put(d, ".ai/VERSION");
     expect(isCatalog(d)).toBe(false);
+  });
+});
+
+describe("Stop gerado pelo sync (STOP-WIRING)", () => {
+  // segtools 14/10: ninguem gerava o Stop; o posto a mao ficava na copia velha de `.ai/guards/`.
+  const STOP = (rel) => `bash "$CLAUDE_PROJECT_DIR/${rel}/stop-unfinished-work.sh"`;
+  const projeto = (onde) => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "tars-stop-"));
+    fs.mkdirSync(path.join(d, onde), { recursive: true });
+    fs.writeFileSync(path.join(d, onde, "stop-unfinished-work.sh"), "exit 0\n");
+    return d;
+  };
+
+  it("consumidor: Stop aponta a base; o velho de `.ai/guards/` sai e o alheio fica", () => {
+    const d = projeto(".ai/base/guards");
+    const atual = { hooks: { Stop: [{ hooks: [{ type: "command", command: STOP(".ai/guards") }, { type: "command", command: "echo meu" }] }] } };
+    const s = claudeSettings({}, d, atual);
+    expect(s.hooks.Stop.flatMap((e) => e.hooks.map((h) => h.command))).toEqual([STOP(".ai/base/guards"), "echo meu"]);
+    expect(s.hooks.Stop[0]).not.toHaveProperty("matcher");
+    expect(claudeSettings({}, d, s)).toEqual(s);
+  });
+
+  it("sem o arquivo, nenhum Stop gerado (nao aponta para o que nao existe)", () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "tars-stop-"));
+    expect(claudeSettings({}, d, null).hooks.Stop).toEqual([]);
   });
 });
