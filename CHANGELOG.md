@@ -4,6 +4,35 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.28
+
+### O que mudou
+- **O sync só mexe no hook que ele mesmo gera.** No `.claude/settings.json`, o sync é dono do
+  comando `bash "$CLAUDE_PROJECT_DIR/.ai/[base/]guards/..."`. Entrada de outro dono no
+  `PreToolUse`, `PreCompact` ou `SessionStart` (o `prod-guard` do Tars, hook posto à mão no
+  consumidor) fica. Antes o sync reescrevia o evento inteiro e a derrubava calado. Guard que saiu
+  do manifesto continua sumindo, como deve.
+- **O binário reconhece o repo do Tars.** Rodado no checkout do catálogo, o `tars sync` do
+  binário entra no modo `self` (só wiring e hooks do git). Antes ele comparava o repo com o
+  catálogo embutido no cache, tratava o Tars como consumidor e criava `.ai/base/` e
+  `.ai/tars.lock`.
+- **A suíte não escreve mais no repo.** O teste de dogfood compara o `settings.json` com o que o
+  sync geraria, em memória; antes rodava o sync de verdade e reescrevia o arquivo.
+
+Bugs que esta versão fecha: SYNC-PRE-TOOL, TARS-SELF-1, TEST-MUTA-REPO (achados do coord na dev.27).
+
+### Por que
+Os três derrubavam o `prod-guard` do Tars, o gate que impede mudança em produção sem a ordem do
+dono, e nada acusava.
+
+### Arquivos impactados
+`tools/framework/tars-sync.mjs` (+ `tars-sync-posse.test.mjs`), `tools/framework/tars-self.test.mjs`,
+`.claude/settings.json`.
+
+### O que o consumidor faz
+`tars self-update` e `tars sync --upgrade`. Hook que você pôs à mão no `PreToolUse` e o sync
+apagou: ponha de novo — agora ele fica.
+
 ## 0.0.1-dev.27
 
 ### O que mudou
