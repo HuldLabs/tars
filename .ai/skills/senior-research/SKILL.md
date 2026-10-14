@@ -84,6 +84,49 @@ one confident-sounding answer. A senior researcher never stops there.
 - Skip the workflow narration ("first I searched X, then I searched Y") in the
   final answer — the citations carry the provenance, not a search diary.
 
+## Measuring a claim you cannot read off a page
+
+The steps above assume the answer is *written* somewhere. Some of the load-bearing claims a
+session makes are not — they are measurements, and a measurement has failure modes prose does
+not.
+
+**Say which version you measured, and promise only that** (B4.3). "There is nothing ready for
+this" is a claim about a *specific* release line, not about the software. Measure the newest
+line — the last release **and** `main`/HEAD — never the stable one alone: the feature you are
+about to build by hand is often already on the branch. Name the ref (`main@a1b2c3d`,
+`v0.0.1-dev.19`), because a bare "the latest" is unfalsifiable the moment it moves.
+
+**Do not decide on a contested machine** (B4.2). A benchmark that ran while something else was
+compiling measures the machine, not the change. Record the load alongside the number, run both
+sides under the same conditions, and write the numbers up in `docs/research/` **with a date and
+an explicit caveat** — a number without its conditions is a guess with decimals. When the
+conditions are not comparable, the honest output is "not measured", not the better-looking
+number.
+
+**Adopting an alternative: the "why not" is mandatory, per row** (B4.4). Comparing options on
+their merits answers half the question; the other half is why the rejected ones lost. For every
+candidate, each as a checkable fact rather than an impression:
+
+- **Maintainer alive?** last commit / last release, and whether anyone answers the issues.
+- **License?** the actual license, and whether it fits the use — a copyleft dep in a product is
+  a different decision from the same dep in a tool.
+- **Cost?** money, ops weight, and what it drags in.
+- **Why not?** the reason *this* one is out — mandatory even for candidates you never intended
+  to pick. A grid without a "why not" column is a wish list.
+
+**Prove the feature exists in the version you have — the deserialization probe** (B4.5). Do not
+trust the changelog or the docs page; they describe the project, not your installed artifact.
+Send the wrong thing and read the error: hand a refusal to the type, a malformed payload to the
+endpoint, a field from the new release to the old parser. If your version supports it, the shape
+error names the feature; if not, you get "unknown field" or a different schema entirely. The
+error message is the proof — it is the artifact answering.
+
+**A grid before your own rubric** (B4.6). Before designing an evaluation rubric, dataset or gold
+standard, spend one search asking whether it already exists — a public dataset, a mature
+system's harness, a standard benchmark for exactly this task. A rubric invented in an afternoon
+measures what you remembered to put in it; one that already exists carries the failures of
+everyone who used it before you. Same grid as above: candidates, and why not each.
+
 ## Guardrails
 
 - **Fan-out is not free.** Scale the number of queries to the claim and stop when a
