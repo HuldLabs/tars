@@ -232,7 +232,22 @@ export const gateDeps = (gates, tars) => {
 export const isGuardTest = (item) => /(^|\/)test-/.test(item)
 
 /** Guard DECLARADO que de fato vira hook (o teste fica de fora). */
-const hookGuards = (manifest) => (manifest.guards ?? []).filter((g) => !isGuardTest(g))
+/**
+ * So' o guard de FERRAMENTA vai no PreToolUse. Ficam de fora (seo-brain, 14/10: o sync ligou
+ * tudo no Bash e travou todo comando):
+ *   - lib (`lib-*`): e' `source`ada pelo guard, nao roda sozinha;
+ *   - arquivo que nao e' shell (`ensure_memory_link.py`): e' chamado PELO guard `.sh`; o hook
+ *     rodava `bash x.py` e saia com "import: command not found";
+ *   - guard de outro evento: os da base (PreCompact/SessionStart) e o `stop-unfinished-work`
+ *     (Stop), que no PreToolUse bloqueavam o proprio commit que pediam.
+ */
+const FORA_DO_PRETOOL = new Set(['stop-unfinished-work'])
+const ehGuardDeFerramenta = (g) =>
+  !g.startsWith('lib-') &&
+  !/\.(py|mjs|js|ts)$/.test(g) &&
+  !FORA_DO_PRETOOL.has(g.replace(/\.sh$/, '')) &&
+  !BASE_HOOKS.some((h) => h.file === `${g.replace(/\.sh$/, '')}.sh`)
+const hookGuards = (manifest) => (manifest.guards ?? []).filter((g) => !isGuardTest(g) && ehGuardDeFerramenta(g))
 
 /** Itens do catalogo a copiar (tudo, menos o `local`, que e' do projeto). */
 export const declare = (manifest, { tars } = {}) =>

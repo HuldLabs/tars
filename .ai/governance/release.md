@@ -17,6 +17,23 @@ Como contar a versão e o que vai em cada seção do CHANGELOG está em
 
 O dono não cria tag, não roda workflow e não confere asset.
 
+## Quem decide o nível da versão
+
+Decisão do dono (14/10/2026):
+
+- **A primeira versão de todo repo do ecossistema é `v0.0.1-dev.1`.**
+- **`dev.N` → `dev.N+1`: o coord decide.** Cortar a próxima `dev.N` não precisa de aprovação à
+  parte; o único aval é o merge do PR final pelo dono.
+- **Qualquer mudança de nível é só do dono**, com confirmação **clara e explícita**: sair de
+  `-dev` (`0.0.1-dev.N` → `0.0.1`), subir patch, minor ou major (`0.0.2`, `0.1.0`, `1.0.0`) ou
+  qualquer outra troca de hierarquia, partindo de qualquer versão.
+- **Essa confirmação é uma pergunta única**, feita sozinha e sem outros assuntos junto. Pergunta
+  embutida num lote de decisões não vale como aval, e merge de PR também não.
+- **Também é do dono:** o modelo de tag, e a escolha entre cortar agora ou esperar para juntar
+  mais entregas numa versão só.
+
+O coord propõe ("vale cortar agora" ou "vale esperar o item X"), mas quem decide é o dono.
+
 ## O caminho, passo a passo
 
 ### 1. PR final da versão
