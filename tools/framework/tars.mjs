@@ -35,6 +35,9 @@ import * as memoryMod from './tars-memory.mjs'
 import * as refsMod from './tars-check-refs.mjs'
 import * as handoffMod from './tars-handoff.mjs'
 import * as upgradeMod from './tars-upgrade.mjs'
+// `tars gates baseline` (item B3.3 do eixo de gates): a linha de base da adocao — a divida
+// velha fica nomeada e o gate so' reprova o que e' novo. O dono mora no modulo proprio.
+import * as gatesBaselineMod from './tars-gates-baseline.mjs'
 // `tars incident` (TARS-INCIDENTE-AUTO): o ledger deixa de ser escrito a mao. O modulo DONO
 // mora em tars-incident.mjs; aqui so' o despacho fino (R3).
 import * as incidentMod from './tars-incident.mjs'
@@ -51,6 +54,13 @@ import * as acessosMod from './tars-acessos.mjs'
 // provision/revoke/verify). Reusa o cofre do `tars secrets`; o julgamento mora no modulo
 // dono (R3) — aqui so' o despacho fino e a leitura de `[identity]`.
 import * as identityMod from './tars-identity.mjs'
+// `tars adopt` (dev.19): o ROTEIRO de adocao de repo pre-existente — SO' LEITURA. O
+// julgamento mora no modulo dono (tars-adopt.mjs); aqui so' o despacho fino (R3).
+import * as adoptMod from './tars-adopt.mjs'
+// FATIA 2A: o catalogo EMBUTIDO no binario. O import ESTATICO e' o que faz o
+// `bun build --compile` enxerga-lo e embutir (`tars-embedded.mjs` e' GERADO no build por
+// `tars-embed-catalog.mjs`; ver `defaultTars`). So' `materializar` e' usado aqui.
+import { materializar } from './tars-embedded-runtime.mjs'
 
 // O `import.meta.url` do binario compilado aponta o modulo embutido; `process.execPath`
 // cobre o resto. Em ambos os casos a base e' o IRMAO de `tars.mjs`.
@@ -69,9 +79,13 @@ function findRoot(start) {
 // passa a ser o repo onde o BINARIO vive (`process.execPath`), subindo ate' achar `.ai/VERSION`.
 // Ordem: `--tars` > `TARS_HOME` > este default > cwd (fonte). Sem ele, rodar o binario fora
 // do repo do Tars morria com "nao achei a raiz do Tars" (Incident: dist/tars perde modulo).
+//
+// FATIA 2A (binario sem checkout): quando o binario NAO vive num checkout (asset da release,
+// imagem `FROM scratch` com so' `/tars`), nao ha' repo acima dele. Cai no CATALOGO EMBUTIDO
+// (`tars-embedded.mjs`, gerado em build): materializado no cache do usuario, vira o TARS_HOME.
 function defaultTars() {
-  if (COMPILED) return findRoot(dirname(process.execPath))
-  return null
+  if (!COMPILED) return null
+  return findRoot(dirname(process.execPath)) ?? materializar()
 }
 
 const args = process.argv.slice(2)
@@ -99,13 +113,20 @@ const USAGE = [
   '    --adopt <hook>           adota o hook do projeto (guarda o original em <hook>.bak); sem',
   '                             ele, hook sem a marca de autoria do Tars NAO e sobrescrito',
   '  check                      atalho de `sync --check` (o gate)',
+  '  adopt [--json]             roteiro de adocao de repo PRE-EXISTENTE: lista o que falta e',
+  '                             o comando de cada item (hooks, gates, baseline, secrets,',
+  '                             memoria, doutrinas) e acusa hook manual fora do Tars.',
+  '                             SO` LEITURA: diagnostica, nao altera (exit != 0 se falta algo).',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
-  '  curation [--advance] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
+  '  curation [--advance --reviewed <r,..>] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
   '                             (<ponteiro>..HEAD) dos repos vizinhos e lista o que andou',
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
   '  --version                  imprime a versao do Tars',
   '  doctor [--json]            confere doutrina x gate x prova (exit != 0 em PHANTOM/DRIFT)',
+  '  gates baseline [--prune]   grava a LINHA DE BASE da adocao (.ai/gates-baseline.json): o',
+  '                             gate reprova so` o que NAO esta` na base. `--prune` aplica o',
+  '                             ratchet (tira o que ja` nao reprova — a base so` encolhe)',
   '  verify <arquivo>           roda os `verify` de um bloco de claims e cobra o `expect` (exit',
   '                             != 0 em PHANTOM/sem negativo/excesso de [ASSUMED]); `-` le stdin',
   '  check-refs <prompt.md>     cobra que a DECISAO citada no despacho exista na arvore: sha',
@@ -119,6 +140,7 @@ const USAGE = [
   '    --correcao R               imprime RECORRENTE: <ids> quando ja repetiu (>= 2 -> lembrete',
   '    [--tags a,b] [--fonte F]   de harness-postmortem). Tudo em uma linha so.',
   '',
+  '  secrets init [--refs <f>]  monta o bloco [secrets] do .ai/tars.toml do arquivo de refs',
   '  secrets refresh            abre o cofre (1Password) e regrava o cache cifrado do projeto',
   '  secrets exec -- <cmd...>   roda <cmd> com o cache decifrado no env SO do filho (sem shell)',
   '  secrets check              julga chave/token/cache/recipient/ambiente SEM abrir o cofre',
@@ -144,6 +166,8 @@ const USAGE = [
   '                             autorizacao no host; read-only; exit != 0 no que faltar',
   '  identity provision         DONO (TTY): escreve a chave do bot (0600) a partir do cofre',
   '  identity revoke            DONO: apaga a chave local e NOMEIA os hosts a limpar',
+  '  identity sign-setup        assinatura de commit por SSH: gpg.format/signingkey/',
+  '                             allowedSignersFile no git do projeto; idempotente; --force',
   '',
   '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
   '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
@@ -216,10 +240,11 @@ async function promoteCommand(rest, project) {
 /** `tars curation` — rotina por PONTEIRO (docs/CURATION.md): mede o delta, nao generaliza. */
 async function curationCommand(rest, project) {
   const mod = curationMod
-  const tars = resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars())
+  const tars = resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars())
   const reposDir = resolve(argValue(rest, '--repos') ?? join(tars, '..'))
   const stateFile = resolve(argValue(rest, '--state') ?? join(tars, '.ai', 'curation.json'))
-  const r = mod.curate({ reposDir, stateFile, advance: rest.includes('--advance') })
+  const reviewed = (argValue(rest, '--reviewed') ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+  const r = mod.curate({ reposDir, stateFile, reviewed, advance: rest.includes('--advance') })
   if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
   else mod.report(r)
 }
@@ -261,6 +286,36 @@ async function doctorCommand(rest, project) {
   if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
   else doctorMod.format(r)
   if (r.faltando.length) process.exit(1)
+}
+
+/**
+ * `tars gates baseline [--prune] [--json]` — a LINHA DE BASE da adocao (item B3.3).
+ *
+ * Numa adocao a divida ja' existe: exigir tudo verde de uma vez vira o `--no-verify`. Aqui as
+ * violacoes de HOJE vao para `.ai/gates-baseline.json` (versionado, por gate, `arquivo:linha` +
+ * hash do trecho) e o gate passa a reprovar so' o que NAO esta' na base. `--prune` aplica o
+ * ratchet: tira da base o que ja' nao reprova (a base so' encolhe).
+ *
+ * O que COLETA mora no modulo dono (`tars-gates-baseline.mjs`); aqui so' se despacha (R3).
+ */
+async function gatesCommand(rest, project) {
+  const root = resolve(argValue(rest, '--project') ?? project ?? process.cwd())
+  const coleta = gatesBaselineMod.coletarProjeto(root)
+  if (rest.includes('--prune')) {
+    const base = gatesBaselineMod.podar(gatesBaselineMod.lerBaseline(root), coleta)
+    const r = gatesBaselineMod.gravarBaseline(root, base)
+    if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+    else console.log(`tars gates: base podada — ${r.itens} isencao(oes) em ${r.gates} gate(s) (${r.caminho})`)
+    return
+  }
+  const base = gatesBaselineMod.consolidar(coleta)
+  const r = gatesBaselineMod.gravarBaseline(root, base)
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else {
+    console.log(`tars gates: linha de base gravada — ${r.itens} violacao(oes) em ${r.gates} gate(s)`)
+    console.log(`  ${r.caminho}`)
+    console.log('  O gate reprova so` o que NAO esta` na base. Conserte e rode --prune (a base encolhe).')
+  }
 }
 
 /** `tars verify <arquivo>` — despacho fino: o parser e o julgamento moram no modulo dono. */
@@ -357,7 +412,7 @@ async function secretsCommand(rest, project) {
   // original; a manipulacao de segredo, no de operacoes. `exec` e' do segundo porque e' la'
   // que mora a REDACAO da saida do filho.
   const mod = secretsOps.SUBCOMANDOS.includes(sub) ? secretsOps : secretsMod
-  const r = await mod.run({ sub, rest: rest.slice(1), cfg, em: argValue(rest, '--em') })
+  const r = await mod.run({ sub, rest: rest.slice(1), cfg, tabela, em: argValue(rest, '--em') })
   if (r.saida) console.log(r.saida)
   process.exit(r.status ?? 0)
 }
@@ -376,11 +431,27 @@ function acessosCommand(rest) {
  * `tars secrets` ja' conhece). O julgamento mora no modulo dono (tars-identity).
  */
 function identityCommand(rest, project) {
-  const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
+  const raiz = resolve(argValue(rest, '--project') ?? project ?? process.env.TARS_PROJECT ?? process.cwd())
   const file = join(raiz, '.ai', 'tars.toml')
-  const cfg = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')).identity ?? {} : {}
-  const r = identityMod.runIdentity({ sub: rest[0], rest: rest.slice(1), cfg })
+  const toml = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')) : {}
+  const cfg = toml.identity ?? {}
+  // O `allowed_signers` e' o do cofre (mesma ref do `tars secrets`), lido da mesma tabela:
+  // o sign-setup nao tem config propria (R3).
+  const allowed_signers = toml.secrets?.allowed_signers ?? null
+  const r = identityMod.runIdentity({
+    sub: rest[0],
+    rest: rest.slice(1),
+    cfg: { ...cfg, raiz, allowed_signers },
+  })
   process.exit(r && r.ok === false ? 1 : 0)
+}
+
+/** `tars adopt` — despacho fino: o roteiro (so' leitura) mora no modulo dono (tars-adopt). */
+function adoptCommand(rest, project) {
+  const r = adoptMod.adopt({ project: resolve(argValue(rest, '--project') ?? project ?? process.cwd()) })
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else adoptMod.format(r)
+  if (r.falta.length) process.exit(1)
 }
 
 /** Le o valor de `--nome <v>` da lista de rest (o mesmo `arg` dos scripts originais). */
@@ -420,10 +491,12 @@ const COMMANDS = {
   init: (rest, project) => sync('init', rest, project),
   sync: (rest, project) => sync('sync', rest, project),
   check: (rest, project) => sync('sync', [...rest, '--check'], project),
+  adopt: adoptCommand,
   hooks: runHooksCommand,
   promote: promoteCommand,
   curation: curationCommand,
   doctor: doctorCommand,
+  gates: gatesCommand,
   verify: verifyCommand,
   memory: memoryCommand,
   incident: incidentCommand,

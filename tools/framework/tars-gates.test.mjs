@@ -322,14 +322,14 @@ describe("gate lint-swallow — erro engolido (TARS-SWALLOW-1)", () => {
   };
   const roda = (dir, params) => rodar([gate], { env: { TARS_PROJECT: dir, TARS_GATE_PARAMS: params ?? "" } });
 
-  it("`catch {}` vazio no staged reprova com arquivo:linha", () => {
-    const r = roda(repoCom("src/a.mjs", "try { f() } catch {}\n"));
+  it("`catch` com corpo vazio no staged reprova com arquivo:linha", () => {
+    const r = roda(repoCom("src/a.mjs", "try { f() } catch" + " {}\n"));
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/src\/a\.mjs:1/);
   });
 
-  it("`catch (e) { /* nada */ }` de uma linha reprova", () => {
-    const r = roda(repoCom("src/b.ts", "try { f() } catch (e) { /* ignora */ }\n"));
+  it("`catch (e)` com so comentario no corpo, de uma linha, reprova", () => {
+    const r = roda(repoCom("src/b.ts", "try { f() } catch (e)" + " { /* ignora */ }\n"));
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/src\/b\.ts:1/);
   });
@@ -351,14 +351,64 @@ describe("gate lint-swallow — erro engolido (TARS-SWALLOW-1)", () => {
   });
 
   it("allow isenta o trecho declarado nos params", () => {
-    const dir = repoCom("vendor/lib.mjs", "try { f() } catch {}\n");
+    const dir = repoCom("vendor/lib.mjs", "try { f() } catch" + " {}\n");
     expect(roda(dir, JSON.stringify({ allow: ["vendor/"] })).status).toBe(0);
     expect(roda(dir, "").status).toBe(1);
   });
 
   it("sem repo git nao julga (fixture isolada, nao falso-positivo)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-swallow-nogit-"));
-    fs.writeFileSync(path.join(dir, "a.mjs"), "try { f() } catch {}\n");
+    fs.writeFileSync(path.join(dir, "a.mjs"), "try { f() } catch" + " {}\n");
+    expect(roda(dir).status).toBe(0);
+  });
+});
+
+describe("gate lint-swallow — LINHA DE BASE (B3.3)", () => {
+  const gate = GATE("lint-swallow", "gate.mjs");
+  const lib = path.join(HERE, "..", "..", ".ai", "gates", "lib-baseline.mjs");
+  const repoCom = (conteudo) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-base-"));
+    const g = (a) => spawnSync("git", a, { cwd: dir, encoding: "utf8" });
+    g(["init", "-q"]); g(["config", "user.email", "t@t.local"]); g(["config", "user.name", "t"]);
+    fs.writeFileSync(path.join(dir, "a.mjs"), conteudo);
+    g(["add", "--", "a.mjs"]);
+    return dir;
+  };
+  const roda = (dir) => rodar([gate], { env: { TARS_PROJECT: dir, TARS_GATE: "lint-swallow" } });
+  const gravaBase = (dir, hash) => {
+    fs.mkdirSync(path.join(dir, ".ai"), { recursive: true });
+    fs.writeFileSync(path.join(dir, ".ai", "gates-baseline.json"), JSON.stringify({ versao: 1, gates: { "lint-swallow": [{ key: "a.mjs:1", hash }] } }));
+  };
+
+  it("o adotado na base ISENTA; so' o NOVO reprova", async () => {
+    const mod = await import(lib);
+    const dir = repoCom("try { f() } catch {}\n");
+    gravaBase(dir, mod.hashTrecho("try { f() } catch {}")); // a linha crua do disco
+    const r = roda(dir);
+    expect(r.status).toBe(0); // o achado e' divida adotada
+  });
+
+  it("base com hash de OUTRO trecho NAO isenta (o conteudo manda)", () => {
+    const dir = repoCom("try { f() } catch {}\n");
+    gravaBase(dir, "0000000000000000");
+    expect(roda(dir).status).toBe(1);
+  });
+});
+
+describe("gate lint-swallow — so' o RASTREADO (regra do dono, 14/10)", () => {
+  const gate = GATE("lint-swallow", "gate.mjs");
+  const roda = (dir) => rodar([gate], { env: { TARS_PROJECT: dir, TARS_GATE: "lint-swallow" } });
+
+  it("`.cache/` gitignored SO' no disco nao entra: o gate julga o INDICE, nao a arvore", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-swallow-tracked-"));
+    const g = (a) => spawnSync("git", a, { cwd: dir, encoding: "utf8" });
+    g(["init", "-q"]); g(["config", "user.email", "t@t.local"]); g(["config", "user.name", "t"]);
+    fs.writeFileSync(path.join(dir, ".gitignore"), ".cache/\n");
+    fs.mkdirSync(path.join(dir, ".cache"), { recursive: true });
+    fs.writeFileSync(path.join(dir, ".cache", "sujo.mjs"), "try { f() } catch {}\n"); // sujo, na arvore
+    fs.writeFileSync(path.join(dir, "limpo.mjs"), "export const a = 1\n");
+    g(["add", "--", ".gitignore", "limpo.mjs"]);
+    // O `sujo.mjs` existe no disco e nao esta' no indice: nao e' superficie de gate nenhum.
     expect(roda(dir).status).toBe(0);
   });
 });
@@ -510,5 +560,41 @@ describe("gate release-guard", () => {
     expect(r.stderr).toMatch(/RELEASE GUARD/);
     fs.writeFileSync(path.join(dir, ".git", "COMMIT_EDITMSG"), "chore: x\n\nNo-Release: regeneracao de indice\n");
     expect(rodar([gate], { env: { TARS_PROJECT: dir } }).status).toBe(0);
+  });
+
+  // O hook commit-msg passa o ARQUIVO da mensagem em argv[2]; no pre-commit ele ainda nao
+  // existe, e por isso o gate vive no commit-msg (tars.toml). Aqui se prova a fonte direta.
+  it("APROVA pelo ARQUIVO da mensagem em argv (a fonte do hook commit-msg)", () => {
+    const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
+    const msg = path.join(dir, "MSG.txt");
+    fs.writeFileSync(msg, "chore: x\n\nNo-Release: regeneracao de indice\n");
+    const r = rodar([gate, msg], { env: { TARS_PROJECT: dir } });
+    expect(r.status).toBe(0);
+  });
+
+  it("REPROVA sem No-Release mesmo com o arquivo da mensagem em argv", () => {
+    const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
+    const msg = path.join(dir, "MSG.txt");
+    fs.writeFileSync(msg, "chore: x\n\nsem escape\n");
+    expect(rodar([gate, msg], { env: { TARS_PROJECT: dir } }).status).toBe(1);
+  });
+
+  // NUM WORKTREE `.git` e' um ARQUIVO (`gitdir: ...`), nao um diretorio: `join(root, '.git')`
+  // nunca existe e o escape `No-Release:` era ignorado CALADO — o gate reprovava todo commit
+  // isento feito em worktree (o bug conhecido). A mensagem mora no git-dir real.
+  it("le o No-Release no COMMIT_EDITMSG de um WORKTREE (o `.git` e' arquivo)", () => {
+    const dir = repo({ arquivos: [] });
+    const wt = path.join(tmp(), "wt");
+    execFileSync("git", ["-C", dir, "worktree", "add", "-q", "-b", "w/wt", wt], { stdio: "ignore" });
+    // O motor visto do worktree: sem a correcao o gate nem acha a mensagem.
+    fs.mkdirSync(path.join(wt, "tools/framework"), { recursive: true });
+    fs.writeFileSync(path.join(wt, "tools/framework/tars-sync.mjs"), "x\n");
+    execFileSync("git", ["-C", wt, "add", "tools/framework/tars-sync.mjs"], { stdio: "ignore" });
+    const gitDir = execFileSync("git", ["-C", wt, "rev-parse", "--git-dir"], { encoding: "utf8" }).trim();
+    expect(fs.statSync(path.join(wt, ".git")).isFile()).toBe(true); // a premissa do caso
+    expect(rodar([gate], { env: { TARS_PROJECT: wt } }).status).toBe(1); // sem a mensagem, REPROVA
+    const msgFile = path.join(path.isAbsolute(gitDir) ? gitDir : path.join(wt, gitDir), "COMMIT_EDITMSG");
+    fs.writeFileSync(msgFile, "chore: x\n\nNo-Release: regeneracao de indice\n");
+    expect(rodar([gate], { env: { TARS_PROJECT: wt } }).status).toBe(0);
   });
 });

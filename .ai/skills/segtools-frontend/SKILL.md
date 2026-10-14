@@ -138,6 +138,13 @@ Duas camadas, cortadas pelo **custo** e pelo **ambiente**. Guia completo: `docs/
   `bun run test` (as duas). O **pre-commit** roda o project `component` só sobre os testes de componente do
   stage; o `task check` roda os dois projects.
 
+## Paridade com a referência (medida, não lembrada)
+Paridade se prova **lado a lado com a referência aberta**, nunca contra o relato do worker nem de memória:
+a tela de referência fica aberta (só leitura) enquanto se mede — fontes, ícones, espaçamentos, tokens, o
+**payload** que a tela consome. Mede-se e **registra-se a medida** *antes* de despachar a correção; sem a
+medida gravada, "igual à referência" é opinião e a próxima revisão refaz o mesmo debate.
+A verificação visual é **na tela**, com a **conta de teste** — nunca a conta do dono (a sessão assina como ele).
+
 ## Verificação
 - **Sem `next dev`:** prove o render pelo mesmo caminho da rota — `registerDbPort` →
   `renderModulePage('/rota', params)` → `renderToStaticMarkup`; o print real combina SSR + CSS compilado

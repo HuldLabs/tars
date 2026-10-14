@@ -201,6 +201,29 @@ const guardDeps = (manifest, tars) =>
     : []
 
 /**
+ * O mesmo buraco nos GATES (ensaio do binario isolado, 14/10): gate que importa uma lib irma
+ * (`import ... from '../lib-staged.mjs'`) morria no consumidor com `Cannot find module`,
+ * porque o sync copiava so' a pasta do gate. Aqui a dependencia nao e' lista fixa: sai do
+ * proprio `import` relativo de cada `.mjs` do gate declarado (R3 — quem sabe do que precisa
+ * e' o gate). So' `../<nome>.mjs` (irma direta em `.ai/gates/`); outro caminho nao e' do catalogo.
+ */
+const IMPORT_IRMA = /from\s+['"]\.\.\/([\w.-]+\.mjs)['"]/g
+
+export const gateDeps = (gates, tars) => {
+  const deps = new Set()
+  for (const g of gates) {
+    const dir = join(tars, '.ai', 'gates', g)
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.mjs'))) {
+      for (const m of readFileSync(join(dir, f), 'utf8').matchAll(IMPORT_IRMA)) {
+        if (existsSync(join(tars, '.ai', 'gates', m[1]))) deps.add(m[1])
+      }
+    }
+  }
+  return [...deps].sort()
+}
+
+/**
  * Script de TESTE de guard (`test-*.sh`) e' prova, nao hook: roda no CI contra o guard,
  * nunca no harness do agente (item 1a). Ele e' COPIADO (o consumidor roda a suite local),
  * mas NAO vira comando do PreToolUse — senao cada Bash pagaria o teste inteiro e o
@@ -214,8 +237,11 @@ const hookGuards = (manifest) => (manifest.guards ?? []).filter((g) => !isGuardT
 /** Itens do catalogo a copiar (tudo, menos o `local`, que e' do projeto). */
 export const declare = (manifest, { tars } = {}) =>
   AREAS.flatMap((area) => {
-    if (area === 'gates')
-      return HOOKS.filter((h) => h !== 'local').flatMap((h) => (manifest.gates[h] ?? []).map((item) => ({ area, item })))
+    if (area === 'gates') {
+      const gates = HOOKS.filter((h) => h !== 'local').flatMap((h) => manifest.gates[h] ?? [])
+      const deps = tars ? gateDeps(gates, tars).filter((d) => !gates.includes(d)) : []
+      return [...gates.map((item) => ({ area, item })), ...deps.map((item) => ({ area, item }))]
+    }
     const items = manifest[area].map((item) => ({ area, item }))
     // Sem `tars` resolvido (teste de declaracao puro), as dependencias nao entram: quem
     // sincroniza SEMPRE passa o catalogo.
@@ -383,15 +409,85 @@ export async function plan({ tars, project, manifest, lock }) {
  * apagar o que nao e' nosso e' o incident de 07/10 esperando acontecer de novo. Roda com o
  * lock de ANTES (o novo ja' perdeu o item removido).
  */
-export function removedFromBase(project, manifest, lock) {
+export function removedFromBase(project, manifest, lock, { protegidos } = {}) {
   const declarados = new Set(declare(manifest, { tars: null }).map((e) => destOf(e)))
+  const citados = protegidos ?? referenciadosNaBase(project, manifest)
   const out = []
   for (const key of Object.keys(lock?.files ?? {})) {
     if (declarados.has(key)) continue
+    if (citados.has(key)) continue
     const abs = join(project, '.ai', 'base', key)
     if (existsSync(abs)) out.push(key)
   }
   return out.sort((a, b) => a.localeCompare(b))
+}
+
+/**
+ * Itens da base que um GUARD/GATE ainda CITA (TARS-BUG-5): o `lib-json.sh` nao e' declarado
+ * no manifesto, mas e' `source`ado por quatro guards — apaga-lo deixa o guard quebrado na
+ * sessao seguinte (`bash: no such file`). O `source` do guard COPIA a referencia porque ela
+ * aponta o diretorio do PROPRIO guard (`dirname "$0"`), nunca `.ai/base/`.
+ *
+ * Fecha transitivamente: guard cita guard, que cita lib. A varredura roda sobre o manifesto
+ * de AGORA e sobre a base de agora, antes de qualquer remocao.
+ */
+export function referenciadosNaBase(project, manifest) {
+  const base = join(project, '.ai', 'base')
+  const raizes = [
+    ...new Set([
+      ...declare(manifest, { tars: null }).map((e) => destOf(e)),
+      ...declare(manifest, { tars: null }).map((e) => destOf(e)).filter((k) => k.endsWith('.sh')),
+    ]),
+  ]
+  const citados = new Set()
+  const fila = [...raizes]
+  const vistos = new Set()
+  while (fila.length) {
+    const key = fila.pop()
+    if (vistos.has(key)) continue
+    vistos.add(key)
+    const abs = join(base, key)
+    if (!key.endsWith('.sh') || !existsSync(abs)) continue
+    for (const ref of referenciasDe(abs, key)) {
+      if (citados.has(ref)) continue
+      citados.add(ref)
+      fila.push(ref)
+    }
+  }
+  return citados
+}
+
+/** Caminhos `source`/`.` citados por um arquivo de shell da base (`<algo>/nome.sh`). */
+function referenciasDe(abs, key) {
+  let txt
+  try {
+    txt = readFileSync(abs, 'utf8')
+  } catch {
+    return []
+  }
+  const dir = key.includes('/') ? key.slice(0, key.lastIndexOf('/')) : ''
+  const out = new Set()
+  for (const linha of txt.split('\n')) {
+    if (!/^\s*(source|\.)\s+/.test(linha)) continue
+    for (const m of linha.matchAll(/[^\s"'`()$]+\/[\w.-]+\.sh/g)) {
+      // `a/lib.sh` e `./a/lib.sh` sao o MESMO item — normaliza antes de resolver.
+      const limpo = m[0].replace(/^\.\//, '')
+      const rel = dir && !limpo.includes('/') ? `${dir}/${limpo}` : limpo
+      out.add(collapseSegments(posix(rel)))
+    }
+  }
+  return [...out]
+}
+
+/** Colapsa `a/./b` e `a/b/../c` sem depender de uma lib de path do sistema. */
+function collapseSegments(p) {
+  const out = []
+  for (const seg of p.split('/')) {
+    if (seg === '' || seg === '.') continue
+    if (seg === '..') out.pop()
+    else out.push(seg)
+  }
+  return out.join('/')
 }
 
 /**
@@ -440,6 +536,20 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
   const self = isSelf(tars, project)
   const lockPath = join(project, '.ai', 'tars.lock')
   const lock = existsSync(lockPath) ? JSON.parse(await readFile(lockPath, 'utf8')) : null
+  // RECUSA por divergencia de versao (TARS-BUG-4): o `tars` do PATH nem sempre e' o mesmo que
+  // travou o lock. Sincronizar com OUTRO motor apagava item desta versao e deixava guard que o
+  // `source`ava sem arquivo (seo-brain, 14/10). Duas versoes = para tudo, nada escrito.
+  const doLock = lock?.tars?.version ?? null
+  const doMotor = readVersion(tars)
+  const divergente = !self && doLock && doMotor && doLock !== doMotor
+  // `--check` NAO recusa: ele so' le e acusa (e' o que o `tars upgrade` roda para decidir).
+  if (divergente && !check) {
+    throw new Error(
+      `motor do Tars (${doMotor}) != versao travada no lock (${doLock}); nada foi escrito.\n` +
+        `Use o Tars da versao do lock (${doLock}) ou rode \`tars upgrade\` de proposito ` +
+        `(atualiza .ai/base + .ai/tars.lock) antes de \`tars sync\`.`,
+    )
+  }
   const { missing, stale, absent, copied, removed } = await plan({ tars, project, manifest, lock })
   // Familia D: a saida gerada orfa e' calculada AQUI, com o manifesto de agora e o lock de
   // ANTES de a base ser reescrita (o lock novo ja' perdeu a skill removida).
@@ -493,7 +603,7 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 
   const next = {
     lockfileVersion: 1,
-    tars: { version: manifest.version ?? readVersion(tars), commit: tarsCommit(tars) },
+    tars: { version: readVersion(tars), commit: tarsCommit(tars) },
     files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),
   }
   // Em modo `self` o lock nao existe: nao ha' item copiado para travar (a base e' o catalogo).

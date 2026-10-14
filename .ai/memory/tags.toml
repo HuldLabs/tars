@@ -51,6 +51,8 @@ schema_version = 1
 [[tag]] id = "porta"       aliases = ["port", "socket"]
 [[tag]] id = "timeout"     aliases = ["time-out", "deadline"]
 [[tag]] id = "tooling"     aliases = ["ferramenta", "tool"]
+[[tag]] id = "tars"       aliases = ["framework", "catalogo-tars"]
+[[tag]] id = "sync"       aliases = ["sincronizacao", "sync-tars"]
 # ── O canal lição -> prompt (tratamento especial: `[[promocao]]` no fim) ────
 [[tag]] id = "prompt"      aliases = ["template", "regra", "prompt-rule"]
 

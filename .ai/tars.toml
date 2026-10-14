@@ -26,10 +26,25 @@ guards = [
 # release-guard cobra versao+CHANGELOG em commit que toca o motor (tools/framework/tars-*,
 # .ai/gates, .ai/guards, .ai/governance) — o Tars e' o primeiro consumidor da propria regra.
 # no-add-all fica no guard de agente, nao no hook do git.
-pre-commit = ["gitleaks", "release-guard"]
-commit-msg = ["commit-msg"]
+# healthcheck (B6.1): `--version` nao e' healthcheck — reprova a declaracao de saude que
+# so' pergunta a versao (o crash-loop passa). backup-coverage (B2.6): backup so' e' real com
+# prova de restore, e o app com dir de dado fora da lista de fontes REPROVA nomeando o campo.
+#
+# release-guard no commit-msg, NAO no pre-commit: o escape `No-Release:` vive na MENSAGEM e
+# o arquivo dela so' existe a partir do `prepare-commit-msg`/commit-msg — no pre-commit ele
+# ainda nao foi escrito, entao o escape era invisivel e o gate reprovava quem o declarava.
+# (Medido: pre-commit roda antes de o COMMIT_EDITMSG existir; commit-msg o recebe em argv.)
+# no-foreign-runtime (B1.5): o `.ai/` COPIADO nao pode exigir runtime que o consumidor nao
+# usa (transversal = binario unico; o catalogo fala Node). O motor (tools/) fica de fora.
+pre-commit = ["gitleaks", "healthcheck", "backup-coverage", "no-foreign-runtime"]
+commit-msg = ["commit-msg", "release-guard"]
 
 # prod-guard (B1.4): o agente nao muda producao (compose/systemctl/kubectl/helm/force-push)
 # sem a ordem direta do dono. Fica no PreToolUse do harness (como o no-add-all), nao no hook
 # do git — o par doutrina->gate->prova esta' no `.ai/doctrines.toml`
 # (`operacao/nada-em-prod-sem-ordem`).
+#
+# colocacao-arquivo (B1.1/B1.2) NAO entra no hook `pre-commit` do Tars: ele julga pela MATRIZ
+# do projeto e o Tars (modo `self`) nao tem `config/file_placement.toml` — sem matriz o gate
+# reprova por desenho (fail-closed). O par doutrina->gate->prova vive no `.ai/doctrines.toml`
+# (`colocacao/matriz-de-familias`), com prova por `--arquivos`.

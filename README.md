@@ -360,6 +360,9 @@ como dívida nomeada; report sem reprodução vira "a confirmar", nunca dívida 
 
 ## Como um projeto novo começa
 
+> **Guia prático:** instalar o binário publicado, adotar repo existente (`tars adopt`) e
+> atualizar versão, passo a passo e com exemplos, em [`docs/adocao.md`](docs/adocao.md).
+
 Ponha o `tars` no PATH (o binário de Release, o script do catálogo ou `$TARS_HOME/dist/tars`) —
 o comando é o mesmo nos três casos; o projeto consumidor **não precisa de Node**.
 

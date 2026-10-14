@@ -16,7 +16,9 @@ describe('tars — despacho', () => {
     // `curation` entrou com a fatia 2 da curadoria: a rotina por PONTEIRO (docs/CURATION.md).
     // `identity` entrou com a release 14/10 (TARS-BUG-5): a identidade de automacao que o
     // Endurance precisa para a v0.1.0 (docs/decisoes-20260808 §Sequence/§SSH).
-    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'check', 'check-refs', 'curation', 'doctor', 'git', 'handoff', 'hooks', 'identity', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
+    // `gates` entrou com a curadoria a1 (item B3.3): a LINHA DE BASE da adocao
+    // (`tars gates baseline [--prune]`) — o gate reprova so' o que nao esta' na base.
+    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'adopt', 'check', 'check-refs', 'curation', 'doctor', 'gates', 'git', 'handoff', 'hooks', 'identity', 'incident', 'init', 'memory', 'promote', 'secrets', 'sync', 'upgrade-notes', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {
@@ -33,6 +35,24 @@ describe('tars — despacho', () => {
   it('promote exige --area e --item', async () => {
     await expect(COMMANDS.promote([], process.cwd())).rejects.toThrow(/--area/)
     await expect(COMMANDS.promote(['--area', 'memory'], process.cwd())).rejects.toThrow(/--item/)
+  })
+
+  // `curation` sem `--tars`/TARS_HOME caia no `findTars` do modulo ERRADO (o da curadoria nao o
+  // exporta): "mod.findTars is not a function". O catalogo se acha pelo sync, como nos outros.
+  it('curation pelo CLI: acha o catalogo sem --tars e imprime o relatorio', async () => {
+    const antes = process.env.TARS_HOME
+    delete process.env.TARS_HOME
+    const log = console.log
+    console.log = () => {}
+    const linhas = []
+    try {
+      console.log = (x) => linhas.push(String(x))
+      await COMMANDS.curation([], process.cwd()) // o relatorio em texto (report) e' o caminho do dono
+      expect(linhas.join('\n')).toMatch(/# curadoria/)
+    } finally {
+      console.log = log
+      if (antes !== undefined) process.env.TARS_HOME = antes
+    }
   })
 
   it('argValue le o par --nome <v>', () => {

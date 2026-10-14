@@ -62,7 +62,31 @@ id = "fail/erro-nao-se-engole"
 titulo = "`catch {}` vazio e `except: pass` REPROVAM no staged (TARS-SWALLOW-1)"
 fonte = ".ai/gates/lint-swallow/GATE.md:1-14"
 gate = "../../.ai/gates/lint-swallow"
-prova = "printf 'try { f() } catch {}\\n' > /tmp/tars-doc-swallow.mjs && node .ai/gates/lint-swallow/gate.mjs"
+prova = "d=$(mktemp -d) && git -C \"$d\" init -q && printf 'try { f() } catch {}\\n' > \"$d/x.mjs\" && git -C \"$d\" add x.mjs && TARS_PROJECT=\"$d\" node .ai/gates/lint-swallow/gate.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
+id = "ecossistema/sem-runtime-de-quem-nao-usa"
+titulo = "O `.ai/` copiado nao exige runtime que o consumidor nao usa (transversal = binario unico)"
+fonte = ".ai/gates/no-foreign-runtime/GATE.md:1-20"
+gate = "../../.ai/gates/no-foreign-runtime"
+prova = "rm -rf /tmp/tars-doc-nfr && mkdir -p /tmp/tars-doc-nfr/.ai/skills/x && cd /tmp/tars-doc-nfr && git init -q && printf 'rode `python3 x.py`\\n' > .ai/skills/x/SKILL.md && git add -- .ai/skills/x/SKILL.md && TARS_PROJECT=/tmp/tars-doc-nfr node /projects/tars/.ai/gates/no-foreign-runtime/gate.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
+id = "gates/julga-o-staged"
+titulo = "O gate julga so` o que o commit leva (o INDICE), nunca a arvore — e so` o que o git RASTREIA (`.cache/`/gitignored nao e' superficie)"
+fonte = ".ai/gates/lib-staged.mjs:1-22"
+gate = "../../.ai/gates/lib-staged.mjs"
+prova = "d=$(mktemp -d) && git -C $d init -q && printf 'x\\n' > $d/sujo.mjs && node -e \"import('$PWD/.ai/gates/lib-staged.mjs').then(m=>process.exit(m.stagedPaths('$d').length?0:1))\""
+onde = "pre-commit"
+
+[[doctrine]]
+id = "gates/linha-de-base"
+titulo = "Adocao com divida: a violacao VELHA entra na linha de base (`.ai/gates-baseline.json`); o gate reprova so` o que e' NOVO e a base so` encolhe (ratchet)"
+fonte = "tools/framework/tars-gates-baseline.mjs:1-20"
+gate = "../../tools/framework/tars-gates-baseline.mjs"
+prova = "d=$(mktemp -d) && git -C $d init -q && printf 'try { f() } catch {}\\n' > $d/a.mjs && git -C $d add a.mjs && TARS_PROJECT=$d node .ai/gates/lint-swallow/gate.mjs"
 onde = "pre-commit"
 
 [[doctrine]]
@@ -114,8 +138,8 @@ id = "release/motor-sobe-versao"
 titulo = "Commit que toca o motor do Tars sobe a versao e traz entrada no CHANGELOG"
 fonte = ".ai/gates/release-guard/GATE.md:1-8"
 gate = ".ai/gates/release-guard"
-prova = "node .ai/gates/release-guard/gate.mjs --forca-reprova 2>/dev/null; test $? -ne 0"
-onde = "pre-commit"
+prova = "d=$(mktemp -d) && git -C \"$d\" init -q && git -C \"$d\" commit -q --allow-empty -m init && printf 'tools/framework/tars-embedded.mjs\\n' > \"$d/.staged\" && TARS_PROJECT=\"$d\" node .ai/gates/release-guard/gate.mjs \"$d/msg\" && test -f \"$d/msg\""
+onde = "commit-msg"
 escopo = "catalogo"
 
 [[doctrine]]
@@ -344,49 +368,66 @@ escopo = "catalogo"
 [[doctrine]]
 id = "org/binario-portatil"
 titulo = "O produto e' o binario portatil (standalone ou plugado); o hospedeiro nao reimplementa"
-fonte = "/projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md:16"
+fonte = "huldlabs:adr/0002-servicos-binarios-e-modo-plugado.md:16"
 gate = "nenhum"
 motivo = "decisao de arquitetura da org: falta o gate de conformidade (o `tars sync` do manifesto); divida nomeada (B4.3)"
-prova = "grep -q 'O produto é o binário' /projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md"
+prova = "grep -q 'O produto é o binário' "$(cd .. && pwd)/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md""
 onde = "ci"
 escopo = "catalogo"
 
 [[doctrine]]
 id = "org/manifesto-como-dado"
 titulo = "O binario publica o PROPRIO manifesto como dado (`GET /manifest`, `<bin> manifest --json`)"
-fonte = "/projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md:24"
+fonte = "huldlabs:adr/0002-servicos-binarios-e-modo-plugado.md:24"
 gate = "nenhum"
 motivo = "o gate real e' o contrato binary-manifest (K0); ate' la' a prova e' o texto vivo no ADR (divida nomeada, B4.3)"
-prova = "grep -q 'publica o proprio manifesto, como dado' /projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md"
+prova = "grep -q 'publica o proprio manifesto, como dado' "$(cd .. && pwd)/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md""
 onde = "ci"
 escopo = "catalogo"
 
 [[doctrine]]
 id = "org/sgbd-do-ambiente"
 titulo = "Quem fornece o SGBD e' o AMBIENTE, nao o binario (recebe DSN, nunca sobe SGBD)"
-fonte = "/projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md:57"
+fonte = "huldlabs:adr/0002-servicos-binarios-e-modo-plugado.md:57"
 gate = "nenhum"
 motivo = "doutrina de operacao; o gate vive no consumidor que sobe o banco — divida nomeada (B4.3)"
-prova = "grep -q 'quem fornece o SGBD é o ambiente' /projects/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md"
+prova = "grep -q 'quem fornece o SGBD é o ambiente' "$(cd .. && pwd)/huldlabs/adr/0002-servicos-binarios-e-modo-plugado.md""
 onde = "ci"
 escopo = "catalogo"
 
 [[doctrine]]
 id = "org/outbox-na-transacao"
 titulo = "A intencao sai pelo outbox, NA MESMA transacao do efeito (canal caiu -> nao some)"
-fonte = "/projects/huldlabs/adr/0001-mensageria-e-jobs.md:34"
+fonte = "huldlabs:adr/0001-mensageria-e-jobs.md:34"
 gate = "nenhum"
 motivo = "o motor (BR-MSG-001/002) e' do CORE-SERVICES; falta o gate de conformidade por framework — divida nomeada (B4.3)"
-prova = "grep -q 'na mesma transação do efeito' /projects/huldlabs/adr/0001-mensageria-e-jobs.md"
+prova = "grep -q 'na mesma transação do efeito' "$(cd .. && pwd)/huldlabs/adr/0001-mensageria-e-jobs.md""
 onde = "ci"
 escopo = "catalogo"
 
 [[doctrine]]
 id = "org/canal-indisponivel-degrada"
 titulo = "Canal indisponivel DEGRADA para o `default_channel` da surface (erro de operacao, nunca silencia)"
-fonte = "/projects/huldlabs/adr/0001-mensageria-e-jobs.md:27-33"
+fonte = "huldlabs:adr/0001-mensageria-e-jobs.md:27-33"
 gate = "nenhum"
 motivo = "doutrina do plano de comunicacao; o gate e' o teste de conformidade do contrato — divida nomeada (B4.3)"
-prova = "grep -q 'canal indisponivel' /projects/huldlabs/adr/0001-mensageria-e-jobs.md"
+prova = "grep -q 'canal indisponivel' "$(cd .. && pwd)/huldlabs/adr/0001-mensageria-e-jobs.md""
 onde = "ci"
+escopo = "catalogo"
+
+# --- Colocacao de arquivo (B1.1/B1.2) — a MATRIZ como DADO: o catalogo traz a REGRA e o
+# consumidor traz a matriz (`config/file_placement.toml`). A prova julga um arquivo real
+# contra uma matriz MINIMA e exige REPROVAR (ele sai 1); prova que reproduz o defeito, nunca
+# PHANTOM — a prosa sozinha nao segurava a regra, porque o catalogo nao tinha o `layout-check`. ----
+
+[[doctrine]]
+id = "colocacao/matriz-de-familias"
+titulo = "Toda familia de arquivo declara o LOCAL (`allowed`); `nao-classificado` BLOQUEIA"
+fonte = ".ai/gates/colocacao-arquivo/GATE.md:1-18"
+gate = ".ai/gates/colocacao-arquivo/gate.mjs"
+esquema = "gate.mjs --matriz <matriz.toml> --arquivos <a,b>"
+# A prova escreve a matriz minima em `.cache/` (descartavel, nunca no versionado) e julga
+# `apps/hub/gate.mjs`: um caminho que a matriz permite SO' em `tools/`. O gate sai 1.
+prova = "printf '[[family]]\nname = \"global\"\npaths = [\"apps/\"]\nallowed = [\"tools/\"]\n' > .cache/matriz-prova.toml && node .ai/gates/colocacao-arquivo/gate.mjs --matriz .cache/matriz-prova.toml --arquivos apps/hub/gate.mjs"
+onde = "pre-commit"
 escopo = "catalogo"

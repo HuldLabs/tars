@@ -102,6 +102,36 @@ data must protect **the procedure itself** — the automation must not be able t
 documentation of how to recover from its own mistake. Declare the recovery procedure as a
 resource the reconciler may not touch.
 
+## 7. Coverage is a fail-closed test, not a sentence
+
+"Everything important is backed up" is an aspiration until something **fails** when it stops
+being true.
+
+- The declaration of §6 is machine-readable, and the app carries its own claim: an app with a
+  data directory **outside** the backup list must **FAIL the check**, naming the exact hole
+  (`arquivo:campo` — which manifest, which path). A coverage check that passes by finding
+  nothing, or that reports and continues, is the guard that protects nothing.
+- Adding a new data directory is a change that must break something if the backup is not
+  updated in the same step. That is the whole point: the failure is the reminder.
+- **A backup is real only once it restores** (see §5); coverage answers the *other* half — that
+  the restore would bring back **everything** the app needs. Both halves or neither.
+
+## 8. The git mirror: three rules that look like corruption and are not
+
+A mirrored repository is backup infrastructure, and its failure modes are read wrong by
+anyone who expects a normal remote.
+
+- **A freshly created bare repo with no head is not a divergence.** It has no objects and no
+  ref yet — comparing it against the source and declaring drift is a **false positive** that
+  invites a destructive "fix". Wait for the first push; then diff.
+- **Update refs with a compare-and-swap (`update-ref` with the expected old value), never a
+  blind force.** Passing an **empty old value** is how you express "this ref must not exist
+  yet" — the CAS then refuses if someone else created it in the meantime. A blind force
+  overwrites the other writer silently; the CAS turns the race into an error.
+- **Renaming is renaming the bare's remote, never deleting it.** Deleting the mirror to "start
+  clean" throws away the only other copy of exactly the thing you are protecting, and the new
+  mirror has no history to fall back on. Rename the ref; keep the objects.
+
 ## Checklist before delivering
 
 - [ ] One repository (or one clearly separated set) per context; no mixed tenants.

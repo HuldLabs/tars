@@ -13,6 +13,14 @@ extração. Padronizar aqui mantém **qualidade linear** entre projetos.
 
 - **Bundles são vivos**: cada stack/obstáculo novo vira um módulo; todo módulo tem as 5 seções
   + linha **Related** + entrada no `CHANGELOG.md`; toda adição precisa de um incidente real.
+- **Superado por skill ⇒ aposentar, não mergear.** Quando uma prática antiga (um doc, um
+  script, um runbook, um trecho de prompt) foi **substituída** por uma skill canônica, a
+  saída é **aposentar** a origem — não fundir o texto antigo dentro da skill nova. Mergear
+  preserva as duas versões com pequenas divergências, e a partir daí ninguém sabe qual vale:
+  a regra volta a ser ambígua exatamente na camada que existe para acabar com a ambiguidade
+  (R3). Ao aposentar: a skill nova recebe o que ainda for regra, a origem ganha um ponteiro
+  curto apontando para a skill, e o corpo antigo some — o histórico fica no git, não em
+  prosa duplicada.
 - **Auto-evolução é obrigatória e automática**: ao fim de toda sessão, a retrospectiva
   (`EVOLUTION.md`) roda por padrão (sem o usuário pedir) — ver `AGENTS.md`/`CLAUDE.md` do repo.
 - **Sem dados de cliente nos bundles** (hosts/chaves/tokens/PII) — no máximo o nome como

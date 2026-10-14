@@ -10,10 +10,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { parseToml } from './tars-sync.mjs'
 import {
   CAMADAS,
   CAMPOS,
   ErroConfig,
+  caminhoDoProjeto,
+  initManifest,
   check,
   confereTemplate,
   DIAS_AVISO_TOKEN,
@@ -39,6 +42,7 @@ import {
   refresh,
   registra,
   rotate,
+  run,
   tokenSet,
   validaRef,
 } from './tars-secrets.mjs'
@@ -274,6 +278,185 @@ describe('formato do template: `op://` só como valor inteiro de `KEY=`', () => 
   it('a mensagem nomeia a linha, NUNCA o valor', () => {
     const r = confereTemplate(tplCfg('TOKEN=nao-secretamente op://v/i/f\n'))
     expect(r.detalhe).not.toContain('nao-secretamente')
+  })
+})
+
+describe('`tars secrets init` — monta o `[secrets]` a partir do arquivo de refs', () => {
+  /** Um projeto minimo: `.ai/tars.toml` (opcional) + `config/secrets.refs.yaml`. */
+  const projeto = ({ refs, manifest } = {}) => {
+    const raiz = tmp('tars-init-')
+    fs.mkdirSync(path.join(raiz, '.ai'), { recursive: true })
+    if (manifest !== undefined) fs.writeFileSync(path.join(raiz, '.ai', 'tars.toml'), manifest)
+    if (refs !== undefined) {
+      fs.mkdirSync(path.join(raiz, 'config'), { recursive: true })
+      fs.writeFileSync(path.join(raiz, 'config', 'secrets.refs.yaml'), refs)
+    }
+    return raiz
+  }
+  const manifestoDe = (raiz) => fs.readFileSync(path.join(raiz, '.ai', 'tars.toml'), 'utf8')
+  /**
+   * O `init` REAL nunca recebe cfg pronta: o `tars.mjs` le' a tabela do `.ai/tars.toml` e
+   * chama o `lerConfig` — e e' so' por esse caminho que a PROCEDENCIA (`gerado`) chega. O
+   * stub faz o mesmo, senao o que se testa aqui nao e' o comando que roda.
+   */
+  const init = (raiz, rest = []) => {
+    const f = path.join(raiz, '.ai', 'tars.toml')
+    const tabela = fs.existsSync(f) ? parseToml(fs.readFileSync(f, 'utf8')).secrets ?? {} : {}
+    const cfg = lerConfig(tabela, { project: raiz, env: { ...process.env, TARS_SECRETS_DIR: path.dirname(raiz) } })
+    return run({ sub: 'init', rest, cfg, tabela, env: { ...process.env, TARS_SECRETS_DIR: path.dirname(raiz) } })
+  }
+  const projetoCom = (secrets, { refs } = {}) => {
+    const raiz = projeto({ refs })
+    fs.writeFileSync(path.join(raiz, '.ai', 'tars.toml'), `[secrets]\n${Object.entries(secrets).map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join('\n')}\n`)
+    return raiz
+  }
+
+  const cfgBase = { source: 'automation', age_key_ref: 'op://tars/age/key', key_scope: 'project' }
+
+  it('monta o bloco a partir de `KEY: op://...` — refs sao copiadas, NENHUM valor', () => {
+    const raiz = projetoCom(cfgBase, { refs: '# refs do projeto\nGITHUB_PAT: op://secrets/gh/token\nSOPS_AGE: "op://tars/age/ref"\n' })
+    const r = init(raiz)
+    expect(r.status).toBe(0)
+    const txt = manifestoDe(raiz)
+    expect(txt).toContain('GITHUB_PAT = "op://secrets/gh/token"')
+    expect(txt).toContain('SOPS_AGE = "op://tars/age/ref"')
+    expect(txt).toContain('source = "automation"')
+    expect(txt).toContain('age_key_ref = "op://tars/age/key"')
+    expect(txt).toMatch(/^\[secrets\]$/m)
+    // O bloco tem de ser um manifesto que o PROPRIO `lerConfig` aceita — senao nasce torto.
+    const c = lerConfig(parseToml(txt).secrets, { project: raiz, env: { ...process.env, TARS_SECRETS_DIR: path.dirname(raiz) } })
+    expect(c.source).toBe('automation')
+    expect(c.age_key_ref).toBe('op://tars/age/key')
+  })
+
+  it('IDEMPOTENTE: a 2a rodada so LE — nao muda um byte e nao duplica chave', () => {
+    const raiz = projetoCom(cfgBase, { refs: 'A: op://v/i/a\nB: op://v/i/b\n' })
+    init(raiz)
+    const antes = manifestoDe(raiz)
+    const r = init(raiz)
+    expect(manifestoDe(raiz)).toBe(antes)
+    expect(r.saida).toMatch(/nada a fazer/)
+    expect(manifestoDe(raiz).match(/^A = /gm)).toHaveLength(1)
+  })
+
+  it('ref NOVA no arquivo de refs entra sem duplicar o que ja\' esta\' la\'', () => {
+    const raiz = projetoCom(cfgBase, { refs: 'A: op://v/i/a\n' })
+    init(raiz)
+    fs.writeFileSync(path.join(raiz, 'config', 'secrets.refs.yaml'), 'A: op://v/i/a\nB: op://v/i/b\n')
+    const r = init(raiz)
+    const txt = manifestoDe(raiz)
+    expect(r.saida).toMatch(/B em /)
+    expect(txt.match(/^A = /gm)).toHaveLength(1)
+    expect(txt.match(/^B = /gm)).toHaveLength(1)
+  })
+
+  it('PRESERVA o que o dono ja declarou (nao sobrescreve nem duplica)', () => {
+    const raiz = projeto({
+      refs: 'GITHUB_PAT: op://secrets/gh/token\nNOVA: op://v/i/n\n',
+      manifest: '[secrets]\nsource = "owner"\nage_key_ref = "op://tars/age/key"\nGITHUB_PAT = "op://meu/cofre/token"  # escolhido a mao\n',
+    })
+    const r = init(raiz)
+    const txt = manifestoDe(raiz)
+    // O que o dono ja' declarou fica: a ref DELE sobrevive e a do arquivo de refs nao entra.
+    expect(txt).toContain('op://meu/cofre/token')
+    expect(txt).not.toContain('op://secrets/gh/token')
+    expect(r.saida).toMatch(/preservado o que ja' existia \(GITHUB_PAT\)/)
+    expect(txt.match(/^GITHUB_PAT = /gm)).toHaveLength(1)
+    expect(txt).toContain('NOVA = "op://v/i/n"')
+  })
+
+  it('valor em CLARO no arquivo de refs nao vira linha do manifesto', () => {
+    const raiz = projetoCom(cfgBase, { refs: 'TOKEN: op://v/i/t\nSUPABASE_KEY: valor-em-claro-que-nao-e-ref\n' })
+    const r = init(raiz)
+    const txt = manifestoDe(raiz)
+    expect(txt).toContain('TOKEN = "op://v/i/t"')
+    expect(txt).not.toContain('SUPABASE_KEY')
+    expect(txt).not.toContain('valor-em-claro-que-nao-e-ref')
+    expect(r.saida).not.toContain('valor-em-claro-que-nao-e-ref') // nem na saida: valor nao se ecoa
+  })
+
+  it('ref fora do formato `op://` GRITA sem ecoar o valor', () => {
+    const raiz = projetoCom(cfgBase, { refs: 'TOKEN: op://v/i/t\nQUEBRADA: op://\n' })
+    expect(() => init(raiz)).toThrow(/ref invalida/)
+    expect(manifestoDe(raiz)).not.toContain('QUEBRADA') // nada meio-escrito
+  })
+
+  it('sem `source` nao escreve (manifesto que o `lerConfig` reprovaria nasce torto)', () => {
+    // `initManifest` e' chamado DIRETO aqui: o caminho do CLI barraria antes, no `lerConfig`,
+    // mas o modulo dono tem de recusar sozinho — quem o chama nao herda a validacao de quem o
+    // chamou (R4: falha no ponto da causa, nao tres camadas acima).
+    const raiz = projeto({ refs: 'TOKEN: op://v/i/t\n' })
+    expect(() => initManifest({ source: undefined, tabela: { key_scope: 'project' } }, { project: raiz })).toThrow(/precisa de `source`/)
+    expect(fs.existsSync(path.join(raiz, '.ai', 'tars.toml'))).toBe(false)
+  })
+
+  it('arquivo de refs ausente falha alto nomeando o caminho', () => {
+    const raiz = projetoCom(cfgBase)
+    expect(() => init(raiz)).toThrow(/arquivo de refs ausente.*config[\\/]secrets\.refs\.yaml/)
+  })
+
+  it('refs sem nenhuma ref (so comentario) recusa em vez de escrever bloco vazio', () => {
+    const raiz = projetoCom(cfgBase, { refs: '# so comentario\n' })
+    expect(() => init(raiz)).toThrow(/nada a montar/)
+  })
+
+  it('`--refs <arquivo>` aponta outro arquivo (relativo ao projeto)', () => {
+    const raiz = projetoCom(cfgBase)
+    fs.writeFileSync(path.join(raiz, 'outras.refs.yaml'), 'X: op://v/i/x\n')
+    const r = init(raiz, ['--refs', 'outras.refs.yaml'])
+    expect(r.status).toBe(0)
+    expect(manifestoDe(raiz)).toContain('X = "op://v/i/x"')
+  })
+
+  it('preserva o RESTO do manifesto (outras secoes ficam onde estavam)', () => {
+    const raiz = projeto({
+      refs: 'TOKEN: op://v/i/t\n',
+      manifest: '[identity]\nbot = "op://secrets/bot/key"\n\n[secrets]\nsource = "automation"\nage_key_ref = "op://tars/age/key"\n',
+    })
+    init(raiz)
+    const txt = manifestoDe(raiz)
+    expect(txt).toContain('[identity]')
+    expect(txt).toContain('bot = "op://secrets/bot/key"')
+    expect(txt.search(/^\[identity\]$/m)).toBeLessThan(txt.search(/^\[secrets\]$/m))
+  })
+})
+
+describe('caminho do template: relativo resolve contra a RAIZ do projeto', () => {
+  it('`config/secrets.tpl` vira <projeto>/config/secrets.tpl, rode de onde rodar', () => {
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', template: 'config/secrets.tpl' }, tmp())
+    expect(c.template).toBe(path.join(c.projeto, 'config', 'secrets.tpl'))
+    expect(path.isAbsolute(c.template)).toBe(true)
+  })
+
+  it('subdiretorio de trabalho NAO muda o alvo (era o defeito: resolvia do cwd)', () => {
+    const dir = tmp()
+    const sub = path.join(dir, 'sub', 'fundo')
+    fs.mkdirSync(sub, { recursive: true })
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', template: 'config/secrets.tpl' }, dir)
+    expect(c.template.startsWith(`${dir}${path.sep}`)).toBe(true)
+    expect(c.template).not.toContain(`${path.sep}sub${path.sep}`)
+  })
+
+  it('absoluto passa intacto', () => {
+    const abs = path.join(tmp(), 'fora', 'meu.tpl')
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref', template: abs }, tmp())
+    expect(c.template).toBe(abs)
+  })
+
+  it('`~` e `~/x` continuam valendo (expandem para o home)', () => {
+    expect(caminhoDoProjeto('~', '/qualquer')).toBe(os.homedir())
+    expect(caminhoDoProjeto('~/.config/x.tpl', '/qualquer')).toBe(path.join(os.homedir(), '.config', 'x.tpl'))
+  })
+
+  it('`~outro` NAO e o home: e um caminho relativo como outro qualquer', () => {
+    const dir = tmp()
+    expect(caminhoDoProjeto('~outro/x.tpl', dir)).toBe(path.join(dir, '~outro', 'x.tpl'))
+  })
+
+  it('sem `template` declarado, o padrao embutido segue valendo (nao regride)', () => {
+    const c = cfgDe({ source: 'automation', age_key_ref: 'op://tars/age-key/ref' }, tmp())
+    expect(c.template).toBe(path.join(c.dir, 'secrets.tpl'))
+    expect(c._origem.template).toBe('embutido')
   })
 })
 
@@ -703,7 +886,8 @@ describe('camadas de config: embutido | perfil | projeto', () => {
   it('o perfil mora FORA de repo: `profile.toml` na base de config do usuario', () => {
     const c = cenario()
     expect(perfilFile({ env: c.env })).toBe(path.join(c.base, 'profile.toml'))
-    expect(perfilFile({ env: { APPDATA: path.join('C:', 'Users', 'x', 'AppData', 'Roaming') } })).toBe(
+    // A plataforma e' injetada: o caso Windows se prova em qualquer host (antes so' passava no Windows).
+    expect(perfilFile({ platform: 'win32', env: { APPDATA: path.join('C:', 'Users', 'x', 'AppData', 'Roaming') } })).toBe(
       path.join('C:', 'Users', 'x', 'AppData', 'Roaming', 'tars', 'profile.toml'),
     )
   })

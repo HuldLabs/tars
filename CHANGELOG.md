@@ -4,6 +4,87 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.19
+
+### O que mudou
+- **Binário publicado por padrão.** Toda tag `v*` compila `tars-linux-amd64` e
+  `tars-linux-arm64`, anexa à Release com `sha256sums` e publica
+  `ghcr.io/huldlabs/tars:<versão>` (só o binário, com atestação de procedência). O binário
+  **embute o catálogo**: roda sem checkout e sem `TARS_HOME`. Instalação e uso em imagem:
+  [`docs/adocao.md`](docs/adocao.md) §1.
+- **`tars adopt` (novo).** Roteiro de adoção de repo que já existe, **só leitura**: lista o
+  que falta (manifesto, base, hooks, gates locais, linha de base, doutrinas, segredos,
+  memória, BACKLOG/HANDOFF) com o comando de cada item e acusa hook escrito à mão fora do
+  Tars.
+- **Linha de base da adoção: `tars gates baseline [--prune]`.** A dívida de hoje vai para
+  `.ai/gates-baseline.json`; o gate reprova só o que é novo, e `--prune` faz a base só
+  encolher. Mudou a linha isenta, a isenção cai.
+- **Gates julgam só o staged e só o rastreado.** O que o commit leva é o índice, não o
+  disco; arquivo fora do git não reprova commit. O `lint-swallow`, sem nada staged, julga a
+  árvore rastreada (modo prova do `tars doctor`) e diz isso na saída.
+- **Gates novos:** `fail-closed` (ausência de trava reprova, B2.3), `colocacao-arquivo`
+  (arquivo por família, B1.1/B1.2), `healthcheck` (`--version` não é healthcheck, B6.1),
+  `backup-coverage` (dir de dado fora do backup reprova, B2.6) e `no-foreign-runtime` (o
+  `.ai/` copiado não exige runtime que o consumidor não usa, B1.5).
+- **`tars secrets init --refs <arquivo>`** monta o bloco `[secrets]`; **`tars secrets
+  git-credential`** é o helper do `git`, que entrega o token do cache só aos hosts de
+  `git_hosts`.
+- **`tars identity sign-setup`** liga a assinatura de commit por SSH (idempotente,
+  `--force` para sobrescrever); `identity verify` sem identidade nomeia o comando que o
+  **dono** roda.
+- **Correções:**
+  - `release-guard`: o `No-Release:` é julgado no `commit-msg` e lido também em worktree.
+  - `sync`: motor de versão diferente da do lock **recusa** em vez de apagar, e nunca
+    remove arquivo que um guard ou gate ainda cita.
+  - `sync`: gate que importa uma lib irmã (`../lib-staged.mjs`) traz a lib junto. Antes o
+    `lint-swallow` morria no consumidor com `Cannot find module` (achado no ensaio do binário).
+  - `doctor`: as doutrinas `org/*` apontam `repo:caminho` relativo, sem caminho absoluto de
+    container.
+  - guard `block-secret-dump`: julga a **ação** (ler ou imprimir valor), não a palavra
+    `secrets` no caminho.
+  - `tars curation` pelo CLI volta a funcionar e repassa o `--reviewed`.
+  - o caminho do perfil (`profile.toml`) recebe a plataforma injetada; o caso Windows passa
+    em qualquer host.
+- **Curadoria consolidada (58 itens do plano de 14/10).** Doutrinas e skills novas:
+  coordenação de workers (claim/verify/expect, colisão de slot, canal = tracker), banco
+  (porta × adapter, jobs duráveis, migração destrutiva em expand-migrate-contract),
+  segredos (GH013 é veredito), IaC (túnel, credencial por projeto, runner isolado),
+  ambiente (`.cache/`, comando longo, uv) e onde mora cada tipo de conhecimento. Mais as
+  lições do Endurance: bit de execução no índice, allowlist de scanner por linha e
+  verificação de origem (chave apt e sha256 fixo).
+- **Tags `tars` e `sync`** no vocabulário fechado da memória.
+- **Guia novo: [`docs/adocao.md`](docs/adocao.md)** — instalar, repo novo, repo existente
+  passo a passo, atualizar e tabela de sintomas.
+
+### Por que
+A dev.19 fecha a curadoria de 14/10: tudo o que os consumidores (segtools, Endurance,
+seo-brain, homelab) aprenderam desde a dev.18 entrou no Tars antes do corte. O binário
+publicado tira do consumidor a dependência do checkout montado; a adoção com linha de base
+tira o motivo do `--no-verify` em repo antigo. Os bugs do sync e do release-guard foram
+reportados pelos consumidores e cada correção tem teste.
+
+### Arquivos impactados
+`.github/workflows/release.yml`, `.github/release.Dockerfile`, `tools/framework/tars.mjs`,
+`tars-adopt.mjs`, `tars-gates-baseline.mjs`, `tars-embedded-runtime.mjs`,
+`tars-embed-catalog.mjs`, `tars-secrets.mjs`, `tars-identity.mjs`, `tars-sync.mjs`,
+`tars-doctrines.mjs`, `tars-curation.mjs` (+ testes), `.ai/gates/{lib-staged,lib-baseline}.mjs`,
+`.ai/gates/{fail-closed,colocacao-arquivo,healthcheck,backup-coverage,no-foreign-runtime,
+release-guard,lint-swallow}/`, `.ai/guards/block-secret-dump.sh`, `.ai/doctrines.toml`,
+`.ai/tars.toml`, `.ai/governance/`, `.ai/skills/`, `.ai/memory/tags.toml`,
+`.ai/curation.json`, `docs/adocao.md`, `docs/secrets.md`, `docs/curation/`.
+
+### O que o consumidor faz
+1. **Troque para o binário publicado** (`docs/adocao.md` §1) e confira `tars --version`.
+   Imagem: `COPY --from=ghcr.io/huldlabs/tars:0.0.1-dev.19@sha256:<digest>`.
+2. Rode **`tars sync`** e depois **`tars upgrade-notes`**.
+3. Repo antigo que reprova dívida velha: **`tars gates baseline`** e comite o
+   `.ai/gates-baseline.json`.
+4. Rode **`tars adopt`** e siga o que ele apontar.
+5. Quem usa `PAT` em arquivo ou URL para o `git`: declare `git_hosts` e troque pelo
+   `tars secrets git-credential`.
+6. Os gates novos só valem quando declarados no `.ai/tars.toml`. Nada muda no que você não
+   declarou.
+
 ## 0.0.1-dev.18
 
 ### O que mudou

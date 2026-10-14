@@ -164,7 +164,7 @@ function arg(name) {
   return i === -1 ? null : process.argv[i + 1]
 }
 
-function report({ repos, moved, stateFile, advance, reviewed = [], advanced = [] }) {
+export function report({ repos, moved, stateFile, advance, reviewed = [], advanced = [] }) {
   const tag = advance ? (advanced.length ? ` (avancado: ${advanced.join(', ')})` : ' (nada avancado)') : ''
   console.log(`# curadoria — ponteiro em ${stateFile}${tag}`)
   console.log(`# ${repos.length} repos, ${moved.length} andaram\n`)
@@ -188,7 +188,12 @@ function report({ repos, moved, stateFile, advance, reviewed = [], advanced = []
   console.log('# a linha origem→destino→situacao em docs/CURATION.md — com "o que nao entra e por que".')
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+// `TARS_AS_MODULE` (posto por `tars.mjs` ANTES dos modulos donos, ver `tars-as-module.mjs`):
+// no `bun build --compile` o `import.meta.url` de TODO modulo embutido vira o do entrypoint,
+// entao este guard ficava verdadeiro quando `tars.mjs` apenas IMPORTAVA o modulo — e o main
+// da curadoria rodava no import (`tars --help` respondia "nao achei a raiz do Tars").
+// E' o mesmo Incident que ja' tinha guarda nos outros donos; este ficou de fora.
+if (!process.env.TARS_AS_MODULE && process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   try {
     const tars = resolve(arg('--tars') ?? process.env.TARS_HOME ?? findTars())
     const reposDir = resolve(arg('--repos') ?? join(tars, '..'))

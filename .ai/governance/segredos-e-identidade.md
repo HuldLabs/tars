@@ -171,3 +171,41 @@ aqui.
   inglês passou a não resolver numa máquina em português, e o erro apareceu longe da causa.
 - **Gate.** `tars secrets check` (linha `template`) + `fingerprint` derivando a pública,
   em vez de ler a privada do item.
+
+### 16. Push Protection recusando é o sistema funcionando; a decisão sobe, não se contorna
+
+- **Regra.** Quando o GitHub recusa o push com `GH013` (segredo na linhagem que subiu),
+  o veredito é **register e escalar**, nunca contornar: o artefato fica **local** e a
+  decisão (reavaliar a branch, limpar a linhagem ou descartá-la) sobe para quem responde
+  pela publicação. As saídas proibidas: `--force` para sobrescrever, reescrever a
+  história sozinho, remover o segredo da ponta mantendo o histórico contaminado, ou
+  empurrar por outro transporte (SSH, mirror, upload manual) para escapar do hook.
+- **Por quê (incidente).** `12/10/2026`, dotfiles-windows: a tag existia localmente e o
+  push foi recusado por causa de um PAT na linhagem (`GH013`); o registro correto foi
+  "a tag existe localmente; o push está pendente da decisão do dono — não publicar
+  segredo" e uma linha de backlog para não excluir o repo até o dono confirmar. O push
+  bloqueado **não é** obstáculo entre você e a publicação: ele é a única barreira que
+  sobrou entre o segredo e o público.
+- **Gate.** Regra de revisão (a decisão sobe com o `GH013` citado e o estado local
+  declarado); sem gate automático — `n/a` enquanto a resposta é procedimento.
+
+### 17. Allowlist de scanner de segredo é por linha ou valor, nunca um modo global
+
+Para liberar um falso positivo do gitleaks, marque **a própria linha** (`gitleaks:allow`) ou
+o valor exato. Um modo global (ex.: `regexTarget = "line"` numa regra de allowlist) afrouxa as
+regras antigas: liberava a linha inteira de qualquer `op://`, inclusive um segredo real ao
+lado. Allowlist por padrão de formato é o mesmo defeito: libera toda credencial futura daquele
+formato.
+
+Origem: Endurance `ff5164a` (re-revisão de segurança, 13/10).
+
+### 18. Cadeia de suprimento: confere a origem antes de confiar
+
+- Chave de repositório apt só vira `signed-by` depois de conferida pela **impressão digital
+  completa** (bloqueante, não aviso).
+- Binário baixado vem de versão fixa com **sha256 fixado** no código; nunca `curl | bash`.
+- Item sem pino possível (ex.: navegador de canal estável) é **exceção declarada**, com a
+  razão, e arquitetura não suportada falha cedo.
+
+Origem: Endurance `ce9fd76` (revisão adversarial das features, 13/10).
+

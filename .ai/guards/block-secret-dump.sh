@@ -42,20 +42,39 @@ if printf '%s' "$LC" | grep -Eq 'secrets\.mjs[[:space:]]+print'; then
   block "'secrets.mjs print' despeja os valores dos segredos."
 fi
 
-# 3. ler .env em texto puro, ou secrets/ que NAO seja .sops (cifrado)
-if printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])(cat|type|get-content|gc)[[:space:]]+'; then
-  if printf '%s' "$LC" | grep -Eq '\.sops([[:space:]]|$)'; then
-    : # .sops e CIFRADO — ler e inofensivo, permitido
-  elif printf '%s' "$LC" | grep -Eq '(^|/)secrets/|\.cache/segtools'; then
-    block "le um arquivo de secrets/ ou o cache local em texto puro."
-  elif printf '%s' "$LC" | grep -Eq '\.env([^a-z0-9_].*|$)|(^|/)\.env[[:space:]]'; then
-    block "le um .env em texto puro."
+# 3. leitura IMPRIMINDO valor de arquivo de segredo — julga a ACAO, nao o caminho.
+# So bloqueia quando o comando (a) LE/DUMPA (cat/less/head/tail/sed/awk/strings...)
+# (b) um arquivo de SEGREDO (*.env, *.sops, *.key, token/secret/credentials, secrets/...)
+# (c) cujo valor sai para stdout (sem | sha256sum). Caminho com "secrets" no NOME
+# (ex.: src/secrets/install.sh, codigo-fonte) NAO bloqueia por si so.
+READERS='(^|[;&|[:space:]])(cat|bat|batcat|less|more|head|tail|sed|awk|strings|xxd|od|nl|tac|vi|vim|nano|emacs|source|get-content|gc)[[:space:]]|(^|[;&|[:space:]])[.][[:space:]]'
+# Ancora por CLASSE de separador (^|[[:space:]/]) — o `(^|/)` do GNU grep falha
+# de forma intermitente quando a entrada vem por PIPE (testado: exit 1 com o texto
+# presente); a classe e' estavel.
+SECRETFILE='(^|[[:space:]/])(\.env([.][a-z0-9_-]+)?|secrets/[^[:space:]]*|[^[:space:]]*\.(env|sops|key|pem|p12|pfx|token|credentials|netrc)|(id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc|\.pgpass))([[:space:]]|$)|\.cache/segtools|\.config/sops|keys\.txt'
+# codigo-fonte dentro de secrets/ nao e valor de segredo (src/secrets/install.sh)
+SRCCODE='\.(sh|bash|zsh|py|mjs|cjs|js|ts|tsx|jsx|go|rs|rb|java|kt|md|json|toml|ya?ml|txt|html|css|scss)([[:space:]]|$)'
+if printf '%s' "$LC" | grep -Eq "$READERS"; then
+  if printf '%s' "$LC" | grep -Eq "$SECRETFILE" && ! { printf '%s' "$LC" | grep -Eq '(^|[[:space:]/])secrets/.*'"$SRCCODE"; }; then
+    # ler um .sops (CIFRADO) e inofensivo; mas so o VERBO-LEITOR puro: `cat a.sops`,
+    # nunca `cat secrets/x | cat` (o ultimo alimenta um leitor real com texto puro).
+    if ! { printf '%s' "$LC" | grep -Eq '\.sops([[:space:]]|$)'; } \
+       || printf '%s' "$LC" | grep -Eq '\.sops[[:space:]]*[|;&]'; then
+      # `| sha256sum` do lado do arquivo = prova por hash, isento
+      if ! printf '%s' "$LC" | grep -Eq '\|[[:space:]]*(sha256sum|sha1sum|shasum)'; then
+        block "le/imprime em stdout o valor de um arquivo de segredo (.env/.sops/secrets/chave)."
+      fi
+    fi
   fi
 fi
 
 # 4. bare env / printenv
 printf '%s' "$LC" | grep -Eq '(^|[;&[:space:]])printenv([[:space:]]*($|[;&]))' && block "bare 'printenv' despeja o ambiente."
 printf '%s' "$LC" | grep -Eq '(^|[;&[:space:]])env([[:space:]]*($|[;&]))' && block "bare 'env' despeja o ambiente."
+# 4b. `op read` sem --out-file: imprime o valor do segredo na tela.
+if printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])op[[:space:]]+read([[:space:]]|$)'; then
+  printf '%s' "$LC" | grep -Eq -- '(--out-file|-o[[:space:]][^[:space:]]+)[[:space:]]' || block "'op read' sem --out-file imprime o valor do segredo."
+fi
 
 # 5. docker inspect sem --format
 if printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])docker[[:space:]]+inspect([[:space:]]|$)'; then

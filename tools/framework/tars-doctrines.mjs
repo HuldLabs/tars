@@ -10,7 +10,8 @@
 // Le DUAS fontes, na mesma forma: o catalogo (`.ai/doctrines.toml`) e o projeto
 // (`.ai/tars.toml`, secao [[doctrine]], que vence pelo `id`). Os caminhos de `fonte`/`gate`/
 // `prova` sao resolvidos na raiz do CATALOGO (o catalogo descreve a si mesmo; o consumidor
-// declara so' o que e' dele, com caminho proprio).
+// declara so' o que e' dele, com caminho proprio). Fonte que mora em repo IRMAO usa
+// `<repo>:<relativo>` (ex.: `huldlabs:adr/0002-…`), resolvido pela raiz dos vizinhos.
 //
 // Uso (dentro do projeto consumidor):
 //   node <tars>/tools/framework/tars-doctrines.mjs [--tars <dir>] [--project <dir>] [--json]
@@ -29,6 +30,9 @@ import { classesRecorrentes, readJsonl } from './ai-memory.mjs'
 // S3 (dev.9): o doctor de SEGREDOS mora no modulo dono (`tars-secrets.mjs`) — aqui so' se
 // anexa o que ele julga quando o projeto declara `[secrets]`/`[identity]` (R3).
 import { doctorDoProjeto } from './tars-secrets.mjs'
+// B3.3: o doctor mostra o TAMANHO DA DIVIDA da linha de base (quantas violacoes adotadas o
+// projeto carrega). A leitura mora no modulo dono da base (R3); aqui so' a linha do relatorio.
+import { divida as dividaBaseline } from './tars-gates-baseline.mjs'
 
 export const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -85,16 +89,29 @@ export function loadDoctrines({ tars, project }) {
 }
 
 /**
- * `arquivo:linha` ou `arquivo:120-140`; sem linha, o arquivo inteiro. O prefixo `segtools:`
- * marca doutrina que so' o projeto consumidor tem: a fonte e' conferida la', nao aqui — o
- * catalogo descreve o par sem copiar a politica de quem o consome.
+ * `arquivo:linha` ou `arquivo:120-140`; sem linha, o arquivo inteiro. Dois prefixos de
+ * repositorio: `segtools:` marca doutrina que so' o PROJETO consumidor tem (a fonte e'
+ * conferida la'); `<repo>:` (ex.: `huldlabs:adr/0002-…`) marca arquivo que mora na raiz de um
+ * repo IRMAO — o catalogo descreve o par sem cravar caminho ABSOLUTO, que so' existe numa
+ * maquina. Os dois saem `externo` (nem a fonte nem a prova rodam aqui), mas o modo muda o que
+ * o doctor DIZ quando o repo nao esta' montado.
  */
 export function parseRef(ref) {
-  const externo = ref.startsWith('segtools:')
-  const corpo = externo ? ref.slice('segtools:'.length) : ref
+  const doProjeto = ref.startsWith('segtools:')
+  const irmao = doProjeto ? null : (ref.match(/^([a-z][a-z0-9-]*):(?=[\w./-])/) ?? [])[1] ?? null
+  const corpo = doProjeto ? ref.slice('segtools:'.length) : irmao ? ref.slice(irmao.length + 1) : ref
   const m = corpo.match(/^(.*?):(\d+)(?:-(\d+))?$/)
   const base = m ? { arquivo: m[1], linha: Number(m[2]), fim: m[3] ? Number(m[3]) : Number(m[2]) } : { arquivo: corpo }
-  return { ...base, externo }
+  return { ...base, externo: doProjeto || irmao !== null, doProjeto, repo: irmao }
+}
+
+/** A raiz dos repos VIZINHOS e' o PAI do catalogo (mesma base do `tars curation`, que usa
+ * `join(tars, '..')`). Num worktree (`.worktrees/<slot>`), o pai e' o pai do REPO — os irmaos
+ * nao moram dentro do repo. */
+export function siblingRoot(tars) {
+  const base = resolve(tars)
+  const repo = /^(.*)\/\.worktrees\/[^/]+$/.exec(base)?.[1] ?? base
+  return resolve(repo, '..')
 }
 
 /** `true` quando o arquivo existe e o range de linhas ainda cabe nele (senao: DRIFT). */
@@ -106,6 +123,33 @@ function fonteOk(base, ref) {
   const total = readFileSync(full, 'utf8').split('\n').length
   if (fim > total) return { ok: false, porque: `fonte ${arquivo}:${linha} aponta linha ${fim} de ${total} — o texto mudou de lugar` }
   return { ok: true }
+}
+
+/**
+ * A doutrina de OUTRO repo (irmao): o texto EXISTE fora do catalogo, entao a checagem muda de
+ * "arquivo:linha cabem no arquivo?" para "o repo esta' montado e o nao-vazio do texto segue
+ * la'?". Repo ausente = FALHA ALTA e nomeada (`REPO AUSENTE … — clone-o ao lado`), nunca
+ * silencio: doutrina que nao da' para conferir nao pode passar por conferida (R4).
+ */
+export function fonteIrmaOk(tars, ref, { exists = existsSync, read = (f) => readFileSync(f, 'utf8') } = {}) {
+  const { repo, arquivo, linha, fim } = parseRef(ref)
+  const raiz = join(siblingRoot(tars), repo)
+  if (!exists(raiz)) {
+    return {
+      ok: false,
+      status: 'DRIFT',
+      porque: `REPO AUSENTE: ${repo} nao esta' em ${siblingRoot(tars)} — clone-o ao lado (tars curation acha os vizinhos ali)`,
+    }
+  }
+  const full = join(raiz, arquivo)
+  if (!exists(full)) {
+    return { ok: false, status: 'DRIFT', porque: `fonte nao existe: ${repo}:${arquivo} (em ${raiz})` }
+  }
+  const total = read(full).split('\n').length
+  if (fim > total) {
+    return { ok: false, status: 'DRIFT', porque: `fonte ${repo}:${arquivo}:${linha} aponta linha ${fim} de ${total} — o texto mudou de lugar` }
+  }
+  return { ok: true, status: 'OK', porque: `${repo}:${arquivo}${linha ? `:${linha}` : ''} (repo irmao montado)` }
 }
 
 /** Roda a `prova` (shell, na raiz do catalogo). Timeout curto: o doctor inteiro e' < 5 s. */
@@ -122,10 +166,19 @@ function rodaProva(prova, base) {
  *   SEM GATE  — orfa declarada com motivo: divida nomeada (aviso, nao derruba o build)
  *   DRIFT     — a `fonte` sumiu ou a linha declarada saiu do texto: o punho mudou
  */
-export function classify(d, base = process.cwd(), { spawn = rodaProva } = {}) {
+export function classify(d, base = process.cwd(), { spawn = rodaProva, tars = base } = {}) {
+  const ref = parseRef(d.fonte)
   // Doutrina de OUTRO projeto (`segtools:`): nem a fonte nem a prova rodam aqui — o catalogo
   // so' descreve o par. Julgar aqui daria DRIFT falso (o arquivo mora no projeto, nao aqui).
-  if (parseRef(d.fonte).externo) return { ...d, status: 'PROJETO', detalhe: `descreve ${d.fonte} — o doctor roda no projeto consumidor` }
+  if (ref.doProjeto) return { ...d, status: 'PROJETO', detalhe: `descreve ${d.fonte} — o doctor roda no projeto consumidor` }
+  // Doutrina cuja fonte mora num repo IRMAO (`huldlabs:adr/…`): aqui SIM da' para conferir — a
+  // raiz dos vizinhos e' conhecida, entao repo ausente vira FALHA alta em vez de link quebrado.
+  if (ref.repo) {
+    const irmao = fonteIrmaOk(tars, d.fonte)
+    return irmao.ok
+      ? { ...d, status: 'SEM GATE', detalhe: `${d.motivo} (fonte ${irmao.porque})`, prova: d.prova }
+      : { ...d, status: 'DRIFT', detalhe: irmao.porque }
+  }
   const fonte = fonteOk(base, d.fonte)
   if (!fonte.ok) return { ...d, status: 'DRIFT', detalhe: fonte.porque }
   if (d.gate === 'nenhum') {
@@ -305,6 +358,10 @@ export function doctor({ tars, project, env = process.env } = {}) {
     porStatus,
     wiring,
     segredos,
+    // O TAMANHO DA DIVIDA da linha de base (B3.3): quantas violacoes adotadas o projeto
+    // carrega por gate. Nao derruba o exit (e' divida declarada, nao regressao) — mas fica
+    // VISIVEL, senao a base vira o lugar onde a violacao some de vista.
+    divida: dividaBaseline(root),
     classes: recorrencia.classes,
     incidentes: { total: ledgerEntries.length, recorrentesSemGuarda: semGuarda.map((e) => e.id) },
     faltando: [
@@ -317,7 +374,7 @@ export function doctor({ tars, project, env = process.env } = {}) {
 }
 
 /** Uma linha por doutrina: `STATUS  id  onde  gate`, com o detalhe abaixo quando ha' o que dizer. */
-export function format({ itens, porStatus, tars, project, wiring, classes, incidentes, segredos }, log = console.log) {
+export function format({ itens, porStatus, tars, project, wiring, classes, incidentes, segredos, divida }, log = console.log) {
   log(`tars doctor — ${itens.length} doutrina(s) · catalogo ${tars} · projeto ${project}`)
   for (const i of itens) {
     log(`${i.status.padEnd(9)} ${i.id}  [${i.onde}]  gate=${i.gate}`)
@@ -341,6 +398,13 @@ export function format({ itens, porStatus, tars, project, wiring, classes, incid
   if (segredos) {
     log(`\nSEGREDOS/IDENTIDADE (${segredos.ok ? 'ok' : 'FALHA'}):`)
     for (const l of segredos.linhas) log(`  ${(l.ok ? 'OK    ' : 'FALHA ')}${l.nome.padEnd(12)}  ${l.detalhe}`)
+  }
+  // B3.3: o tamanho da divida da linha de base, por gate. Zero TAMBEM imprime — saida
+  // ausente nao distingue "sem base" de "base vazia" (nao esconder o que se decidiu adotar).
+  if (divida) {
+    log(`\nLINHA DE BASE (divida adotada): ${divida.total}`)
+    for (const l of divida.linhas) log(`  ${String(l.n).padStart(4)}  ${l.gate}`)
+    if (!divida.total) log('  (nenhuma — o gate cobra tudo)')
   }
   if (wiring) log(`${(wiring.ok ? 'OK' : 'FALHA').padEnd(9)} wiring/settings  [session-start]  ${wiring.detalhe}`)
   log(

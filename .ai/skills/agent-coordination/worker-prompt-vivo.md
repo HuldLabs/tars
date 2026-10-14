@@ -16,6 +16,10 @@ não se repetir. Commit com `📝 docs(coord): prompt vivo — <erro>`.
   (ex.: grep no fonte em vez de exercitar a função); "rodei o teste" sem o comando; tela por `curl`/status HTTP em
   vez do navegador. **Teste que reproduz o defeito primeiro, corrige depois** (R4) — e a prova mostra o ANTES
   vermelho e o DEPOIS verde.
+  **A tabela do `delivery` é o par `claim | verify | expect | resultado`** (B4.1), uma linha por afirmação —
+  o comando que a prova, o que ele devia responder, o que respondeu. **O que não foi medido vai para a seção
+  "não medido"**, nomeado: silêncio sobre uma verificação que não rodou é indistinguível de tê-la feito.
+
 - **Doc oficial citada ANTES de criar/ajustar receita.** Receita/procedimento de ferramenta externa (build, deploy,
   migração, SDK, CLI) só entra depois de ler a **doc/CLI oficial da versão pinada** — não da memória nem de exemplo
   de blog. O `delivery` cita o link/versão lida; sem isso a receita é suposição (B3.3).

@@ -62,6 +62,13 @@ como atende cada uma**:
 
 ## Doutrinas de extracao
 
+- **Idioma:** identificador (arquivo, pasta, módulo, plugin, tabela, coluna, tipo, função)
+  em **inglês**; texto de tela, doc, canal, commit e **resposta ao dono** em **português**.
+  A fronteira é o que o código consome × o que a pessoa lê: renomear identificador para
+  português quebra import/API e obriga tradução na fronteira; escrever prosa em inglês
+  para o dono custa leitura a quem decide. Não é preferência de estilo — é a mesma régua
+  dos dois lados do repositório (porte do bloco B5 do plano de 14/10; fontes
+  `seg-agentmem-1` #27, `seg-agentmem-3` #3).
 - **Versionamento:** toda peça extraída (Tars, Tomo, Sofon, Pion, Kipp, Lazarus, Endurance)
   nasce em `0.0.1-dev.N` e sobe a versão a cada entrega, com as notas de upgrade —
   `.ai/governance/versionamento-de-extracao.md`.

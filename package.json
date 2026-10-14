@@ -1,6 +1,6 @@
 {
   "name": "tars",
-  "version": "0.0.1-dev.18",
+  "version": "0.0.1-dev.19",
   "private": true,
   "description": "Tars — o catalogo de metodo: camada .ai, gates/hooks, tooling de workers e processo de sessao",
   "type": "module",
@@ -8,7 +8,8 @@
     "tars": "tools/framework/tars.mjs"
   },
   "scripts": {
-    "build": "bun build --compile tools/framework/tars.mjs --outfile dist/tars",
+    "build:embed": "node tools/framework/tars-embed-catalog.mjs",
+    "build": "bun run build:embed && bun build --compile tools/framework/tars.mjs --outfile dist/tars",
     "test": "vitest run tools/framework/tars-*.test.mjs tools/framework/tars.test.mjs"
   },
   "devDependencies": {

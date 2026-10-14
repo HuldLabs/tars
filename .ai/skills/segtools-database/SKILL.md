@@ -53,6 +53,27 @@ tabela; guarde o handle como texto). Migration de identidade combina `kind` com 
   fila de revisão, a precedência entre propostas concorrentes e o rigor do override; correção manual em
   dado de fonte oficial é **override auditado** (motivo estruturado, ator). (fonte: farmega/docs/strategy/roadmap-decisions.md:274,278,258,268)
 
+## Porta tipada por domínio: o SQL mora no adapter
+
+**A porta expõe MÉTODO DE DOMÍNIO, nunca `query(sql)`.** O ponto de entrada do banco no
+resto do sistema é uma interface por domínio (`Orders.byId(id)`, `Catalog.search(term)`) —
+não um executor que recebe string.
+
+- **Por que a string proibida:** um `query(sql)` expõe o **dialeto** e o **schema** a cada
+  chamador. Cada `SELECT` escrito no meio da regra de negócio é uma costura a mais: o
+  índice que muda, a coluna que renomeia, o `JOIN` que vira N+1 — nada disso tem fronteira
+  para ser corrigido em um lugar. A porta tipada é o que permite **otimizar sem tocar em
+  quem chama** (R2: menos código, mesma função, medido).
+- **O SQL mora no adapter**, e o adapter é a única camada que conhece o driver
+  (`pg`/`kysely`/`postgres`). Quem está acima recebe **tipo de domínio** (a entidade, o DTO),
+  nunca linha crua nem builder vazado.
+- **O teste que decide:** dá para trocar o índice, fundir duas queries em uma, ou mudar o
+  `WHERE` sem editar nenhum arquivo fora do adapter? Se não, a porta está vazando SQL.
+- **Regressão cobrável:** import de driver **fora** do diretório de adapters **reprova**. É
+  a forma mecânica de manter a fronteira — sem gate, a string volta na primeira pressa.
+- Detalhe da porta por domínio: `docs/QUERY-LAYER.md`. (fonte: `coleta-segtools` 5.4,
+  `eco.md` N1-N8)
+
 ## Reconciliar o schema ANTES de portar (R1 aplicado a banco)
 
 Antes de portar schema de um repo para outro, **reconciliar** — levantar o que **já** foi portado. O
@@ -74,6 +95,112 @@ custo de pular é recolocar em produção uma migração que já rodou — e mig
   `migration-imutavel`); o delta vira migration **nova**.
   (fonte: seo-brain/HANDOFF.md, seo-brain/docs/BACKUP.md)
 
+## Conexão e carga: as regras que o incidente ensinou
+
+- **Nunca conexão global de longa duração.** Abre → executa → **fecha** por chamada, com o `close()`
+  no `finally`. Conexão de vida longa guardada no módulo é o pior dos dois mundos: sobrevive ao erro
+  que a corrompeu (transação abortada, `search_path` sujo, timeout de sessão) e a chamada seguinte
+  herda o estado sujo **sem sintoma no ponto de uso**. O pool resolve o reuso — não o handle global.
+- **Carga em massa em batch, nunca `row-by-row`.** Um `INSERT` por linha troca uma operação por N idas
+  ao servidor e transforma o import numa fila de latência: `COPY`, `INSERT ... SELECT` ou lote de N.
+  Onde o motor é **estendido** (ex.: `pg_duckdb` lendo Parquet), deixe o hook de extensão interceptar
+  em vez de reescrever a ingestão caso a caso.
+- **Agendador: dispare o caminho, não espere o relógio.** Teste de job agendado que dorme até o
+  horário é lento, instável, e prova o relógio — não o job. Chame o gatilho real (`triggerSchedule`)
+  e aguarde o **resultado**: a asserção é sobre o efeito, com o mesmo tratamento de erro do caminho
+  agendado.
+- **Fail-closed.** Ausência de trava, de gate ou de verificação **REPROVA** — nunca `return` silencioso,
+  nunca "não achei nada, então sigo". O par é a doutrina `metodo/contramedida-testada`: a contramedida
+  só existe quando um teste **negativo** a cobra.
+
+## Migração destrutiva vai em três fatias: expand → migrate → contract
+
+Renomear coluna, trocar tipo, partir tabela: a mudança que cabe num deploy é a que **não**
+derruba quem ainda usa a forma antiga. Fazer tudo numa migration só é o que produz janela
+de erro — o instante entre o schema novo e o código novo em que **nenhuma** das duas versões
+funciona. A fatia resolve isso em três passos, cada um **sozinho** seguro de aplicar:
+
+1. **expand** — adicione a forma nova sem tocar na antiga (a coluna nova, a tabela nova, o
+   índice novo). Nada lê a forma nova ainda, então aplicar é inócuo.
+2. **migrate** — backfill dos dados + deploy do código que passa a escrever na forma nova
+   **e** ler de ambas. A forma antiga continua viva e correta durante todo o passo: é a
+   compatibilidade que permite ir e **voltar** sem perda.
+3. **contract** — só depois de o passo 2 estar em produção e estável, remova a forma
+   antiga. Se ele falhar, o revert é o passo 2, não um restore de backup.
+
+- **Cada fatia é uma migration própria** — nunca as três num arquivo só, e nunca
+  reescrevendo a já aplicada (a imutabilidade vem antes de conveniência).
+- **O `contract` espera o relógio do sistema, não o do autor.** Ele depende de o passo 2
+  estar de fato rodando em todo lugar; aplicar no mesmo dia é como não ter fatia nenhuma.
+- **A prova de cada fatia é a idempotência** — reaplicar não muda nada e o diff de schema
+  é vazio; e o passo 2 se prova rodando com as duas formas presentes.
+
+Origem (R1): curadoria 14/10, `seg-agentmem-1` #3.
+## Porta × adapter — o driver não sobe de camada
+
+Portar de `nexus/docs/architecture/database-agnostic.md` + ADRs 001/002/004/006 (R1: lógica, nunca dado do projeto).
+
+- **Domínio conhece `Protocol`/porta, nunca driver.** O driver só existe dentro de `adapters/`/`engines/`; nenhum
+  `if engine == ...` fora deles (parte de sessão também não resolve caminho: quem resolve o default de conexão é o
+  adapter, não o objeto de sessão).
+- **Engine novo = módulo novo com `register()`; zero arquivo pré-existente editado.** Discovery por registro; o
+  bootstrap não se edita para acomodar engine. Se plugar exigiu mexer no núcleo, não é plugin.
+- **Enforcement por teste, não por memória de quem coda (gate).** Prova mecânica: nenhum import de driver fora de
+  `adapters/`/`engines/`, nenhum `if engine ==`, e toda exceção em allowlist carrega comentário justificando.
+  A regra que só vive na cabeça do revisor não é regra.
+  alternativo **explícito** (ex.: engine de dev), com imports lazy na factory — nunca escolher sozinho em runtime.
+- **Alternativas rejeitadas ficam registradas com o motivo**, e o critério é durável: **não adotar o que quebra o
+  backup** (`pg_dump`) nem o que exige privilégio interno para funcionar.
+- **Aceleração por tipo de conexão, não por DDL.** Perfil analítico é forçado **por sessão**, atrás de parâmetro do
+  caller, para não tocar o CRUD.
+- **Porta × Hook**: extensão central = `Protocol`; opcional = hook. Protocol primeiro; hook é complemento.
+
+### Checklist de adapter novo (reusar como checklist de PR)
+
+1. A porta é um `Protocol`/DTO sem driver; o adapter é o único que importa o driver.
+2. `register()` no módulo do engine — e **nenhum** arquivo pré-existente alterado.
+3. Resolução de engine explícita, com erro no fim da cascata (sem fallback silencioso).
+4. Ciclo de vida de conexão por chamada, `close()` garantido no `finally`.
+5. Fake/in-memory equivalente, com a mesma semântica da porta, para teste.
+6. Teste do gate de camadas (sem import de driver fora de `adapters/`/`engines/`; sem `if engine ==`).
+7. Exceção, se houver, em allowlist **com comentário justificando**.
+
+### Antes de tocar persistência (as 5 perguntas)
+
+1. Onde mora esta regra — na porta, no adapter ou no schema? (uma casa só)
+2. Isto é extensão central (`Protocol`) ou complemento (hook)?
+3. Quem mais usa este ponto? **Inventarie os callers antes de mudar o perfil de conexão** — mapa
+   operacional × analítico de todo ponto que usa o banco, com classificação.
+4. A resolução é explícita (sem fallback silencioso) e o default está declarado?
+5. Qual a prova? (teste/gate que reprova se a fronteira for violada)
+
+## 4. Jobs duráveis: lease, idempotência e o teste do agendador
+
+Portado de `coleta-eco` §5.6 e do mapa de 13/10 (C6 do plano de 14/10).
+
+- **Lease, não lock eterno.** Um job pega o item com **lease** (prazo), renova com **heartbeat** e
+  devolve à fila quando o prazo vence — um job morto não pode segurar trabalho para sempre
+  (`SKIP LOCKED` + heartbeat + stalled + dead-letter, ver Filosofia).
+- **Três idempotências, não uma:** (1) o job rodar de novo não duplica efeito; (2) o lease vencido
+  e retomado não duplica efeito; (3) o retry após falha parcial não duplica efeito. Cada uma tem
+  prova própria — "é idempotente" sem as três é meia idempotência.
+- **Teste de agendador não espera o relógio.** Dispare o **caminho** (o gatilho determinístico do
+  scheduler) e aguarde o resultado real; esperar o minuto virar é teste lento e instável. E **nunca**
+  aumentar teto/`sleep` nem afrouxar a asserção para o teste passar: se o agendamento não dispara no
+  caminho, o defeito é do caminho.
+- **Contrato de tempo e locale é declarado.** Fuso, formato de data e locale do banco/job são
+  **explícitos** no schema/código (UTC no armazenamento; locale só na borda de apresentação) — o
+  "funcionou na minha máquina" de data é sempre locale ambiente vazando para o dado.
+- **Ledger de IA**: toda chamada de modelo que gera dado persistido registra **qual modelo, qual
+  versão/prompt e quando** — sem o ledger, o derivado não é reproduzível nem auditável.
+
+## 5. Um engine de jobs só
+
+Um segundo orquestrador/agendador **não roda em paralelo**: ele entra atrás da **mesma porta**
+(`OrchestratorPort`), com o caminho de migração escrito (ver skill `iam` §3). Duas filas é duas
+verdades sobre o que está rodando.
+
 ## Proveniência (R1)
 `farmega.v2` — `AN-006/008/009/013/016/019`, `BP-002`, `ADR-FV2-003/005/006/009/011`; `seo-expert` — `ADR-035/037/049`
-+ `docs/operations/{data-foundation,database-environments}`. (Repos de terceiros: **somente leitura**.)
++ `docs/operations/{data-foundation,database-environments}`. Camada porta × adapter: `nexus`
+`docs/architecture/database-agnostic.md` + `adr-001/002/004/006`. (Repos de terceiros: **somente leitura**.)
