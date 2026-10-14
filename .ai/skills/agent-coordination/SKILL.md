@@ -145,6 +145,25 @@ worktree for every OpenCode dispatch from here on** — the coordinator's own
 doc edits (ROADMAP/HANDOFF) are the one exception, since those are meant to
 land on the coordinator's own current branch quickly, not a throwaway one.
 
+**Two workers in the SAME checkout/slot kill each other — resource collision is a
+dispatch defect, not bad luck (ported from `seg-agentmem-1` #39/#40/#41).** A worktree
+per worker protects the *files*; it does nothing about the other shared resources a
+worker holds while it runs — the slot itself, a private `--outdir`, a listening port, a
+lock. Two runs sharing one slot overwrite each other's output directory, and the damage
+is silent: each worker reports success over the other's half-written files. Detecting it
+from files is too late (the collision already happened); detect it from **processes**.
+
+- Before dispatch, the coordinator lists the live workers (`ListAgents`, plus the running
+  dispatch/worker processes) and refuses to start a second run on a slot already
+  occupied. A slot holding a live pid is busy even when its tracker row says `queued` —
+  the row is a claim, the process is the fact.
+- Every dispatch carries its **own** `--outdir` (never a shared or default one) and names
+  the slot it owns. Two prompts with the same outdir are the same write set, whatever the
+  branch says.
+- When one task turns up dispatched twice — same slot, same repo, two workers — that is a
+  **duplicate dispatch to report**: kill exactly one (the exact pid, never a broad name
+  match — see §0), keep the other, and record why it doubled so the dispatcher stops.
+
 **Never interpolate a secret's VALUE into a command string, at any shell nesting
 depth.** Named examples (`env`/`printenv` bare, `cat .env*`) are not the exhaustive
 list — `export VAR="$VAR"` re-quoted through a nested `bash -c '...'`/`ssh
