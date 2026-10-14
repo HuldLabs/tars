@@ -7,11 +7,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-secret-dump.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-destructive-commands.sh\""
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-destructive-commands.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.ai/guards/block-secret-dump.sh\""
           }
         ]
       },

@@ -550,9 +550,17 @@ async function copyItem(tars, project, entry) {
  */
 export const isSelf = (tars, project) => Boolean(tars) && resolve(tars) === resolve(project)
 
+/**
+ * O projeto e' um checkout do CATALOGO (tem o motor ao lado do `.ai/VERSION`). O binario usa o
+ * catalogo EMBUTIDO (materializado no cache) como `tars`, entao `isSelf` nunca casava no repo do
+ * Tars: o sync o tratava como consumidor, criava `.ai/base` e `.ai/tars.lock` (TARS-SELF-1, 14/10).
+ * `.ai/VERSION` sozinho nao basta: o segtools tambem versiona o `.ai/` dele.
+ */
+export const isCatalog = (dir) => existsSync(join(dir, '.ai', 'VERSION')) && existsSync(join(dir, 'tools', 'framework', 'tars-sync.mjs'))
+
 export async function sync({ tars = findTars(), project = process.cwd(), check = false, upgrade = false, adopt = [], log = console.log } = {}) {
   const manifest = await readManifest(project)
-  const self = isSelf(tars, project)
+  const self = isSelf(tars, project) || isCatalog(project)
   const lockPath = join(project, '.ai', 'tars.lock')
   const lock = existsSync(lockPath) ? JSON.parse(await readFile(lockPath, 'utf8')) : null
   // RECUSA por divergencia de versao (TARS-BUG-4): o `tars` do PATH nem sempre e' o mesmo que
@@ -771,7 +779,8 @@ export function guardRelPath(project, file) {
 export function projectGuardHooks(project, manifest) {
   const out = []
   // O catalogo consumindo a si mesmo guarda o guard em `.ai/guards/`, nao em `.ai/base/guards/`.
-  const prefixo = isSelf(findTarsSafely(project), project) ? '.ai' : '.ai/base'
+  // `isCatalog` cobre o binario, cujo `tars` e' o catalogo embutido no cache (TARS-SELF-1).
+  const prefixo = isCatalog(project) || isSelf(findTarsSafely(project), project) ? '.ai' : '.ai/base'
   for (const item of hookGuards(manifest)) {
     const rel = destOf({ area: 'guards', item })
     if (!existsSync(join(project, prefixo, rel))) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
@@ -806,8 +815,24 @@ function baseHooks(project) {
  * evento que o projeto mantem a mao (Stop, ...) — fica intacto. Sem isso o `tars sync`
  * APAGAVA o `Stop` (stop-unfinished-work) e o bloco `permissions` do proprio Tars (07/10).
  */
+/**
+ * Posse do sync: so' o comando que ELE gera (`bash "$CLAUDE_PROJECT_DIR/.ai/[base/]guards/..."`).
+ * Entrada de outro dono no mesmo evento (o `prod-guard` do Tars, hook posto a mao no consumidor)
+ * fica — reescrever o evento inteiro derrubava o `prod-guard` calado (SYNC-PRE-TOOL, 14/10).
+ * Guard que saiu do manifesto continua sendo do sync: some, como deve.
+ */
+const MANAGED = /^bash "\$CLAUDE_PROJECT_DIR\/\.ai\/(base\/)?guards\//
+
+/** Entradas de `atual` cujo comando nao e' do sync, no formato de `byMatcher`. */
+export function alheios(entries = []) {
+  return byMatcher(entries.flatMap((e) => (e.hooks ?? [])
+    .filter((h) => !MANAGED.test(h.command ?? ''))
+    .map((h) => ({ matcher: e.matcher, command: h.command }))))
+}
+
 export function claudeSettings(manifest, project = null, atual = null) {
   const base = baseHooks(project)
+  const fora = (ev) => alheios(atual?.hooks?.[ev])
   return {
     ...(atual ?? {}),
     $schema: 'https://json.schemastore.org/claude-code-settings.json',
@@ -818,9 +843,9 @@ export function claudeSettings(manifest, project = null, atual = null) {
     env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}), ...ACTOR_ENV },
     hooks: {
       ...(atual?.hooks ?? {}),
-      PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest))],
-      PreCompact: base.PreCompact,
-      SessionStart: base.SessionStart,
+      PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest)), ...fora('PreToolUse')],
+      PreCompact: [...base.PreCompact, ...fora('PreCompact')],
+      SessionStart: [...base.SessionStart, ...fora('SessionStart')],
     },
   }
 }
