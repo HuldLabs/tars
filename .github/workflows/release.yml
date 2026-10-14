@@ -201,7 +201,7 @@ jobs:
           mkdir velho
           gh release download "${prev}" -R "${GITHUB_REPOSITORY}" -p tars-linux-amd64 -D velho
           chmod +x velho/tars-linux-amd64 novo/tars-linux-amd64
-          tools/framework/tars-upgrade-real.sh velho/tars-linux-amd64 novo/tars-linux-amd64
+          bash tools/framework/tars-upgrade-real.sh velho/tars-linux-amd64 novo/tars-linux-amd64
 
   imagem:
     name: imagem OCI (ghcr.io/huldlabs/tars)
