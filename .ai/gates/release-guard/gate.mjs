@@ -71,7 +71,10 @@ const mensagemDe = (root) => {
 // --- CLI (pre-commit) ------------------------------------------------------
 if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
   const root = process.env.TARS_PROJECT ?? process.cwd()
-  const r = julgar(root, { mensagem: mensagemDe(root) })
+    // No commit-msg o git passa o ARQUIVO da mensagem em argv[2]: e a fonte direta. Fora
+    // dele (pre-commit) cai no mensagemDe, que so acha o COMMIT_EDITMSG quando ja existe.
+    const daArgv = process.argv[2] && existsSync(process.argv[2]) ? readFileSync(process.argv[2], 'utf8') : ''
+    const r = julgar(root, { mensagem: daArgv || mensagemDe(root) })
   if (!r.ok) {
     process.stderr.write(
       [

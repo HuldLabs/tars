@@ -511,4 +511,21 @@ describe("gate release-guard", () => {
     fs.writeFileSync(path.join(dir, ".git", "COMMIT_EDITMSG"), "chore: x\n\nNo-Release: regeneracao de indice\n");
     expect(rodar([gate], { env: { TARS_PROJECT: dir } }).status).toBe(0);
   });
+
+  // O hook commit-msg passa o ARQUIVO da mensagem em argv[2]; no pre-commit ele ainda nao
+  // existe, e por isso o gate vive no commit-msg (tars.toml). Aqui se prova a fonte direta.
+  it("APROVA pelo ARQUIVO da mensagem em argv (a fonte do hook commit-msg)", () => {
+    const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
+    const msg = path.join(dir, "MSG.txt");
+    fs.writeFileSync(msg, "chore: x\n\nNo-Release: regeneracao de indice\n");
+    const r = rodar([gate, msg], { env: { TARS_PROJECT: dir } });
+    expect(r.status).toBe(0);
+  });
+
+  it("REPROVA sem No-Release mesmo com o arquivo da mensagem em argv", () => {
+    const dir = repo({ arquivos: ["tools/framework/tars-sync.mjs"] });
+    const msg = path.join(dir, "MSG.txt");
+    fs.writeFileSync(msg, "chore: x\n\nsem escape\n");
+    expect(rodar([gate, msg], { env: { TARS_PROJECT: dir } }).status).toBe(1);
+  });
 });
