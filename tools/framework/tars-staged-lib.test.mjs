@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { isTracked, stagedPaths, touchesStaged, trackedPaths } from './tars-staged.mjs'
+import { isTracked, stagedPaths, touchesStaged, trackedPaths } from '../../.ai/gates/lib-staged.mjs'
 
 // O gate julga o INDICE, nao a arvore (regra do dono, 14/10; porte da SEG-236/245). Os casos
 // abaixo provam as duas pontas: (a) o arquivo sujo-fora-do-stage NAO entra; (b) o staged entra.

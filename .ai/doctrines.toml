@@ -68,9 +68,9 @@ onde = "pre-commit"
 [[doctrine]]
 id = "gates/julga-o-staged"
 titulo = "O gate julga so` o que o commit leva (o INDICE), nunca a arvore — e so` o que o git RASTREIA (`.cache/`/gitignored nao e' superficie)"
-fonte = "tools/framework/tars-staged.mjs:1-22"
-gate = "../../tools/framework/tars-staged.mjs"
-prova = "d=$(mktemp -d) && git -C $d init -q && printf 'x\\n' > $d/sujo.mjs && node -e \"import('$PWD/tools/framework/tars-staged.mjs').then(m=>process.exit(m.stagedPaths('$d').length?0:1))\""
+fonte = ".ai/gates/lib-staged.mjs:1-22"
+gate = "../../.ai/gates/lib-staged.mjs"
+prova = "d=$(mktemp -d) && git -C $d init -q && printf 'x\\n' > $d/sujo.mjs && node -e \"import('$PWD/.ai/gates/lib-staged.mjs').then(m=>process.exit(m.stagedPaths('$d').length?0:1))\""
 onde = "pre-commit"
 
 [[doctrine]]

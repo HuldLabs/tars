@@ -11,10 +11,10 @@
 //
 // Parametros (opcionais, no `[gates.params.lint-swallow]` do `.ai/tars.toml`):
 //   allow = lista de trechos de caminho isentos (ex.: ["vendor/"])
-import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { aplicarBase } from '../lib-baseline.mjs'
+import { isTracked, stagedPaths, trackedPaths } from '../lib-staged.mjs'
 
 const project = process.env.TARS_PROJECT ?? process.cwd()
 const params = JSON.parse(process.env.TARS_GATE_PARAMS || '{}')
@@ -31,10 +31,12 @@ const SWALLOW_JS = /\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}/
 const SWALLOW_PY = /^\s*except\b[^:]*:\s*(?:pass|\.\.\.)\s*$/
 const PY_EXCEPT = /^\s*except\b[^:]*:\s*$/
 
-const r = spawnSync('git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACM'], { cwd: project, encoding: 'utf8' })
-if (r.status !== 0 || typeof r.stdout !== 'string') { console.error('gate lint-swallow: sem git — nao foi possivel listar o staged.'); process.exit(0) }
-
-const arquivos = r.stdout.split('\0').filter(Boolean).filter((f) => (JS.test(f) || PY.test(f)) && !allow.some((a) => f.includes(a)))
+// O que julgar sai do dono unico (`.ai/gates/lib-staged.mjs`): o INDICE do commit, nunca a
+// arvore, e so' o que o git RASTREIA (R3 — a resposta a "o que o commit leva" mora num lugar).
+const staged = stagedPaths(project)
+if (staged === null) { console.error('gate lint-swallow: sem git — nao foi possivel listar o staged.'); process.exit(0) }
+const tracked = trackedPaths(project)
+const arquivos = staged.filter((f) => isTracked(tracked, f) && (JS.test(f) || PY.test(f)) && !allow.some((a) => f.includes(a)))
 
 /** A COLETA (compartilhada com `tars gates baseline`): os achados `<arquivo>:<linha>`. Pura
  *  quanto ao exit — quem julga e' o chamador. `lerLinha` amarra o hash do trecho da base. */

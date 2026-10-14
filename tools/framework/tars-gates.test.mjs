@@ -395,6 +395,24 @@ describe("gate lint-swallow — LINHA DE BASE (B3.3)", () => {
   });
 });
 
+describe("gate lint-swallow — so' o RASTREADO (regra do dono, 14/10)", () => {
+  const gate = GATE("lint-swallow", "gate.mjs");
+  const roda = (dir) => rodar([gate], { env: { TARS_PROJECT: dir, TARS_GATE: "lint-swallow" } });
+
+  it("`.cache/` gitignored SO' no disco nao entra: o gate julga o INDICE, nao a arvore", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-swallow-tracked-"));
+    const g = (a) => spawnSync("git", a, { cwd: dir, encoding: "utf8" });
+    g(["init", "-q"]); g(["config", "user.email", "t@t.local"]); g(["config", "user.name", "t"]);
+    fs.writeFileSync(path.join(dir, ".gitignore"), ".cache/\n");
+    fs.mkdirSync(path.join(dir, ".cache"), { recursive: true });
+    fs.writeFileSync(path.join(dir, ".cache", "sujo.mjs"), "try { f() } catch {}\n"); // sujo, na arvore
+    fs.writeFileSync(path.join(dir, "limpo.mjs"), "export const a = 1\n");
+    g(["add", "--", ".gitignore", "limpo.mjs"]);
+    // O `sujo.mjs` existe no disco e nao esta' no indice: nao e' superficie de gate nenhum.
+    expect(roda(dir).status).toBe(0);
+  });
+});
+
 describe("gate gitleaks", () => {
   const gate = GATE("gitleaks", "gate.mjs");
 
