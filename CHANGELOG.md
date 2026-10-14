@@ -36,6 +36,8 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   - `release-guard`: o `No-Release:` é julgado no `commit-msg` e lido também em worktree.
   - `sync`: motor de versão diferente da do lock **recusa** em vez de apagar, e nunca
     remove arquivo que um guard ou gate ainda cita.
+  - `sync`: gate que importa uma lib irmã (`../lib-staged.mjs`) traz a lib junto. Antes o
+    `lint-swallow` morria no consumidor com `Cannot find module` (achado no ensaio do binário).
   - `doctor`: as doutrinas `org/*` apontam `repo:caminho` relativo, sem caminho absoluto de
     container.
   - guard `block-secret-dump`: julga a **ação** (ler ou imprimir valor), não a palavra

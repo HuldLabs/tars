@@ -201,6 +201,29 @@ const guardDeps = (manifest, tars) =>
     : []
 
 /**
+ * O mesmo buraco nos GATES (ensaio do binario isolado, 14/10): gate que importa uma lib irma
+ * (`import ... from '../lib-staged.mjs'`) morria no consumidor com `Cannot find module`,
+ * porque o sync copiava so' a pasta do gate. Aqui a dependencia nao e' lista fixa: sai do
+ * proprio `import` relativo de cada `.mjs` do gate declarado (R3 — quem sabe do que precisa
+ * e' o gate). So' `../<nome>.mjs` (irma direta em `.ai/gates/`); outro caminho nao e' do catalogo.
+ */
+const IMPORT_IRMA = /from\s+['"]\.\.\/([\w.-]+\.mjs)['"]/g
+
+export const gateDeps = (gates, tars) => {
+  const deps = new Set()
+  for (const g of gates) {
+    const dir = join(tars, '.ai', 'gates', g)
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.mjs'))) {
+      for (const m of readFileSync(join(dir, f), 'utf8').matchAll(IMPORT_IRMA)) {
+        if (existsSync(join(tars, '.ai', 'gates', m[1]))) deps.add(m[1])
+      }
+    }
+  }
+  return [...deps].sort()
+}
+
+/**
  * Script de TESTE de guard (`test-*.sh`) e' prova, nao hook: roda no CI contra o guard,
  * nunca no harness do agente (item 1a). Ele e' COPIADO (o consumidor roda a suite local),
  * mas NAO vira comando do PreToolUse — senao cada Bash pagaria o teste inteiro e o
@@ -214,8 +237,11 @@ const hookGuards = (manifest) => (manifest.guards ?? []).filter((g) => !isGuardT
 /** Itens do catalogo a copiar (tudo, menos o `local`, que e' do projeto). */
 export const declare = (manifest, { tars } = {}) =>
   AREAS.flatMap((area) => {
-    if (area === 'gates')
-      return HOOKS.filter((h) => h !== 'local').flatMap((h) => (manifest.gates[h] ?? []).map((item) => ({ area, item })))
+    if (area === 'gates') {
+      const gates = HOOKS.filter((h) => h !== 'local').flatMap((h) => manifest.gates[h] ?? [])
+      const deps = tars ? gateDeps(gates, tars).filter((d) => !gates.includes(d)) : []
+      return [...gates.map((item) => ({ area, item })), ...deps.map((item) => ({ area, item }))]
+    }
     const items = manifest[area].map((item) => ({ area, item }))
     // Sem `tars` resolvido (teste de declaracao puro), as dependencias nao entram: quem
     // sincroniza SEMPRE passa o catalogo.

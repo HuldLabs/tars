@@ -355,6 +355,27 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     expect(fs.existsSync(path.join(base, "guards", "lib-json.sh"))).toBe(true);
   });
 
+  it("gate que importa lib irma (`../lib-x.mjs`) traz a lib junto; sem import, nada a mais", async () => {
+    // Ensaio do binario isolado (14/10): o `lint-swallow` importa `../lib-staged.mjs` e
+    // `../lib-baseline.mjs`; o sync copiava so' a pasta e o gate morria com `Cannot find module`.
+    const { tars, project, base } = scaffold({
+      manifest: MANIFEST.replace('pre-commit = ["commit-msg"]', 'pre-commit = ["com-lib", "commit-msg"]'),
+    });
+    const g = path.join(tars, ".ai", "gates", "com-lib");
+    fs.mkdirSync(g, { recursive: true });
+    fs.writeFileSync(path.join(g, "gate.mjs"), "import { x } from '../lib-x.mjs'\nx()\n");
+    fs.writeFileSync(path.join(tars, ".ai", "gates", "lib-x.mjs"), "export const x = () => {}\n");
+    fs.writeFileSync(path.join(tars, ".ai", "gates", "lib-sobra.mjs"), "export const y = 1\n");
+
+    await sync({ tars, project, log: () => {} });
+
+    expect(fs.existsSync(path.join(base, "gates", "com-lib", "gate.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(base, "gates", "lib-x.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(base, "gates", "lib-sobra.mjs"))).toBe(false);
+    // Idempotente: a lib entra no lock e rodar de novo nao reescreve nada.
+    expect((await sync({ tars, project, log: () => {} })).wrote).toEqual([]);
+  });
+
   it("gera .claude/settings.json com PreToolUse chamando os guards DECLARADOS", async () => {
     const { tars, project } = scaffold();
     await sync({ tars, project, log: () => {} });
