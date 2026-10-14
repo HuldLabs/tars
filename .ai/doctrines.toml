@@ -66,6 +66,14 @@ prova = "printf 'try { f() } catch {}\\n' > /tmp/tars-doc-swallow.mjs && node .a
 onde = "pre-commit"
 
 [[doctrine]]
+id = "gates/julga-o-staged"
+titulo = "O gate julga so` o que o commit leva (o INDICE), nunca a arvore — e so` o que o git RASTREIA (`.cache/`/gitignored nao e' superficie)"
+fonte = "tools/framework/tars-staged.mjs:1-22"
+gate = "../../tools/framework/tars-staged.mjs"
+prova = "d=$(mktemp -d) && git -C $d init -q && printf 'x\\n' > $d/sujo.mjs && node -e \"import('$PWD/tools/framework/tars-staged.mjs').then(m=>process.exit(m.stagedPaths('$d').length?0:1))\""
+onde = "pre-commit"
+
+[[doctrine]]
 id = "gates/linha-de-base"
 titulo = "Adocao com divida: a violacao VELHA entra na linha de base (`.ai/gates-baseline.json`); o gate reprova so` o que e' NOVO e a base so` encolhe (ratchet)"
 fonte = "tools/framework/tars-gates-baseline.mjs:1-20"
