@@ -4,6 +4,40 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.24
+
+### O que mudou
+- **`tars release-notes` serve a qualquer repo.** O título usa o nome do projeto, tirado do
+  `--repo` (`HuldLabs/kipp` vira `kipp`) ou do `--bin`; antes, saía sempre "tars". A imagem
+  aparece só por digest, que é imutável; a tag mutável saía sem o `v` em repo que usa `v0.0.2`.
+- **`--kind image`** para quem publica imagem (base, features): sem "binário em /<bin>", sem
+  `COPY --from`, com `docker pull` por digest e a verificação falando da imagem. O padrão
+  continua `--kind bin`.
+
+- **Gate `commit-msg`: teste em shell conta como teste.** `*.test.sh`, `*_test.sh` e `*.bats`
+  satisfazem o TARS-RED-1 (o `fix` precisa tocar teste), além do diretório `test/`, que já
+  contava. A mensagem de erro agora lista exatamente o que o gate aceita.
+
+Bugs reportados que esta versão fecha:
+- Kipp (14/10): título "tars" e tag da imagem sem `v` ao usar o `release-notes` fora do Tars.
+- Endurance (14/10): o gate recusava `fix` cujo teste era `*.test.sh`.
+- Endurance (14/10): texto de verificação e bloco da imagem só serviam para binário (o Endurance
+  trocava com `sed`).
+
+### Por que
+O Kipp e o Endurance adotaram o `release-notes` no workflow, e as notas saíam com o nome e os
+textos do Tars.
+
+### Arquivos impactados
+`tools/framework/tars-release-notes.mjs`, `.ai/gates/commit-msg/validate-commit.mjs`,
+`.github/workflows/release.yml` (+ `tars-release-notes.test.mjs`, `tars-gates.test.mjs`,
+`tars-workflow-scripts.test.mjs`).
+
+### O que o consumidor faz
+`tars self-update` (ou o binário da Release) e, no workflow, troque o `sed` por `--kind image`
+quando publicar imagem. O repo do Tars é **privado**: o CI do consumidor que baixa a Release
+precisa de um PAT com leitura do `HuldLabs/tars`; o `GITHUB_TOKEN` de outro repo não alcança.
+
 ## 0.0.1-dev.23
 
 ### O que mudou

@@ -277,6 +277,12 @@ describe("gate commit-msg — teste vermelho no fix (TARS-RED-1)", () => {
     expect(r.status).toBe(0);
   });
 
+  it("fix que toca teste em shell passa: *.test.sh, *_test.sh, *.bats e test/ (Endurance, 14/10)", () => {
+    for (const t of ["tools/gen-catalogo.test.sh", "tools/x_test.sh", "test/x.bats", "test/node-bun/test.sh"]) {
+      expect(valida(FIX, repoCom(["tools/framework/tars-verify.mjs", t])).status).toBe(0);
+    }
+  });
+
   it("fix que toca um test_*.py passa", () => {
     const r = valida(FIX, repoCom(["tools/framework/rename.py", "tools/framework/rename_test.py"]));
     expect(r.status).toBe(0);
