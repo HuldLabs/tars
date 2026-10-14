@@ -46,3 +46,24 @@ lidos **somente leitura**). A lógica entra; host, cofre e cliente **não**.
 
 ADRs da org (lidos somente leitura) · `coleta-eco` §1.5-1.7 (14/10) · `seg-agentmem-1` #69-#71 (13/10).
 Nomes de host, provedor e cofre ficam **fora** do catálogo.
+
+## 4. Repositório sem upstream: espelho + congelamento (recuperação auditável)
+
+Quando um repositório **não tem upstream** (recuperado de cópia, share ou backup), o lar dele é um
+**espelho próprio** — o servidor git da org —, **não** um diretório de arquivos sincronizado por
+aplicação caseira: o servidor git **puxa nativamente** e cada repo tem o seu; um diretório cru
+exigiria construir um app de sincronismo para replicar o que o servidor já faz.
+
+- **Árvore recuperada congelada, só-leitura**, no branch original intacto, com um **doc que registra**
+  o que entrou, o que ficou fora e **como regenerar** — sem esse doc a recuperação não é auditável.
+- **A migração vai em branch próprio, por tema**, nunca sobre o original congelado: o original é a
+  evidência; a migração é o trabalho.
+- **Provisionar repo novo** (org própria no espelho, autenticação como bot, token efêmero para push)
+  é rotina do ator de automação, não o jeitinho com a credencial de alguém.
+- **Antes de apagar a cópia local: a ponta de CADA branch existe no espelho** (e no upstream, quando
+  houver) — critério verificável, não suposição.
+- **Código e serviço são separados:** o serviço **nunca roda de dentro do diretório de repos**; cada
+  app tem sua cópia de deploy e recebe **release**, não `pull`.
+- **Armadilhas da recuperação:** clone de terceiro sem `.gitmodules` vira *gitlink* silencioso (o
+  conteúdo não vem), e config de plugin costuma guardar **chave/token reais** — trate o arquivo
+  recuperado como dado hostil até provar o contrário.
