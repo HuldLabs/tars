@@ -4,6 +4,32 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.26
+
+### O que mudou
+- **Cada guard só no seu evento.** O sync ligava no PreToolUse do Bash todo item declarado em
+  `guards`: a lib (`lib-json`), o `ensure_memory_link.py` (rodado com `bash`, saía com
+  "import: command not found" e bloqueava **todo** comando) e os guards de outro evento
+  (`precompact-persist-state`, `sessionstart-context-digest`, `stop-unfinished-work`), que
+  bloqueavam o próprio commit que pediam. Agora só vai para o PreToolUse o guard de ferramenta;
+  os da base continuam no PreCompact e no SessionStart, e o `stop-unfinished-work` fica no
+  `Stop`, que o projeto mantém.
+
+Bugs reportados que esta versão fecha:
+- seo-brain (14/10): depois do `sync --upgrade` da dev.25, nenhum comando Bash rodava.
+
+### Por que
+O consumidor que declara em `guards` também as peças de apoio dos guards (lib, script Python) e
+os guards de outros eventos ficava com o agente travado.
+
+### Arquivos impactados
+`tools/framework/tars-sync.mjs` (+ `tars-sync.test.mjs`). No consumidor: `.claude/settings.json`,
+regenerado pelo sync.
+
+### O que o consumidor faz
+`tars self-update` e depois `tars sync --upgrade`: o `.claude/settings.json` é regenerado com o
+wiring certo. Quem tirou entradas à mão do settings não precisa mais.
+
 ## 0.0.1-dev.25
 
 ### O que mudou

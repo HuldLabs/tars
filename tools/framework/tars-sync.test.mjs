@@ -485,6 +485,12 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     // mas amarra-lo ao PreToolUse faria cada Bash pagar o teste inteiro. Vira proibido em
     // DOIS papeis: a funcao pura (preToolUseFor) e o settings do consumidor real.
     const { preToolUseFor } = await import("./tars-sync.mjs");
+    // seo-brain, 14/10: lib, .py e guard de outro evento no PreToolUse travavam todo Bash.
+    const todos = ["block-secret-dump", "ensure-memory-link", "ensure_memory_link.py", "lib-json",
+      "precompact-persist-state", "sessionstart-context-digest", "stop-unfinished-work"];
+    const cmds = preToolUseFor({ guards: todos }).flatMap((m) => m.hooks.map((h) => h.command)).join("\n");
+    expect(cmds).toContain("block-secret-dump");
+    for (const fora of ["ensure", "lib-json", "precompact", "sessionstart", "stop-unfinished"]) expect(cmds).not.toContain(fora);
     expect(preToolUseFor({ guards: ["alpha-guard", "test-alpha-guard"] })).toEqual([
       {
         matcher: "Bash|PowerShell",
