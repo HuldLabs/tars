@@ -32,9 +32,26 @@ entra só a **regra** explícita.
    a fila **apontam** — nunca repetem o texto. Duas cópias divergem, e a divergência é lida
    como duas verdades.
 
-## O teste rápido (na dúvida, pergunte o prazo)
+## Referência por **key**, nunca por número de linha
 
-*"Se a sessão fechar agora e alguém retomar amanhã, isto ainda precisa existir?"*
+Número de linha **envelhece**: qualquer edição acima dele desloca o alvo, e a referência
+passa a apontar para outra coisa **em silêncio** — pior que uma referência quebrada, porque
+uma quebrada avisa e a deslocada mente.
+
+- **Aponte pela key** que sobrevive à edição: o **id** (`SEG-45`, `BR-IAM-004`, `B8.2`), o
+  **slug** (o título da seção, o nome do campo, o nome da função), o **hash curto** do
+  commit, ou o **caminho do arquivo**.
+- **`arquivo:linha` é aceitável só onde a linha é o assunto** — a evidência de um incidente,
+  um relatório datado, uma saída de comando. Fora disso é dívida: a linha vira ponteiro
+  errado na primeira edição.
+- **A referência carrega o que a torna julgável**: a key **e** o que se espera encontrar
+  ali (a frase, o nome da regra). Só a key, sem o conteúdo esperado, obriga quem lê a
+  re-derivar o alvo — e se ele mudou, ninguém percebe.
+
+Origem: `DELIVERED.md` de 09/27 (SEG-45), onde ponteiros por linha passaram a apontar para
+o lugar errado depois de uma edição.
+
+## O teste rápido (na dúvida, pergunte o prazo)
 
 - **Precisa, como regra** → memória (`.ai/memory/`).
 - **Precisa, como "onde paramos"** → cursor (`HANDOFF.md`).
