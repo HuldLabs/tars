@@ -45,6 +45,20 @@ não destrói nada na hora, mas põe a decisão sobre uma base falsa.
    aprende no primeiro erro, não no dia em que o build serve o artefato velho.
 5. **Um processo, um lado.** Não misture: um watcher de um lado e um teste do outro produzem
    dois universos que não conversam, e o sintoma volta como "às vezes não pega a mudança".
+6. **Serviço de apoio de teste roda na MESMA rede do agente, por nome de container —
+   nunca por porta publicada.** Um banco, cache ou fila de apoio sobe na rede docker do
+   agente e é alcançado pelo **nome do container**; publicar porta no host para o agente
+   consumir é o antipadrão, por três motivos que se somam: a porta fica visível fora do
+   agente (superfície a mais), colide com o que já estiver escutando, e amarra o teste a um
+   `localhost` que só existe do lado do host. Rede nomeada + nome de container é o que faz o
+   serviço de apoio ser descartável e paralelizável entre execuções.
+7. **Precedência de config entre os lados do filesystem: o helper do Windows ganha do Linux
+   no WSL.** Quando os dois lados oferecem o mesmo ajuste (proxy, credencial, `git config`,
+   variável de ambiente), vale o do Windows — é ele que o usuário configura, e é ele que o
+   processo do lado Linux herda ao subir. O caso clássico é um helper de credencial: o do
+   Windows tem auth e o do Linux não, então a execução que "deveria funcionar" falha por
+   estar lendo a metade errada. Ao diagnosticar divergência de config entre os lados, confira
+   a do Windows **primeiro** — e ao documentar, diga de qual lado veio o valor efetivo.
 
 ## O que isto NÃO é
 

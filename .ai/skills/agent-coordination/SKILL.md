@@ -57,6 +57,19 @@ benchmark/parity sweeps and fixes all go to a DeepSeek worker via the dispatch s
 Explore, general-purpose) cost the same budget as the coordinator — they are NOT the cheap path; use them only when the owner
 asks. Violation seen 2026-09-26: rebuild debugging, e2e timing and two Fabber sweeps done by Opus/Explore.
 
+**Why the subagent is not the cheap path (ported from `seg-agentmem-1` #29).** It is
+tempting to read "subagent" as "a smaller worker I never have to explain myself to" —
+same harness, same session budget, one tool call away. It is the opposite: a Claude
+subagent (the harness's own `Agent`/`Explore`/general-purpose) bills against the
+**coordinator's own budget at the coordinator's own rate**, so every sweep it runs costs
+what the coordinator would have cost doing it, without the cheaper worker's rate and
+without the isolation. "Delegate it to a subagent" therefore buys nothing over doing it
+yourself, and gives up what the real worker path provides (a different budget, a
+disjoint worktree, a prompt file that survives the session). Use it when the owner asks,
+or when the work is genuinely a read-only parallel read; never as the default handler for
+a task you would otherwise dispatch.
+
+
 Coordinator and reviewer, not implementer. Three duties, in order:
 1. Bound the work before dispatching — scope, write-set, evidence standard.
 2. Verify what comes back against the running system, never against the report.
@@ -145,6 +158,34 @@ worktree for every OpenCode dispatch from here on** — the coordinator's own
 doc edits (ROADMAP/HANDOFF) are the one exception, since those are meant to
 land on the coordinator's own current branch quickly, not a throwaway one.
 
+**Release a shared resource only after checking YOUR OWN dependency on it still holds
+(ported from `seg-agentmem-1` #21).** Handing a resource back — freeing a slot, stopping
+a container, unmounting a disk, releasing a port — is a write on shared state, and the
+coordinator is a consumer of that state like any worker. Before releasing, re-read what
+*you* still need from it. Measured failure: a resource was freed to unblock a waiting
+task while the coordinator's own next step depended on it, so the release unblocked
+someone else at the cost of stalling the coordinator — an unforced deadlock resolved by
+turning it into someone else's.
+
+**Two workers in the SAME checkout/slot kill each other — resource collision is a
+dispatch defect, not bad luck (ported from `seg-agentmem-1` #39/#40/#41).** A worktree
+per worker protects the *files*; it does nothing about the other shared resources a
+worker holds while it runs — the slot itself, a private `--outdir`, a listening port, a
+lock. Two runs sharing one slot overwrite each other's output directory, and the damage
+is silent: each worker reports success over the other's half-written files. Detecting it
+from files is too late (the collision already happened); detect it from **processes**.
+
+- Before dispatch, the coordinator lists the live workers (`ListAgents`, plus the running
+  dispatch/worker processes) and refuses to start a second run on a slot already
+  occupied. A slot holding a live pid is busy even when its tracker row says `queued` —
+  the row is a claim, the process is the fact.
+- Every dispatch carries its **own** `--outdir` (never a shared or default one) and names
+  the slot it owns. Two prompts with the same outdir are the same write set, whatever the
+  branch says.
+- When one task turns up dispatched twice — same slot, same repo, two workers — that is a
+  **duplicate dispatch to report**: kill exactly one (the exact pid, never a broad name
+  match — see §0), keep the other, and record why it doubled so the dispatcher stops.
+
 **Never interpolate a secret's VALUE into a command string, at any shell nesting
 depth.** Named examples (`env`/`printenv` bare, `cat .env*`) are not the exhaustive
 list — `export VAR="$VAR"` re-quoted through a nested `bash -c '...'`/`ssh
@@ -157,6 +198,28 @@ in cleartext in the job's tool metadata, was read by the coordinator's routine
 status check, and could not be unseen. To pass an already-exported secret through
 a nested shell layer, pass the **variable name** (rely on env inheritance) or an
 explicit `-e VAR`/`--env-file` mechanism that never places the value in command text.
+
+**The channel IS the tracker — issue = queue, assign = claim, comment = heartbeat,
+delivery = result (ported from `seg-agentmem-3` #10).** A separate tracker and a separate
+conversation diverge: the row says one thing, the thread says another, and whoever reads
+only one of them is wrong. One surface carries the whole lifecycle, so there is nothing
+to reconcile:
+
+- **issue = fila.** Work exists when it is an issue. A task living only in a prompt, a
+  chat message or someone's head is not queued — it is a promise, and it vanishes with
+  the session.
+- **assign = claim.** Whoever is assigned owns it, and the assignment is what makes the
+  claim visible to everyone else. An unassigned issue is not "in flight", whatever the
+  last comment said.
+- **comment = heartbeat.** Progress, blockers and course corrections land as comments on
+  the issue, not in a side channel, so the history is one thread and a stalled item looks
+  stalled in the same place it is being worked.
+- **delivery = result.** The closing artifact (the commit, the evidence) is attached to
+  the issue. "Done" in a chat window is not a delivery; the issue's own record is.
+
+The failure this prevents is the split-brain tracker: two surfaces, two truths, and the
+coordinator reconciling by memory. If a status change happened only in conversation, it
+did not happen.
 
 **A worker that hits an architectural blocker on shared/remote infrastructure (a
 missing runtime, a missing service, a connector limitation) documents the blocker
@@ -212,12 +275,40 @@ sequence), not the worker's own judgment, that prevented it.
   (`project-bindings.md`), with the full prompt file (context, scope, ACs, protocol, secret rules) — never an ad-hoc
   command. Launch it with the shell tool's **`run_in_background: true`** — that is what puts it in the app sidebar.
   **Never `&`, `nohup` or `disown` inside the command**: that detaches the process from the app and hides it.
+- **A command that takes more than ~10-20s runs in the background, and is polled —
+  never a `sleep` loop (ported from `seg-agentmem-1` #18, `coleta-segtools` 2.4,
+  `eco.md` 2.7e).** A foreground long command blocks the whole session and reads as a
+  hang: a suite, an image build, a clone, an install. The shape is always the same —
+  the shell tool's background mode (the one that also keeps it visible in the
+  sidebar, above), then check on it when it reports back. What is forbidden is
+  `sleep N && check` chained by hand: it burns the clock without gaining information,
+  the loop usually outlives the need, and a stuck command looks identical to a slow
+  one until the timeout. If a wait is genuinely unavoidable, bound it and say what
+  ending the wait depends on — never wait blindly.
+- **Coordination cost is proportional to the size of the change (ported from
+  `seg-agentmem-1` #4).** A one-line fix, a config value, a typo: the coordinator does
+  it directly on the current checkout with HMR/dev-reload, commits, and is done — no
+  worker, no worktree, no dispatch script, no e2e. Spinning up the full apparatus
+  (worktree + prompt file + worker + review + suite) for a change smaller than the
+  apparatus itself costs more than the fix and delays it. The heavy path is reserved for
+  work that actually needs isolation: multiple files, an unknown root cause, a
+  measurement, a suite run. Choosing the light path is not sloppiness — the verification
+  is still due (the diff read, the real command run), just not a fleet to run it.
 - The prompt is the contract — follow `worker-prompt-template.md`'s required
   sections; missing the secret-handling section makes a prompt invalid to dispatch.
 - Full task text inline, never "go read file X" — a durable prompt file can still
   exist as the record, but the dispatch payload duplicates it.
 - **A gap you found is not a task you may dispatch.** Finding it is valuable;
   scoping work against it is the operator's call. Register the gap, ask, wait.
+- **A finding that belongs to ANOTHER front goes to that front's coordinator — with the
+  source and an explicit "tell me if it collides" (ported from `seg-agentmem-1` #1).** A
+  finding outside this worker's write set is not a dropped finding and not a licence to
+  cross into the other front's files: it is a message to the human or coordinator who owns
+  that front. The message carries **where it was seen** (`file:line`, the command, the
+  version/HEAD) so it can be judged without re-deriving it, and it closes with the request
+  to say whether it collides with work already in flight there. Silence is the failure
+  mode — a real finding that never left the worker's report, or one that got "fixed"
+  inside someone else's front, both end with the defect alive and the owner unaware.
 - Scope the blast radius with the tool's own mechanism (a target flag, an explicit
   profile, explicit pathspecs, a dry-run first) — "only touch these N things" in
   prose is not a control.
@@ -737,6 +828,21 @@ nothing to attack. Coverage is a different question — *what is missing from th
 - Evidence that counts: a command and its real output run *this cycle*, a passing
   test run's output, a screenshot for anything visual, negative tests where a
   failure mode exists.
+- **A finding is only a finding after the whole block is read (ported from
+  `seg-agentmem-3` #5).** The grep line that matched is a pointer to the defect, not
+  the defect: a `TODO`, a `return null`, a hardcoded value all mean something different
+  once read with its surroundings — the guarded branch, the comment that says why, the
+  caller that never passes that path. Reporting the line as-is produces confidently
+  wrong findings and burns a worker round on a non-defect; the reviewer who read 20
+  lines and concluded "bug" is the one who pays for it. Read the enclosing unit whole
+  before naming it, and if the block is large, read the block — not a bigger grep.
+- **A screen is verified on the SCREEN, never on the operator's own session (ported
+  from `seg-agentmem-1` #26, `seg-agentmem-2` #4).** Two failures in one: verifying
+  inside the owner's logged-in account proves a screen the owner can see, not the screen
+  a fresh user gets (different permissions, data, state), and measuring parity by memory
+  instead of side by side lets small drift pass as "matches". Open the real target as its
+  own consumer sees it, and when the claim is parity, put the reference and the result
+  next to each other and diff them visibly.
 - Evidence that doesn't count: "the doc/agent said so," a `qa-ready` label with
   nothing verified underneath, a status field saying running, a healthcheck passing
   without verifying it actually proves the function it claims to.
@@ -762,6 +868,23 @@ nothing to attack. Coverage is a different question — *what is missing from th
   verification.
 
 ## 7. Continuous bookkeeping
+
+**The channel IS the tracker — one meaning per verb, and no second ledger (ported from
+`seg-agentmem-3` #10).** Every state a task passes through has one place it is written
+and one verb that writes it; anything kept elsewhere (a chat aside, a private note, a
+status muttered in the summary) is not state, only a claim about it:
+
+| verb | meaning |
+|---|---|
+| opens an issue | the work enters the queue |
+| assigns itself | the claim — this worker owns it now |
+| comments | the heartbeat — what happened since the last one |
+| delivery | the result — what was proven, with evidence |
+
+Read the tracker for the truth and write to it for every transition; the coordinator
+that keeps a private convention alongside it eventually reports a state neither the
+tracker nor reality agrees with. The corollary is that a tracker row is the artifact —
+it must be updated the moment the state changes, not reconstructed at the end.
 
 Not a wrap-up checklist — as it happens:
 - On dispatch → tracker row to in-progress, right then.
