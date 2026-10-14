@@ -15,6 +15,11 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   os da base continuam no PreCompact e no SessionStart, e o `stop-unfinished-work` fica no
   `Stop`, que o projeto mantém.
 
+- **Doutrina `release`: quem decide o nível da versão.** A primeira versão é `v0.0.1-dev.1`. O
+  coord corta `dev.N` → `dev.N+1` com o merge do dono como aval; qualquer mudança de nível (sair
+  de `-dev`, subir patch, minor ou major) só com confirmação explícita do dono, numa pergunta
+  única e fora de lote.
+
 Bugs reportados que esta versão fecha:
 - seo-brain (14/10): depois do `sync --upgrade` da dev.25, nenhum comando Bash rodava.
 
@@ -23,7 +28,7 @@ O consumidor que declara em `guards` também as peças de apoio dos guards (lib,
 os guards de outros eventos ficava com o agente travado.
 
 ### Arquivos impactados
-`tools/framework/tars-sync.mjs` (+ `tars-sync.test.mjs`). No consumidor: `.claude/settings.json`,
+`tools/framework/tars-sync.mjs` (+ `tars-sync.test.mjs`), `.ai/governance/release.md`. No consumidor: `.claude/settings.json`,
 regenerado pelo sync.
 
 ### O que o consumidor faz
