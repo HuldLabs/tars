@@ -119,7 +119,7 @@ const USAGE = [
   '                             SO` LEITURA: diagnostica, nao altera (exit != 0 se falta algo).',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
-  '  curation [--advance] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
+  '  curation [--advance --reviewed <r,..>] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
   '                             (<ponteiro>..HEAD) dos repos vizinhos e lista o que andou',
   '  upgrade-notes [--from <>]  imprime as notas de upgrade entre a versao do lock e a atual',
   '  --version                  imprime a versao do Tars',
@@ -240,10 +240,11 @@ async function promoteCommand(rest, project) {
 /** `tars curation` — rotina por PONTEIRO (docs/CURATION.md): mede o delta, nao generaliza. */
 async function curationCommand(rest, project) {
   const mod = curationMod
-  const tars = resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars())
+  const tars = resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars())
   const reposDir = resolve(argValue(rest, '--repos') ?? join(tars, '..'))
   const stateFile = resolve(argValue(rest, '--state') ?? join(tars, '.ai', 'curation.json'))
-  const r = mod.curate({ reposDir, stateFile, advance: rest.includes('--advance') })
+  const reviewed = (argValue(rest, '--reviewed') ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+  const r = mod.curate({ reposDir, stateFile, reviewed, advance: rest.includes('--advance') })
   if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
   else mod.report(r)
 }

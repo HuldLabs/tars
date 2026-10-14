@@ -37,6 +37,24 @@ describe('tars — despacho', () => {
     await expect(COMMANDS.promote(['--area', 'memory'], process.cwd())).rejects.toThrow(/--item/)
   })
 
+  // `curation` sem `--tars`/TARS_HOME caia no `findTars` do modulo ERRADO (o da curadoria nao o
+  // exporta): "mod.findTars is not a function". O catalogo se acha pelo sync, como nos outros.
+  it('curation pelo CLI: acha o catalogo sem --tars e imprime o relatorio', async () => {
+    const antes = process.env.TARS_HOME
+    delete process.env.TARS_HOME
+    const log = console.log
+    console.log = () => {}
+    const linhas = []
+    try {
+      console.log = (x) => linhas.push(String(x))
+      await COMMANDS.curation([], process.cwd()) // o relatorio em texto (report) e' o caminho do dono
+      expect(linhas.join('\n')).toMatch(/# curadoria/)
+    } finally {
+      console.log = log
+      if (antes !== undefined) process.env.TARS_HOME = antes
+    }
+  })
+
   it('argValue le o par --nome <v>', () => {
     expect(argValue(['--tars', '/x', '--project', '/y'], '--tars')).toBe('/x')
     expect(argValue(['--tars', '/x'], '--project')).toBeNull()

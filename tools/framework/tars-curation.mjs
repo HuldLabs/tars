@@ -164,7 +164,7 @@ function arg(name) {
   return i === -1 ? null : process.argv[i + 1]
 }
 
-function report({ repos, moved, stateFile, advance, reviewed = [], advanced = [] }) {
+export function report({ repos, moved, stateFile, advance, reviewed = [], advanced = [] }) {
   const tag = advance ? (advanced.length ? ` (avancado: ${advanced.join(', ')})` : ' (nada avancado)') : ''
   console.log(`# curadoria — ponteiro em ${stateFile}${tag}`)
   console.log(`# ${repos.length} repos, ${moved.length} andaram\n`)
