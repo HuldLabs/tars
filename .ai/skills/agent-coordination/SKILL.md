@@ -199,6 +199,28 @@ status check, and could not be unseen. To pass an already-exported secret throug
 a nested shell layer, pass the **variable name** (rely on env inheritance) or an
 explicit `-e VAR`/`--env-file` mechanism that never places the value in command text.
 
+**The channel IS the tracker — issue = queue, assign = claim, comment = heartbeat,
+delivery = result (ported from `seg-agentmem-3` #10).** A separate tracker and a separate
+conversation diverge: the row says one thing, the thread says another, and whoever reads
+only one of them is wrong. One surface carries the whole lifecycle, so there is nothing
+to reconcile:
+
+- **issue = fila.** Work exists when it is an issue. A task living only in a prompt, a
+  chat message or someone's head is not queued — it is a promise, and it vanishes with
+  the session.
+- **assign = claim.** Whoever is assigned owns it, and the assignment is what makes the
+  claim visible to everyone else. An unassigned issue is not "in flight", whatever the
+  last comment said.
+- **comment = heartbeat.** Progress, blockers and course corrections land as comments on
+  the issue, not in a side channel, so the history is one thread and a stalled item looks
+  stalled in the same place it is being worked.
+- **delivery = result.** The closing artifact (the commit, the evidence) is attached to
+  the issue. "Done" in a chat window is not a delivery; the issue's own record is.
+
+The failure this prevents is the split-brain tracker: two surfaces, two truths, and the
+coordinator reconciling by memory. If a status change happened only in conversation, it
+did not happen.
+
 **A worker that hits an architectural blocker on shared/remote infrastructure (a
 missing runtime, a missing service, a connector limitation) documents the blocker
 and the options, then stops.** It does not install, provision, or configure

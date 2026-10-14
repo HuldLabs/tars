@@ -87,6 +87,24 @@ como atende cada uma**:
 - **Agnosticidade.** De runtime e de stack: o núcleo não conhece a ferramenta nem o banco
   de quem o consome.
 
+## Idioma: identificador em inglês, texto em português
+
+Regra do dono, sem exceção de projeto (curadoria 14/10; `seg-agentmem-1` #27,
+`seg-agentmem-3` #3). A fronteira é **o que é símbolo** × **o que é lido por gente**:
+
+| Superfície | Idioma |
+|---|---|
+| Arquivo, pasta, módulo, plugin, tabela, coluna, tipo, função, variável, branch | **inglês** |
+| Texto de tela, docs, comentário de código, mensagem de commit, issue e comentário de issue, canal, **resposta ao dono** | **português** |
+
+- **Por que o identificador é em inglês.** Ele é lido por ferramentas e por convenção de
+  linguagem (import, rota, coluna de banco, `snake_case` de SQL): misturar idioma no símbolo
+  quebra busca, ordenação e o próprio hábito de quem lê código.
+- **Por que o texto é em português.** Quem lê é o dono e a equipe. Traduzir a saída para o
+  inglês não melhora nada e piora a precisão do que foi dito.
+- **A resposta ao dono entra na coluna do português.** Isso inclui resumo de entrega,
+  relatório de incidente e o texto do canal — não só o código.
+
 ## Doutrinas de extracao
 
 - **Versionamento:** toda peça extraída (Tars, Tomo, Sofon, Pion, Kipp, Lazarus, Endurance)
