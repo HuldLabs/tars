@@ -58,6 +58,15 @@ describe('tars self-update', () => {
     expect(fs.statSync(f).mode & 0o111).not.toBe(0)
   })
 
+  it('self-update concorrente: nao toca no .tmp de outro processo', async () => {
+    const f = exe()
+    const alheio = path.join(path.dirname(f), '.tars-0.0.1-dev.9.tmp') // nome fixo da dev.26
+    fs.writeFileSync(alheio, 'do outro')
+    await selfUpdate({ ...base, atual: '0.0.1-dev.8', exe: f, fetchFn: fake(`${sha(BIN)}  tars-linux-amd64\n`) })
+    expect(fs.readFileSync(alheio, 'utf8')).toBe('do outro')
+    expect(fs.readFileSync(f)).toEqual(BIN)
+  })
+
   it('sha256 diferente: NADA e trocado', async () => {
     const f = exe()
     await expect(selfUpdate({ ...base, atual: '0.0.1-dev.8', exe: f, fetchFn: fake(`${'0'.repeat(64)}  tars-linux-amd64\n`) })).rejects.toThrow(/NAO bate/)
