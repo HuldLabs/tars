@@ -18,7 +18,7 @@ describe('tars — despacho', () => {
     // Endurance precisa para a v0.1.0 (docs/decisoes-20260808 §Sequence/§SSH).
     // `gates` entrou com a curadoria a1 (item B3.3): a LINHA DE BASE da adocao
     // (`tars gates baseline [--prune]`) — o gate reprova so' o que nao esta' na base.
-    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'adopt', 'check', 'check-refs', 'curation', 'doctor', 'gates', 'git', 'handoff', 'hooks', 'identity', 'incident', 'init', 'memory', 'promote', 'release-notes', 'secrets', 'sync', 'upgrade-notes', 'verify'])
+    expect(Object.keys(COMMANDS).sort()).toEqual(['acessos', 'adopt', 'check', 'check-refs', 'curation', 'doctor', 'gates', 'git', 'handoff', 'hooks', 'identity', 'incident', 'init', 'memory', 'promote', 'release-notes', 'secrets', 'self-update', 'sync', 'upgrade-notes', 'verify'])
   })
 
   it('check e' + ' sync com --check (um despacho, nao duas logicas)', () => {

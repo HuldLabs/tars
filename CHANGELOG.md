@@ -4,6 +4,39 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.23
+
+### O que mudou
+- **`tars self-update`: atualizar é um comando.** Baixa a Release mais nova (ou
+  `--version V`), escolhe o binário da máquina (x86/ARM, glibc/musl), confere o sha256 contra
+  o `sha256sums`, troca o próprio executável (rename atômico) e roda `sync --upgrade` no
+  projeto atual. Sem `gh` e sem compilar. Sem `--version`, só avança: nunca rebaixa. Se o
+  sha256 não bater, nada é trocado. Token do repo privado: `GH_TOKEN` > `GITHUB_TOKEN` >
+  `gh auth token`.
+- **Teste de upgrade real antes de publicar.** O job `upgrade-real` do `release.yml` instala a
+  versão anterior publicada num projeto, atualiza com o binário da tag e confere que os
+  arquivos ficaram iguais ao catálogo novo, que a `lib-json.sh` continua lá, que os guards
+  bloqueiam sem a lib e que o segundo sync não copia nada. A Release só sai se ele passar.
+  O script (`tools/framework/tars-upgrade-real.sh <anterior> <novo>`) também roda local.
+- **Sem DRIFT falso das doutrinas `org/*` no consumidor.** O repo da org (huldlabs) não está
+  montado ao lado do consumidor; ali essas doutrinas passam a `PROJETO` (descritas, não
+  julgadas). Quem as confere é o doctor do próprio Tars. Ninguém precisa de symlink.
+
+### Por que
+Os três bugs do upgrade da dev.20/21 só apareceram no consumidor, e atualizar exigia uma linha
+longa que levava a erro (houve quem mandasse compilar). O doctor de todo consumidor reprovava
+por 5 DRIFT que ele não tinha como resolver.
+
+### Arquivos impactados
+`tools/framework/tars-self-update.mjs` (novo), `tars.mjs`, `tars-doctrines.mjs`,
+`tools/framework/tars-upgrade-real.sh` (novo), `.github/workflows/release.yml`
+(+ testes: `tars-self-update.test.mjs`, `tars-doctrines.test.mjs`, `tars.test.mjs`).
+
+### O que o consumidor faz
+Esta é a última vez que se baixa à mão: troque o binário pelo da Release e rode
+**`tars sync --upgrade`**. Daqui para frente: **`tars self-update`**.
+Confira com `tars doctor`: as `org/*` aparecem como PROJETO, não DRIFT.
+
 ## 0.0.1-dev.22
 
 ### O que mudou

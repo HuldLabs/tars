@@ -166,7 +166,7 @@ function rodaProva(prova, base) {
  *   SEM GATE  — orfa declarada com motivo: divida nomeada (aviso, nao derruba o build)
  *   DRIFT     — a `fonte` sumiu ou a linha declarada saiu do texto: o punho mudou
  */
-export function classify(d, base = process.cwd(), { spawn = rodaProva, tars = base } = {}) {
+export function classify(d, base = process.cwd(), { spawn = rodaProva, tars = base, projeto = base } = {}) {
   const ref = parseRef(d.fonte)
   // Doutrina de OUTRO projeto (`segtools:`): nem a fonte nem a prova rodam aqui — o catalogo
   // so' descreve o par. Julgar aqui daria DRIFT falso (o arquivo mora no projeto, nao aqui).
@@ -175,6 +175,12 @@ export function classify(d, base = process.cwd(), { spawn = rodaProva, tars = ba
   // raiz dos vizinhos e' conhecida, entao repo ausente vira FALHA alta em vez de link quebrado.
   if (ref.repo) {
     const irmao = fonteIrmaOk(tars, d.fonte)
+    // No CONSUMIDOR (base != catalogo) o repo da org nao esta' montado ao lado: quem confere a
+    // doutrina da org e' o doctor do proprio Tars, no CI dele. Aqui ela so' e' descrita — DRIFT
+    // nesse caso era falso e empurrava o consumidor a symlink a mao (Kipp, 14/10).
+    if (!irmao.ok && resolve(projeto) !== resolve(tars)) {
+      return { ...d, status: 'PROJETO', detalhe: `doutrina da org (${ref.repo}): conferida no doctor do Tars, nao aqui` }
+    }
     return irmao.ok
       ? { ...d, status: 'SEM GATE', detalhe: `${d.motivo} (fonte ${irmao.porque})`, prova: d.prova }
       : { ...d, status: 'DRIFT', detalhe: irmao.porque }
@@ -317,7 +323,7 @@ export function doctor({ tars, project, env = process.env } = {}) {
   // contra a raiz do Tars, a do projeto (`[[doctrine]]` no `.ai/tars.toml`) contra a raiz do
   // projeto. Sem isso a prova do consumidor rodaria contra os arquivos do catalogo.
   const itens = loadDoctrines({ tars: catalogo, project: root }).map((d) =>
-    classify(d, d.escopo === 'catalogo' ? catalogo : root),
+    classify(d, d.escopo === 'catalogo' ? catalogo : root, { tars: catalogo, projeto: root }),
   )
   const porStatus = Object.fromEntries(
     ['OK', 'PHANTOM', 'SEM GATE', 'DRIFT', 'PROJETO'].map((s) => [s, itens.filter((i) => i.status === s).length]),

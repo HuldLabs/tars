@@ -117,7 +117,7 @@ jobs:
   release:
     name: GitHub Release
     # Por ULTIMO: so' publica depois dos binarios provados E da imagem provada pelo smoke.
-    needs: [binario, imagem, imagem-smoke]
+    needs: [binario, imagem, imagem-smoke, upgrade-real]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -174,6 +174,35 @@ jobs:
   # Publica a imagem multi-arch (base glibc minima) com SO' `/tars`. Usa o `build-push-action`
   # com um Dockerfile embutido num contexto de uma linha: cada plataforma INJETA o binario
   # ja' compilado (nunca recompila no Docker) pela tag que o buildx resolve.
+  # Upgrade REAL antes de publicar (dev.23): a versao anterior publicada num projeto, depois o
+  # binario desta tag com `sync --upgrade`. Os bugs da dev.20/21 so' apareceram no consumidor.
+  upgrade-real:
+    name: upgrade real (versao anterior -> esta)
+    needs: binario
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # a tag anterior
+      - name: Binario desta tag
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: tars-linux-amd64
+          path: novo
+      - name: Upgrade da anterior para esta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^")"
+          echo "anterior: ${prev}"
+          mkdir velho
+          gh release download "${prev}" -R "${GITHUB_REPOSITORY}" -p tars-linux-amd64 -D velho
+          chmod +x velho/tars-linux-amd64 novo/tars-linux-amd64
+          tools/framework/tars-upgrade-real.sh velho/tars-linux-amd64 novo/tars-linux-amd64
+
   imagem:
     name: imagem OCI (ghcr.io/huldlabs/tars)
     needs: binario

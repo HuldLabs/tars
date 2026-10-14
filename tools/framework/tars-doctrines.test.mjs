@@ -363,3 +363,18 @@ describe('doctor — recorrencia vira FALHA (X = 2)', () => {
     expect(r.classes).toEqual([])
   })
 })
+
+describe("doutrina da org (repo irmao) — catalogo x consumidor (dev.23)", () => {
+  const d = { id: "org/x", titulo: "t", fonte: "repo-que-nao-existe-xyz:adr/0001.md:1", gate: "nenhum", motivo: "m", prova: "true", onde: "ci" };
+  it("no proprio catalogo, repo da org ausente continua DRIFT (o Tars confere)", () => {
+    const tars = fs.mkdtempSync(path.join(os.tmpdir(), "tars-org-"));
+    expect(classify(d, tars, { tars }).status).toBe("DRIFT");
+  });
+  it("no consumidor, nao reprova: vira PROJETO (Kipp, 14/10: DRIFT falso empurrava symlink a mao)", () => {
+    const tars = fs.mkdtempSync(path.join(os.tmpdir(), "tars-org-"));
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), "proj-org-"));
+    const r = classify(d, tars, { tars, projeto: proj });
+    expect(r.status).toBe("PROJETO");
+    expect(r.detalhe).toMatch(/doutrina da org/);
+  });
+});
