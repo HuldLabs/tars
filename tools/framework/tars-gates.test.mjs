@@ -511,4 +511,23 @@ describe("gate release-guard", () => {
     fs.writeFileSync(path.join(dir, ".git", "COMMIT_EDITMSG"), "chore: x\n\nNo-Release: regeneracao de indice\n");
     expect(rodar([gate], { env: { TARS_PROJECT: dir } }).status).toBe(0);
   });
+
+  // NUM WORKTREE `.git` e' um ARQUIVO (`gitdir: ...`), nao um diretorio: `join(root, '.git')`
+  // nunca existe e o escape `No-Release:` era ignorado CALADO — o gate reprovava todo commit
+  // isento feito em worktree (o bug conhecido). A mensagem mora no git-dir real.
+  it("le o No-Release no COMMIT_EDITMSG de um WORKTREE (o `.git` e' arquivo)", () => {
+    const dir = repo({ arquivos: [] });
+    const wt = path.join(tmp(), "wt");
+    execFileSync("git", ["-C", dir, "worktree", "add", "-q", "-b", "w/wt", wt], { stdio: "ignore" });
+    // O motor visto do worktree: sem a correcao o gate nem acha a mensagem.
+    fs.mkdirSync(path.join(wt, "tools/framework"), { recursive: true });
+    fs.writeFileSync(path.join(wt, "tools/framework/tars-sync.mjs"), "x\n");
+    execFileSync("git", ["-C", wt, "add", "tools/framework/tars-sync.mjs"], { stdio: "ignore" });
+    const gitDir = execFileSync("git", ["-C", wt, "rev-parse", "--git-dir"], { encoding: "utf8" }).trim();
+    expect(fs.statSync(path.join(wt, ".git")).isFile()).toBe(true); // a premissa do caso
+    expect(rodar([gate], { env: { TARS_PROJECT: wt } }).status).toBe(1); // sem a mensagem, REPROVA
+    const msgFile = path.join(path.isAbsolute(gitDir) ? gitDir : path.join(wt, gitDir), "COMMIT_EDITMSG");
+    fs.writeFileSync(msgFile, "chore: x\n\nNo-Release: regeneracao de indice\n");
+    expect(rodar([gate], { env: { TARS_PROJECT: wt } }).status).toBe(0);
+  });
 });

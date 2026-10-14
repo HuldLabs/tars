@@ -11,7 +11,7 @@
 // Escape: `No-Release: <motivo de 10+ chars>` no corpo da mensagem do commit.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 /** Arquivos cuja mudanca OBRIGA versao+CHANGELOG (o motor e a doutrina do catalogo). */
 export const TRIGGERS = [/^tools\/framework\/tars-.*\.mjs$/, /^\.ai\/gates\//, /^\.ai\/guards\//, /^\.ai\/governance\//]
@@ -60,11 +60,21 @@ export function julgar(root, { mensagem = null, arquivos = staged(root), head = 
 const mensagemDe = (root) => {
   // No `pre-commit` o arquivo da mensagem nao existe (so' no commit-msg): le a mensagem
   // do indice quando houver, senao o corpo do ultimo `-m`. Sem ela, so' resta exigir o par.
+  //
+  // `git rev-parse --git-dir` e' o caminho do arquivo: num WORKTREE `.git` e' um ARQUIVO
+  // (`gitdir: ...`), nao um diretorio, entao `join(root, '.git')` nunca existe e o escape
+  // `No-Release:` era ignorado calado — o gate reprovava todo commit isento feito em
+  // worktree (o bug conhecido do release-guard). Nos dois casos (repo normal e worktree)
+  // quem responde e' o git; o `.git` cru fica so' como retaguarda se o git faltar.
   try {
-    const f = join(root, '.git', 'COMMIT_EDITMSG')
+    const dir = execFileSync('git', ['-C', root, 'rev-parse', '--git-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    // `--git-dir` devolve ABSOLUTO no worktree e relativo (`.git`) no repo normal: `resolve`
+    // contra `root` cobre os dois (um `join` cego concatenaria o absoluto de novo).
+    const f = join(dir ? (isAbsolute(dir) ? dir : join(root, dir)) : join(root, '.git'), 'COMMIT_EDITMSG')
     return existsSync(f) ? readFileSync(f, 'utf8') : ''
   } catch {
-    return ''
+    const f = join(root, '.git', 'COMMIT_EDITMSG')
+    return existsSync(f) ? readFileSync(f, 'utf8') : ''
   }
 }
 
