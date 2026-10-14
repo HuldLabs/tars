@@ -9,9 +9,9 @@
 // Contrato (pre-commit): roda `git diff --cached` no projeto (TARS_PROJECT ou cwd), le a
 // lista de arquivos tocados e compara `.ai/VERSION` com o HEAD. exit != 0 = reprova.
 // Escape: `No-Release: <motivo de 10+ chars>` no corpo da mensagem do commit.
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 /** Arquivos cuja mudanca OBRIGA versao+CHANGELOG (o motor e a doutrina do catalogo). */
 export const TRIGGERS = [/^tools\/framework\/tars-.*\.mjs$/, /^\.ai\/gates\//, /^\.ai\/guards\//, /^\.ai\/governance\//]
@@ -58,14 +58,30 @@ export function julgar(root, { mensagem = null, arquivos = staged(root), head = 
 }
 
 const mensagemDe = (root) => {
-  // No `pre-commit` o arquivo da mensagem nao existe (so' no commit-msg): le a mensagem
-  // do indice quando houver, senao o corpo do ultimo `-m`. Sem ela, so' resta exigir o par.
-  try {
-    const f = join(root, '.git', 'COMMIT_EDITMSG')
-    return existsSync(f) ? readFileSync(f, 'utf8') : ''
-  } catch {
-    return ''
+  // No `pre-commit` o arquivo da mensagem nao existe (so' no commit-msg): le a mensagem do
+  // COMMIT_EDITMSG do indice. Sem ela, so' resta exigir o par versao+CHANGELOG.
+  //
+  // O git-dir vem do PROPRIO git (`rev-parse --git-dir`), nunca de `root/.git`: num WORKTREE
+  // (`.worktrees/<nome>/`) o `.git` e' um ARQUIVO com o caminho do git-dir de verdade, entao
+  // a mensagem mora em `<repo principal>/.git/worktrees/<nome>/COMMIT_EDITMSG`. Ler o caminho
+  // fixo fazia o escape `No-Release:` ser IGNORADO no worktree — o gate reprovava uma isencao
+  // que a propria mensagem declarava.
+  //
+  // O `pre-commit` roda ANTES do `commit-msg`, que e' quem escreve o arquivo: quem precisa do
+  // escape em paralelo copia a mensagem para o git-dir (`cp <msg> "$(git rev-parse --git-dir)/COMMIT_EDITMSG"`).
+  const r = spawnSync('git', ['-C', root, 'rev-parse', '--git-dir'], { encoding: 'utf8' })
+  const gitDir = (r.stdout || '').trim()
+  const candidatos = gitDir ? [resolve(root, gitDir)] : []
+  candidatos.push(join(root, '.git'))
+  for (const dir of candidatos) {
+    try {
+      const f = join(dir, 'COMMIT_EDITMSG')
+      if (existsSync(f)) return readFileSync(f, 'utf8')
+    } catch {
+      /* proximo candidato */
+    }
   }
+  return ''
 }
 
 // --- CLI (pre-commit) ------------------------------------------------------
