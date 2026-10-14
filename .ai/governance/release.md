@@ -21,12 +21,17 @@ O dono não cria tag, não roda workflow e não confere asset.
 
 ### 1. PR final da versão
 
-Um PR traz junto:
+Um PR traz junto, no modelo `templates/PR-RELEASE.tpl.md`:
 - o código da entrega;
-- a versão nova na fonte do repo (`.ai/VERSION`, `package.json`, `pyproject.toml`);
+- a versão nova na **fonte da versão do projeto**: a `version` do `package.json`, ou a do
+  `pyproject.toml`, ou o arquivo `VERSION` na raiz (repo sem stack). **Não** o `.ai/VERSION`,
+  que é a versão do catálogo do Tars. A fonte e o topo do CHANGELOG têm de bater;
 - a seção `## <versão>` no `CHANGELOG.md`, só com a versão no título (sem data nem texto) e com
   as 4 subseções: **O que mudou**, **Por que**, **Arquivos impactados**, **O que o consumidor faz**;
 - na seção, a lista dos **bugs reportados por consumidores que a versão fecha**, com repo e data.
+
+**Título do PR final:** `<emoji> <tipo>(<repo>): <resumo> — v<X.Y.Z[-dev.N]>`. A versão no fim do
+título é o que diz ao dono que aquele merge é o aval de uma Release.
 
 O CI do PR fica verde antes de pedir o merge.
 
@@ -90,7 +95,8 @@ de atualização, o que conferir depois e o que mudou para ele. O texto **termin
 - `release-guard` (pre-commit): mudança no que o consumidor vê sem subir a versão e sem
   CHANGELOG reprova.
 - `tars doctor`, **depois da primeira tag `v*`**: CHANGELOG presente, cabeçalho só com a
-  versão, seção da última tag com as 4 subseções, topo não atrás da última tag. Sem release
+  versão, seção da última tag com as 4 subseções, topo não atrás da última tag, e a fonte da
+  versão do projeto existindo e igual ao topo do CHANGELOG. Sem release
   ainda, nada é cobrado.
 - `tars release-notes`: cabeçalho fora do formato falha alto.
 - O job `upgrade-real`: bloqueia a Release se a atualização da versão anterior quebrar.

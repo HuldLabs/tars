@@ -6,8 +6,10 @@ import path from 'node:path'
 import { releaseHealth } from './tars-release-health.mjs'
 
 const SEC = (v) => `## ${v}\n\n### O que mudou\n- x\n\n### Por que\ny\n\n### Arquivos impactados\nz\n\n### O que o consumidor faz\nw\n`
-const proj = (changelog) => {
+const proj = (changelog, versao = undefined) => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tars-rh-'))
+  const v = versao === undefined ? /## (\S+)/.exec(changelog ?? '')?.[1] : versao
+  if (v) fs.writeFileSync(path.join(d, 'VERSION'), `${v}\n`)
   if (changelog !== null) fs.writeFileSync(path.join(d, 'CHANGELOG.md'), `# CHANGELOG\n\n${changelog}`)
   return d
 }
@@ -44,6 +46,24 @@ describe('saude das releases', () => {
     const r = releaseHealth(proj('## 0.0.1-dev.1\n\n### O que mudou\n- x\n'), { tags: ['v0.0.1-dev.1'] })
     expect(falhas(r)).toEqual(['subsecoes'])
     expect(r.linhas.find((l) => l.nome === 'subsecoes').detalhe).toMatch(/Por que/)
+  })
+
+  it('sem fonte da versao: falha (Endurance: a versao so vivia na tag)', () => {
+    expect(falhas(releaseHealth(proj(SEC('0.0.1-dev.1'), null), { tags: ['v0.0.1-dev.1'] }))).toEqual(['fonte'])
+  })
+
+  it('fonte diferente do topo do CHANGELOG: falha; package.json conta como fonte', () => {
+    expect(falhas(releaseHealth(proj(SEC('0.0.1-dev.2'), '0.0.1-dev.1'), { tags: ['v0.0.1-dev.2'] }))).toEqual(['fonte'])
+    const d = proj(SEC('0.0.1-dev.2'), null)
+    fs.writeFileSync(path.join(d, 'package.json'), JSON.stringify({ version: '0.0.1-dev.2' }))
+    expect(falhas(releaseHealth(d, { tags: ['v0.0.1-dev.2'] }))).toEqual([])
+  })
+
+  it('.ai/VERSION nao conta como fonte do projeto (e a do catalogo do Tars)', () => {
+    const d = proj(SEC('0.0.1-dev.1'), null)
+    fs.mkdirSync(path.join(d, '.ai'))
+    fs.writeFileSync(path.join(d, '.ai', 'VERSION'), '0.0.1-dev.1\n')
+    expect(falhas(releaseHealth(d, { tags: ['v0.0.1-dev.1'] }))).toEqual(['fonte'])
   })
 
   it('CHANGELOG adiantado (versao em preparo acima da ultima tag) nao reprova', () => {

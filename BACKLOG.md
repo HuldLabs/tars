@@ -25,6 +25,7 @@ A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mes
 - **Hotfix**: correção urgente sobre uma versão publicada (branch, versão, Release e aviso).
 - **Incidente em produção**: detectar, conter, comunicar, corrigir e registrar no ledger (liga com `incidente-vira-prevencao.md`).
 - **Atualização de dependências**: bump de peças do ecossistema (Tars na base do Endurance) e de terceiros, com cadência e gate.
+- **`tars release prepare`** (Endurance, 14/10): montar o PR final pelo modelo `templates/PR-RELEASE.tpl.md`, subindo a fonte da versão, abrindo a seção do CHANGELOG e listando os bugs reportados.
 - **Descontinuar**: tirar de uso uma versão, feature ou peça sem quebrar o consumidor.
 
 ## Bugs reportados por consumidores

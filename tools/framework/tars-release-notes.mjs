@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseChangelog } from './tars-upgrade.mjs'
+import { versaoDoProjeto } from './tars-release-health.mjs'
 
 /** Para quem e' cada asset, pelo sufixo do nome. A ordem e' a da tabela. */
 const PUBLICO = [
@@ -115,8 +116,8 @@ export function cli(rest, { cwd = process.cwd(), log = console.log } = {}) {
     return i === -1 ? null : rest[i + 1]
   }
   if (v('--kind') && !['bin', 'image'].includes(v('--kind'))) throw new Error('uso: --kind bin|image')
-  const version = v('--version') ?? (existsSync(join(cwd, '.ai', 'VERSION')) ? readFileSync(join(cwd, '.ai', 'VERSION'), 'utf8').trim() : null)
-  if (!version) throw new Error('uso: tars release-notes --version <X.Y.Z[-dev.N]> (ou .ai/VERSION no projeto)')
+  const version = v('--version') ?? versaoDoProjeto(cwd).versao
+  if (!version) throw new Error('uso: tars release-notes --version <X.Y.Z[-dev.N]> (ou a versao no package.json/pyproject.toml/VERSION do projeto)')
   const changelog = readFileSync(resolve(cwd, v('--changelog') ?? 'CHANGELOG.md'), 'utf8')
   const md = gerar({
     version,
