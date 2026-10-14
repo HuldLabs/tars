@@ -543,6 +543,26 @@ export function assertNotClobberingEmpty(file, md, { force = false } = {}) {
   return { existentes, novo };
 }
 
+/**
+ * A-cap (achado 14/10): a guarda acima olha o STORE vazio, nao o `cap`. Quando o
+ * orcamento de boot chega a 0 (`available === 0`), o corte devolve `cap === 0` e o
+ * indice sai `(vazio)` COM a memoria cheia — foi assim que o `INDEX.md` do segtools
+ * perdeu 264 entradas e o `memory.index.json` 3835 linhas. Zero entradas com store
+ * cheio NUNCA e' intencao: e' orcamento mal configurado. Falha ALTO nomeando a
+ * contagem, o teto e a origem; o `cap` e' o piso de 1 (o boot carrega AO MENOS uma
+ * linha: memoria que se esconde inteira nao serve de nada).
+ */
+export function assertCapNotZero({ cap, total, teto, file = FILE } = {}) {
+  if (total > 0 && cap === 0) {
+    throw new Error(
+      `indice ${path.relative(REPO, file)}: orcamento de boot zerou o indice — ${total} entrada(s) na memoria, teto ${Number.isFinite(teto) ? teto + " tokens" : "sem teto"}, cap 0. ` +
+        `O boot nao pode carregar zero entradas com a memoria cheia (ajuste o teto do boot-budget.json ou a lista de arquivos do boot).`,
+    );
+  }
+  return { cap, total };
+}
+
+
 /** Grava os DOIS indices + o mapa completo (`.ai/memory/memory.index.json`). */
 export function writeIndex(memoryFile = FILE, ledgerFile = LEDGER_FILE, opts = {}) {
   const count = (md) => md.split("\n").filter((l) => l.startsWith("- [")).length;
@@ -550,6 +570,10 @@ export function writeIndex(memoryFile = FILE, ledgerFile = LEDGER_FILE, opts = {
   const ledgerIndexFile = opts.ledgerIndexFile ?? LEDGER_INDEX_FILE;
   const md = renderIndex(memoryFile, opts);
   const ledgerMd = renderLedgerIndex(ledgerFile);
+  // A-cap: `cap === 0` com store cheio e' orcamento mal configurado, nunca intencao —
+  // falha antes de escrever (a guarda de clobber so' pega o store vazio).
+  const corte = capIndexEntries({ ...readIndexBudget(), ...opts, file: memoryFile });
+  assertCapNotZero({ ...corte, file: memoryFile });
   assertNotClobberingEmpty(indexFile, md, { force: opts.force });
   assertNotClobberingEmpty(ledgerIndexFile, ledgerMd, { force: opts.force });
   fs.writeFileSync(indexFile, md);

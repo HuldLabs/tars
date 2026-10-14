@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir, loadTags, resolveTag, assertNotClobberingEmpty } from "./ai-memory.mjs";
+import { SCHEMA_KEYS, parseSchemaDoc, validateSchemaDoc, validateMemoryEntry, validateMemoryFile, addEntry, doctor, ensureLedger, entryIdentity, pickSurvivor, validateLedgerEntry, renderIndex, renderLedgerIndex, capIndexEntries, mergeFederated, mergeLayers, resolveBaseDir, loadTags, resolveTag, assertNotClobberingEmpty, assertCapNotZero } from "./ai-memory.mjs";
 
 // Gate da memoria operacional (regra sem teste = sugestao). Portado da ideia do
 // contract test do Fabber, adaptado ao nosso schema reduzido. NEGATIVO (as regras
@@ -297,6 +297,34 @@ describe("TARS-MEM-3 — indice nao sobrescreve conteudo por (vazio)", () => {
   it("indice com entrada nova (nao vazio) nunca dispara", () => {
     const f = fixture("INDEX.md", comN.join("\n") + "\n");
     expect(() => assertNotClobberingEmpty(f, "- [mem-z] outro\n")).not.toThrow();
+  });
+});
+
+// A-cap (achado 14/10): o indice do segtools caiu para 0 entradas e o
+// `memory.index.json` perdeu 3835 linhas porque o ORCAMENTO de boot zerou o
+// `cap`. A guarda do TARS-MEM-3 so' olha o store vazio, nao o cap.
+describe("A-cap — orcamento de boot nao pode zerar o indice com store cheio", () => {
+  it("cap 0 com store cheio falha ALTO nomeando contagem e teto", () => {
+    expect(() => assertCapNotZero({ cap: 0, total: 264, teto: 100, file: "/tmp/INDEX.md" })).toThrow(/264 entrada.*teto 100 tokens.*cap 0/);
+  });
+  it("store vazio com cap 0 nao trava (nada a perder)", () => {
+    expect(() => assertCapNotZero({ cap: 0, total: 0, teto: 100 })).not.toThrow();
+  });
+  it("cap >= 1 nunca dispara", () => {
+    expect(() => assertCapNotZero({ cap: 1, total: 264, teto: 100 })).not.toThrow();
+  });
+  it("o PISO de 1 do corte: teto apertado nunca devolve cap 0 com store preenchido", () => {
+    // O corte sempre deixa AO MENOS uma entrada quando ha' elegiveis (o `n > 0` do laco).
+    // A prova e' o estado que o segtools atingiu: teto apertado + store cheio.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cap-"));
+    const m = path.join(dir, "operational-memory.jsonl");
+    fs.writeFileSync(m, JSON.stringify({ ...base, id: "mem-a", statement: "x".repeat(200) }) + "\n");
+    const { cap, total } = capIndexEntries({ file: m, teto: 10, arquivos: [] });
+    expect(total).toBeGreaterThan(0);
+    expect(cap).toBeGreaterThanOrEqual(1); // o piso protege: cap 0 so' por `entries` vazio
+    expect(() => assertCapNotZero({ cap, total, teto: 10 })).not.toThrow();
+    // E se `entries` chega vazio COM o arquivo cheio (o caso real), a guarda dispara.
+    expect(() => assertCapNotZero({ cap: 0, total: 264, teto: 10 })).toThrow(/orcamento de boot zerou o indice/);
   });
 });
 
