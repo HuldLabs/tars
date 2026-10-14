@@ -430,6 +430,36 @@ describe("tars-sync — wiring do harness (fatia 3a)", () => {
     expect(fs.existsSync(path.join(project, ".ai", "base", "guards", "test-alpha-guard.sh"))).toBe(true);
   });
 
+  it("guard de CONTEUDO nao vai para o Bash: matcher vem do `[hooks.guard]` (TARS-BUG-2)", async () => {
+    // O sync amarrava TODO guard declarado ao `PreToolUse:Bash` — um guard que julga o
+    // ESCRITO (ex.: `daneel-acoes`, Edicao de arquivo) nunca disparava na ferramenta que
+    // escreve. Endurance, 14/10. O matcher e' DECLARADO no manifesto, nunca inferido.
+    const { preToolUseFor } = await import("./tars-sync.mjs");
+    expect(preToolUseFor({ guards: ["alpha-guard", "daneel-acoes"], hooks: { guard: { "daneel-acoes": "Edit|Write" } } })).toEqual([
+      {
+        matcher: "Bash|PowerShell",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/alpha-guard.sh"' }],
+      },
+      {
+        matcher: "Edit|Write",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/daneel-acoes.sh"' }],
+      },
+    ]);
+
+    // Fim a fim: o settings do consumidor segue o manifesto.
+    const { tars, project } = scaffold({
+      manifest: `${MANIFEST}\n[hooks.guard]\n"alpha-guard" = "Edit|Write"\n`,
+    });
+    await sync({ tars, project, log: () => {} });
+    const s = JSON.parse(fs.readFileSync(path.join(project, ".claude", "settings.json"), "utf8"));
+    expect(s.hooks.PreToolUse).toEqual([
+      {
+        matcher: "Edit|Write",
+        hooks: [{ type: "command", command: 'bash "$CLAUDE_PROJECT_DIR/.ai/base/guards/alpha-guard.sh"' }],
+      },
+    ]);
+  });
+
   it("hook da base cita o caminho que EXISTE (projeto ou base copiada), nao `.ai/guards/` fixo", async () => {
     // O consumidor que so' usa a base copiada tem os guards em `.ai/base/guards/`. Emitir
     // `.ai/guards/<file>` fixo fazia o harness rodar `bash: no such file` (seo-brain, 07/10).

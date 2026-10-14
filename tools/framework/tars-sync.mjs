@@ -97,9 +97,13 @@ export function parseToml(text) {
       section = alvo[caminho.at(-1)] ??= {}
       continue
     }
-    const kv = trimmed.match(/^([A-Za-z_][\w.-]*)\s*=\s*(.+)$/)
+    // Chave entre ASPAS (`"meu-guard" = "Edit|Write"`) e' a forma do TOML para chave com
+    // hifen/ponto; o parser basico so' aceitava `[A-Za-z_][\w.-]*`, o que barraria o
+    // `[hooks.guard]` no nome do guard (TARS-BUG-2).
+    const kv = trimmed.match(/^(?:"([^"]+)"|([A-Za-z_][\w.-]*))\s*=\s*(.+)$/)
     if (!kv) throw new Error(`linha TOML nao entendida: ${trimmed}`)
-    const [, k, rest] = kv
+    const k = kv[1] ?? kv[2]
+    const rest = kv[3]
     if (rest.startsWith('[') && !rest.includes(']')) {
       key = k
       buffer = rest
@@ -175,6 +179,9 @@ export async function readManifest(project) {
     contracts: tars.contracts ?? [],
     // `[tars.env]` — ambiente extra do agente (o sync sempre injeta o NAO INTERATIVO).
     env: cfg.env ?? {},
+    // `[hooks.guard]` — em QUAIS ferramentas cada guard declarado roda (default
+    // `Bash|PowerShell`). Guard de conteudo declara o proprio matcher (TARS-BUG-2).
+    hooks: cfg.hooks ?? {},
     gates,
   }
 }
@@ -503,12 +510,36 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 /** Um guard DECLARADO vira o comando que o harness roda (relativo ao projeto). */
 const guardCommand = (item) => `bash "$CLAUDE_PROJECT_DIR/.ai/base/${destOf({ area: 'guards', item })}"`
 
-/** PreToolUse: um comando por guard declarado; entrada vazia se nenhum. */
+/**
+ * MATCHER do PreToolUse: em QUAIS ferramentas o guard roda. O default (`Bash|PowerShell`)
+ * vale para guard de SHELL, que julga linha de comando; guard que julga CONTEUDO/arquivo
+ * declarado pelo projeto traz o proprio matcher em `.ai/tars.toml`:
+ *
+ *   [hooks.guard]
+ *   "meu-guard" = "Edit|Write"
+ *
+ * Sem isso o sync amarrava TODO guard ao Bash: um guard de conteudo (ex.: `daneel-acoes`,
+ * que julga o ESCRITO) so' disparava em comando de shell — nunca na ferramenta que escreve
+ * (TARS-BUG-2, reportado pelo coord do Endurance em 14/10). O matcher e' DECLARADO, nunca
+ * inferido do nome do arquivo: adivinhar por prefixo quebraria no guard que muda de escopo.
+ */
+export const GUARD_MATCHERS = (manifest) => manifest.hooks?.guard ?? {}
+export const DEFAULT_GUARD_MATCHER = 'Bash|PowerShell'
+export const guardMatcher = (manifest, item) => GUARD_MATCHERS(manifest)[item] ?? DEFAULT_GUARD_MATCHER
+
+/** Agrupa comandos por matcher, preservando a ordem de declaracao (hook e' ORDEM). */
+function byMatcher(entries) {
+  const grupos = new Map()
+  for (const { matcher, command } of entries) {
+    if (!grupos.has(matcher)) grupos.set(matcher, [])
+    grupos.get(matcher).push({ type: 'command', command })
+  }
+  return [...grupos].map(([matcher, hooks]) => ({ matcher, hooks }))
+}
+
+/** PreToolUse: um comando por guard declarado, agrupado pelo matcher declarado. */
 export function preToolUseFor(manifest) {
-  const commands = hookGuards(manifest).map(guardCommand)
-  return commands.length
-    ? [{ matcher: 'Bash|PowerShell', hooks: commands.map((command) => ({ type: 'command', command })) }]
-    : []
+  return byMatcher(hookGuards(manifest).map((item) => ({ matcher: guardMatcher(manifest, item), command: guardCommand(item) })))
 }
 
 /**
@@ -577,9 +608,9 @@ export function projectGuardHooks(project, manifest) {
   for (const item of hookGuards(manifest)) {
     const rel = destOf({ area: 'guards', item })
     if (!existsSync(join(project, prefixo, rel))) throw new Error(`guard '${item}' declarado mas ausente (${rel}) — rode \`tars sync\``)
-    out.push({ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/${prefixo}/${rel}"` })
+    out.push({ matcher: guardMatcher(manifest, item), command: `bash "$CLAUDE_PROJECT_DIR/${prefixo}/${rel}"` })
   }
-  return out.length ? [{ matcher: 'Bash|PowerShell', hooks: out }] : []
+  return byMatcher(out)
 }
 
 /** Hooks da base, agrupados por evento; sem `project` (teste puro) todos entram. */
@@ -934,6 +965,11 @@ rules   = []                                        # ex.: ["base"]
 memory  = []                                        # fatias da memoria base por tema, ex.: ["git", "db"]
 guards  = []                                        # ex.: ["block-secret-dump", "sessionstart-context-digest"]
 governance = []                                     # ex.: ["EVOLUTION", "source-of-truth"]
+
+# Matcher do PreToolUse por guard (opcional). Default: "Bash|PowerShell" (guard de shell).
+# Guard que julga CONTEUDO/arquivo roda na ferramenta que escreve, nao no Bash:
+# [hooks.guard]
+# "daneel-acoes" = "Edit|Write"
 
 # Ambiente extra do agente (opcional). O sync SEMPRE injeta o nao interativo
 # (GIT_TERMINAL_PROMPT=0, GCM_INTERACTIVE=never, GIT_SSH_COMMAND com BatchMode).
