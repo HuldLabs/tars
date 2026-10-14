@@ -100,6 +100,23 @@ Two different jobs, two different tools — do not merge them.
 - **Measure on the ruler of the adopted tool.** A study that measures the stack by another
   tool's unit is on the wrong ruler, and its comparison decides nothing.
 
+## 8. Exposing a service: tunnel + edge access, credential per project, two layers of auth
+
+- **Exposure is a pattern, not an improvisation:** the service is published through an
+  **outbound tunnel** terminated by an **edge access layer** (an identity-aware proxy in front
+  of it), never by opening the port on the host. The tunnel is outbound, so the host keeps no
+  inbound surface.
+- **Credential per project, never the neighbour's.** Each exposed service gets its **own** edge
+  token/identity — reusing another project's credential is the same cross-project coupling the
+  catalogue forbids everywhere else, with a worse blast radius.
+- **Two auth layers: workload identity + task identity.** A credential that proves *which
+  class of runner/service is calling* is not the same as one that proves *which unit of work
+  it is allowed to run*. Name both; a single token doing both is a single token to steal.
+- **Isolated runner: pull, own clone, immediate push.** A distributed runner **pulls** its
+  work, works on its **own clone and branch**, and pushes immediately (commit-per-step POP) —
+  no shared checkout, no shared credential file, and no "the coordinator's tree" as an implicit
+  dependency. If the runner needs the coordinator's disk to finish, it is not isolated.
+
 ## Checklist before delivering a recipe
 
 - [ ] The ficha/host file is the declaration: inventory and manifest in one, versioned.
