@@ -129,6 +129,9 @@ jobs:
       - name: Baixar os binarios
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
+          # SO' os binarios: sem filtro, o job baixava tambem o registro de build do Docker
+          # (`*.dockerbuild`, do build-push-action), que nao extrai e derrubava a Release.
+          pattern: tars-linux-*
           path: dist
           merge-multiple: true
 
@@ -184,6 +187,9 @@ jobs:
       - name: Baixar os binarios
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
+          # SO' os binarios: sem filtro, o job baixava tambem o registro de build do Docker
+          # (`*.dockerbuild`, do build-push-action), que nao extrai e derrubava a Release.
+          pattern: tars-linux-*
           path: dist
           merge-multiple: true
 
