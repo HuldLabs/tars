@@ -38,6 +38,34 @@ declaration, and nothing lives only in someone's head or in a web panel.
 - A UI/panel alias is **versioned code**, not state living in the panel's database. What is
   clicked into a web form cannot be reviewed, diffed or restored; what is in the repo can.
 
+## 3.1 The release channel decides which tag is served
+
+Production serves the **stable tag**; a pre-release needs an explicit guard to be served
+at all. The failure mode is not a bad build — it is a bad build reaching the consumers
+on its own, because the channel that should hold it back is the same knob the new tag
+moves.
+
+- The stable channel stays on the stable tag. A pre-release ships only with a deliberate
+  opt-in that names it, and the opt-in is per deploy, not a default that changed once.
+- A pre-release tag that becomes "the latest" without that opt-in is a defect in the
+  publisher, not a judgment call for the operator noticing it late.
+- Say which channel a recipe targets: a small install and a production rollout are different
+  recipes — the second one's check must also assert the tag served, not only that the
+  service answers.
+
+## 3.2 A PoC with a fixed tag and a named volume survives the bump
+
+A PoC exists to compare versions; if the bump destroys the setup, every iteration starts
+from zero and the comparison is between two hand-built environments instead of two
+versions.
+
+- The PoC pins a **fixed tag** (not `latest`) for the old version and keeps its **named
+  volume**, so the new version can be measured against the same data without rebuilding it.
+- The volume is **named on purpose**, so the next bump does not silently inherit the
+  previous run's state and read as "the new version behaves identically".
+- The setup is rebuildable from the declaration (bootstrap above); the pinned tag and volume
+  make the *comparison* repeatable, not the install.
+
 ## 3. A recipe ends with a check that fails loud
 
 **"It ran" is not "it worked".** Every recipe closes with a check that **fails** if the
