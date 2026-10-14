@@ -148,6 +148,8 @@ jobs:
           # As notas saem do CHANGELOG + artefatos (dono, 14/10): destaques, downloads com
           # sha256, imagem por digest, instalar, a secao do CHANGELOG, verificacao, comparacao.
           versao="${GITHUB_REF_NAME#v}"
+          # o CLI importa o catalogo embutido (gerado, fora do git): gera antes, como o job binario.
+          node tools/framework/tars-embed-catalog.mjs --tars . --out tools/framework/tars-embedded.mjs
           prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
           node tools/framework/tars.mjs release-notes --version "${versao}" --dist dist \
             --image "${IMAGE}@${{ needs.imagem.outputs.digest }}" --repo "${GITHUB_REPOSITORY}" \
