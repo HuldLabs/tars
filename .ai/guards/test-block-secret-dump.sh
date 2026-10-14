@@ -47,4 +47,18 @@ check "rg com keys.txt no padrao"   Bash 'rg -n keys.txt scripts/'              
 # interpretador continua bloqueando DEPOIS de && / | (checagem por segmento)
 check "node apos && lendo secrets"  Bash 'cat x && node -e fs.readFileSync("secrets/dev.env.sops")'  block
 check "python apos pipe lendo key"  Bash 'echo x | python3 -c print(open("keys.txt").read())'        block
+
+# julga a ACAO, nao a palavra no caminho (issue dev.19): leitor+arquivo de segredo
+check "head secrets (le valor)"     Bash "head -5 secrets/dev.env"                    block
+check "tail .env (le valor)"        Bash "tail -n 20 apps/hub/.env"                   block
+check "less token"                  Bash "less config/api.token"                      block
+check "source .env (le valor)"      Bash "source .env"                                block
+check "op read sem out-file"        Bash 'op read op://vault/item/token'              block
+check "op read com --out-file"      Bash 'op read op://vault/item/token --out-file /tmp/t' allow
+check "head *.sops (cifrado)"       Bash "head -3 secrets/dev.env.sops"               allow
+# FALSO POSITIVO da issue: "secrets" no NOME do arquivo, codigo-fonte -> permitido
+check "cat src/secrets/install.sh"  Bash "cat src/secrets/install.sh"                 allow
+check "bash src/secrets/install.sh" Bash "bash src/secrets/install.sh"                allow
+check "grep no codigo secrets/"     Bash "grep -n token src/secrets/install.sh"       allow
+check "cat secrets/loader.mjs"      Bash "cat tools/secrets/loader.mjs"               allow
 exit $fail
