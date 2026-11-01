@@ -11,7 +11,7 @@
 
 ## Estado
 
-- dev.29 cortada em 01/11/2026; Kerr provou BUG-23/24/12 com token real. Consumidores ainda atualizam.
+- dev.30 cortada em 01/11/2026 depois de 4 rodadas de adoção com candidato (rc.1 a rc.4) no Kerr e no Endurance; as duas últimas voltaram limpas.
 
 ## Como operar
 
