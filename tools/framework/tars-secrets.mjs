@@ -39,6 +39,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { actor } from './tars-actor.mjs'
+import { isCompiledBun } from './tars-runtime.mjs'
 import { parseToml } from './tars-sync.mjs'
 // O scan RAPIDO do doctor (so' env e rc) reusa os MESMOS padroes do `secrets scan` — um lugar
 // so' decide o que e' segredo (R3).
@@ -49,6 +50,12 @@ import { findSecretsIds } from './secrets-patterns.mjs'
  * `secrets-inject.mjs` do segtools). NAO e' ponto de entrada: quem o roda e' o `op run`.
  */
 const INJECT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'tars-secrets-inject.mjs')
+/**
+ * Como reexecutar o helper. No binario, `process.execPath` e' o proprio `tars` e o `.mjs` so'
+ * existe no `/$bunfs/` embutido: rodar `<tars> <INJECT>` falhava sempre (BUG-23, Kerr).
+ */
+export const comandoInject = (compiled = isCompiledBun()) =>
+  compiled ? [process.execPath, '__secrets-inject'] : [process.execPath, INJECT]
 
 /** Os dois escopos da chave age: a do projeto (vem do cofre) ou a da MAQUINA (gerada aqui). */
 export const ESCOPOS = ['project', 'machine']
@@ -562,10 +569,10 @@ export function refresh(cfg, { env = process.env, tty = process.stdin.isTTY } = 
     // primeiro \n EM SILENCIO (chave de assinatura quebrada, longe da causa). O `op run` entrega
     // o valor INTACTO no ambiente do filho, e o helper serializa o env resolvido em JSON — que
     // e' o unico jeito de a quebra de linha sobreviver ao cache.
-    const inj = spawnOp(['run', `--env-file=${cfg.template}`, '--', process.execPath, INJECT, cfg.template, tmp], envDoCofre(cfg, env))
+    const inj = spawnOp(['run', `--env-file=${cfg.template}`, '--', ...comandoInject(), cfg.template, tmp], envDoCofre(cfg, env))
     if (inj.status !== 0) {
       throw new ErroConfig(
-        `[secrets] o 1Password nao respondeu (ou uma referencia nao resolveu) — cache NAO atualizado.\n` +
+        `[secrets] o 1Password nao respondeu (ou uma referencia nao resolveu) — cache NAO atualizado: ${(inj.stderr || inj.error?.message || 'sem detalhe').trim()}\n` +
           `[secrets] Template: ${cfg.template}\n` +
           `[secrets] Confira: cofre/campo existem, quem le' tem acesso ao cofre, e a cota nao esgotou. Cache anterior segue valido.`,
       )
@@ -1665,14 +1672,17 @@ export function tokenSet(cfg, { env = process.env, le = leOculto, spawn = spawnO
   delete envNovo.OP_CONNECT_HOST
   delete envNovo.OP_CONNECT_TOKEN
   let ok = false
+  let causa = ''
   try {
-    ok = spawn(['whoami'], envNovo).status === 0
-  } catch {
-    ok = false
+    const w = spawn(['whoami'], envNovo)
+    ok = w.status === 0
+    causa = (w.stderr || w.error?.message || '').trim()
+  } catch (e) {
+    causa = e.message
   }
   if (!ok) {
     fs.rmSync(alvo, { force: true })
-    throw new ErroConfig('[secrets] o token novo NAO validou (`op whoami` recusou) — o antigo continua em uso')
+    throw new ErroConfig('[secrets] o token novo NAO validou (`op whoami` recusou: ' + causa + ') — o antigo continua em uso')
   }
   fs.renameSync(alvo, cfg.token_file)
   protegeArquivo(cfg.token_file)

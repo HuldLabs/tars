@@ -5,6 +5,7 @@
 // O `op` e' SEMPRE stub (nunca o de verdade: ele abriria o cofre de igual); `sops` e `age`
 // sao REAIS quando existem no PATH — sem eles os casos de ponta a ponta sao `skip` explicito,
 // nunca um verde falso.
+import { comandoInject } from './tars-secrets.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -1314,5 +1315,12 @@ describe('expiracao do token (`token_expires`)', () => {
 
   it('data malformada GRITA (nao passa como "sem data")', () => {
     expect(() => diasAte('10/10/2026')).toThrow(/token_expires invalido/)
+  })
+})
+
+describe('comandoInject (BUG-23)', () => {
+  it('compilado reexecuta o proprio tars; fonte roda o .mjs', () => {
+    expect(comandoInject(true)).toEqual([process.execPath, '__secrets-inject'])
+    expect(comandoInject(false)[1]).toMatch(/tars-secrets-inject\.mjs$/)
   })
 })

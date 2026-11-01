@@ -48,6 +48,7 @@ import * as incidentMod from './tars-incident.mjs'
 // `tars secrets` (dev.9): o cofre do PROJETO, declarado em `[secrets]` do `.ai/tars.toml`.
 // Como o doctor, o dono mora no modulo `tars-secrets.mjs`; aqui so' o despacho fino (R3).
 import * as secretsMod from './tars-secrets.mjs'
+import { injetar } from './tars-secrets-inject.mjs'
 // As operacoes do dia a dia (compare/fingerprint/set/copy/move/rm/scan/import) moram no
 // modulo proprio e reusam as primitivas do dono — aqui so' se escolhe QUEM despacha (R3).
 import * as secretsOps from './tars-secrets-ops.mjs'
@@ -432,6 +433,17 @@ function acessosCommand(rest) {
   process.exit(r ? (r.ok === false ? 1 : 0) : 1)
 }
 
+function envDeIdentidade(secrets, project) {
+  if (!secrets) return process.env
+  // O cofre da identidade e' o de `[secrets]`, com o token declarado la' (BUG-19, Kerr). Token
+  // ainda ausente nao derruba `show`/`verify`: quem precisa do cofre nomeia o que faltou.
+  try {
+    return secretsMod.envDoCofre(secretsMod.lerConfig(secrets, { project }))
+  } catch {
+    return process.env
+  }
+}
+
 /**
  * `tars identity show|verify|provision|revoke` (TARS-BUG-5): a identidade de automacao do
  * PROJETO. A tabela `[identity]` vem do `.ai/tars.toml` (o `bot` reusa a ref do cofre que o
@@ -449,6 +461,8 @@ function identityCommand(rest, project) {
     sub: rest[0],
     rest: rest.slice(1),
     cfg: { ...cfg, raiz, allowed_signers },
+    env: envDeIdentidade(toml.secrets, raiz),
+    deps: { valorDoCache: (nome) => secretsMod.decifraMapa(secretsMod.lerConfig(toml.secrets ?? {}, { project: raiz }))[nome] },
   })
   process.exit(r && r.ok === false ? 1 : 0)
 }
@@ -520,6 +534,11 @@ const COMMANDS = {
 }
 
 async function main() {
+  // Interno: o filho do `op run` no refresh (ver `comandoInject`); nao entra no USAGE.
+  if (cmd === '__secrets-inject') {
+    injetar(args[1], args[2])
+    return
+  }
   if (cmd === '--version' || cmd === '-v' || cmd === 'version') {
     versionCommand()
     return

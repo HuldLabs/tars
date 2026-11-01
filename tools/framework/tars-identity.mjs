@@ -158,7 +158,7 @@ export function botDeCofre(ref, { op = null, env = process.env } = {}) {
   if (op) return op(ref)
   const r = spawnSync('op', ['read', ref], { encoding: 'utf8', timeout: 20000, env })
   if (r.status !== 0) return null
-  return r.stdout.replace(/\r?\n$/, '')
+  return r.stdout.replace(/\r/g, '').replace(/\n$/, '')
 }
 
 /**
@@ -170,7 +170,9 @@ export function provision({ id, valor, tty = process.stdin.isTTY, fs = { existsS
   if (!id?.chave) throw new Error('provision: [identity].key_file nao declarado no .ai/tars.toml')
   if (!valor) throw new Error(`provision: o cofre (${id.origem ?? 'sem ref'}) nao devolveu a chave`)
   fs.mkdirSync(dirname(id.chave), { recursive: true })
-  fs.writeFileSync(id.chave, valor.endsWith('\n') ? valor : valor + '\n', { mode: 0o600 })
+  // CRLF do cofre quebra o OpenSSH com "error in libcrypto", longe da causa (BUG-20, Kerr).
+  const texto = valor.replace(/\r/g, '')
+  fs.writeFileSync(id.chave, texto.endsWith('\n') ? texto : texto + '\n', { mode: 0o600 })
   return { escrito: id.chave, modo: '0600' }
 }
 
@@ -265,6 +267,25 @@ export function carregarIdentidade({ cfg = {}, op = null, env = process.env, fs 
 }
 
 /** O CLI. `deps` permite ao teste injetar `op`/`ssh`/`fs` sem cofre nem rede. */
+/**
+ * `sign-setup --from-cache` (BUG-24): a chave sai do cache cifrado para `key_file`, sem TTY. O
+ * aval e' o token que o dono semeou (decisao do dono, 01/11): sem cache nao ha identidade. Deriva
+ * a `.pub` com `ssh-keygen -y`, e chave invalida falha alta em vez de virar assinatura muda.
+ */
+export function chaveDoCache({ id, valor, spawn = spawnSync, fs = { mkdirSync, writeFileSync, rmSync } } = {}) {
+  if (!id?.chave) throw new Error('sign-setup --from-cache: [identity].key_file nao declarado')
+  if (!valor) throw new Error('sign-setup --from-cache: [identity].key_cache sem valor no cache (rode `tars secrets refresh`)')
+  fs.mkdirSync(dirname(id.chave), { recursive: true })
+  const texto = valor.replace(/\r/g, '')
+  fs.writeFileSync(id.chave, texto.endsWith('\n') ? texto : texto + '\n', { mode: 0o600 })
+  const pub = spawn('ssh-keygen', ['-y', '-f', id.chave], { encoding: 'utf8' })
+  if (pub.status !== 0 || !pub.stdout.trim()) {
+    fs.rmSync(id.chave, { force: true })
+    throw new Error(`sign-setup --from-cache: chave invalida no cache: ${(pub.stderr || '').trim()}`)
+  }
+  fs.writeFileSync(`${id.chave}.pub`, pub.stdout, { mode: 0o644 })
+}
+
 export function runIdentity({ sub, rest = [], cfg = {}, deps = {}, env = process.env, log = console.log } = {}) {
   const id = carregarIdentidade({ cfg, op: deps.op, env, fs: deps.fs })
   const saida = (texto) => {
@@ -310,15 +331,23 @@ export function runIdentity({ sub, rest = [], cfg = {}, deps = {}, env = process
   if (sub === 'sign-setup') {
     const raiz = deps.raiz ?? cfg.raiz ?? process.cwd()
     const force = rest.includes('--force')
+    const escopo = rest.includes('--global') ? ['--global'] : []
+    if (rest.includes('--from-cache')) chaveDoCache({ id, valor: deps.valorDoCache?.(cfg.key_cache), spawn: deps.spawn })
     // O `allowed_signers` vem de `[secrets].allowed_signers` (a mesma ref do `tars secrets`).
     const asf = deps.allowedSigners ?? cfg.allowed_signers ?? null
-    const desejado = configAssinatura({ id, allowedSigners: asf, raiz })
+    const desejado = {
+      ...configAssinatura({ id, allowedSigners: asf, raiz }),
+      'user.name': cfg.git_name ?? null,
+      'user.email': cfg.git_email ?? null,
+      // Helper declarado no `.ai/tars.toml`; so' o `--global` o grava (o local segue o manual).
+      'credential.helper': escopo.length ? (cfg.git_helper ?? null) : null,
+    }
     const ler = deps.lerGitConfig ?? ((k) => lerGitConfig(raiz, k, { spawn: deps.spawn }))
     const atual = {}
-    for (const k of CHAVES_ASSINATURA) atual[k] = ler(k)
+    for (const k of Object.keys(desejado)) atual[k] = ler(k)
     const exec =
       deps.exec ??
-      ((k, v) => spawnSync('git', ['-C', raiz, 'config', k, v], { encoding: 'utf8', stdio: 'ignore' }))
+      ((k, v) => spawnSync('git', ['-C', raiz, 'config', ...escopo, k, v], { encoding: 'utf8', stdio: 'ignore' }))
     const r = signSetup({ raiz, desejado, force, atual, exec })
     log(saida(renderSignSetup(r)))
     if (!r.ok) process.exitCode = 1
