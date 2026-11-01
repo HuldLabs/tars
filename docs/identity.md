@@ -24,6 +24,7 @@ agente (verificar).
 | `identity verify [--host H]` | agente (read-only) | confere chave (0600) × cofre × `known_hosts` (pinned) × autorização no host; exit ≠ 0 no que faltar |
 | `identity provision` | **DONO (TTY)** | escreve a chave do bot (0600) a partir do cofre |
 | `identity revoke` | **DONO** | apaga a chave local e **NOMEIA** os hosts a limpar |
+| `identity sign-setup --from-cache [--global]` | agente | sem TTY: leva a chave do cache para `key_file` (sem CRLF), deriva a `.pub`, gera o `allowed_signers` e configura `git_name`, `git_email` e `git_helper`; o aval é o token semeado pelo dono |
 | `identity sign-setup [--force]` | agente | assinatura de commit por SSH (`gpg.format`/`user.signingkey`/`gpg.ssh.allowedSignersFile`); idempotente; sem `--force` não sobrescreve config do dono |
 
 ## Manifesto (`[identity]` no `.ai/tars.toml`)
@@ -47,7 +48,7 @@ known_hosts = "/home/daneel/.ssh/known_hosts"
 - **`verify` é read-only e honesto.** Campo ausente vira `(nao declarado)`; host que recusa
   a chave **falha nomeando o host e a saída do ssh**, nunca "ok" por vacuidade. Sem
   identidade nenhuma declarada, `verify` **falha alto** nomeando o comando do dono
-  (`tars identity provision`, com TTY) — automação nunca se auto-provisiona.
+  (`tars identity provision`, com TTY). A exceção é o `sign-setup --from-cache`: o token que o dono semeou é o aval (decisão de 01/11/2026).
 - **`sign-setup` porta o `signing-git-config` do Endurance, sem o agente.** Escreve a tríade
   de assinatura SSH (`gpg.format=ssh`, `user.signingkey`, `gpg.ssh.allowedSignersFile`) no
   `git config` do projeto; a chave assinante é a `.pub` do `key_file` (não o socket do

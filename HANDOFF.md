@@ -9,6 +9,10 @@
 - **Coord anterior:** COORD SegTools — consultável por mensagem entre sessões para histórico e
   o porquê de decisões.
 
+## Estado
+
+- dev.29 cortada em 01/11/2026; Kerr provou BUG-23/24/12 com token real. Consumidores ainda atualizam.
+
 ## Como operar
 
 - **Devcontainer:** `docker exec -u node segtools-dev bash -lc "cd /projects/tars && …"`. Não

@@ -29,6 +29,10 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 ### Por que
 Relatos de Kerr, Endurance e segtools, e a regeneração automática pedida pelo dono.
 
+Bugs reportados que esta versão fecha: Kerr (01/11) TARS-BUG-7 a 24; Endurance (01/11) versão
+divergente, hooks desligados, hook sem `tars` no PATH, falso positivo do `block-secret-dump`,
+commit no host e provision em container; segtools (14/10) STOP-WIRING.
+
 ### Arquivos impactados
 `tools/framework/tars*.mjs`, `.githooks/*`, `.ai/guards/*`, `.ai/gates/lint-swallow`, `docs/*`,
 `README.md`.
