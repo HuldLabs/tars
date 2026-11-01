@@ -347,6 +347,21 @@ describe("gate lint-swallow — erro engolido (TARS-SWALLOW-1)", () => {
     expect(r.stderr).toMatch(/b\.py:3/);
   });
 
+  it("shell: `git commit` filtrado ou anulado reprova; commit normal passa (BUG-7)", () => {
+    expect(roda(repoCom("a.sh", "git commit -m x | grep erro\n")).status).toBe(1);
+    expect(roda(repoCom("b.sh", "git commit -m x || true\n")).status).toBe(1);
+    expect(roda(repoCom("c.sh", "git commit -m x\nls | grep y\n")).status).toBe(0);
+  });
+
+  it("Rust: descarte solto reprova; uso do valor e motivo escrito passam (BUG-7)", () => {
+    expect(roda(repoCom("a.rs", "    let _ = f();\n")).status).toBe(1);
+    expect(roda(repoCom("b.rs", "    f().ok();\n")).status).toBe(1);
+    expect(roda(repoCom("c.rs", "    let x = f().ok();\n")).status).toBe(0);
+    expect(roda(repoCom("d.rs", "    let v = g\n        .ok();\n")).status).toBe(0);
+    expect(roda(repoCom("e.rs", "    let _guard = l.lock();\n")).status).toBe(0);
+    expect(roda(repoCom("f.rs", "    let _ = tx.send(1); // receptor pode ter saido\n")).status).toBe(0);
+  });
+
   it("arquivo limpo passa (catch que trata e except que propaga)", () => {
     expect(roda(repoCom("src/ok.mjs", "try { f() } catch (e) { log(e); throw e }\n")).status).toBe(0);
     expect(roda(repoCom("ok.py", "try:\n    f()\nexcept ValueError as e:\n    raise\n")).status).toBe(0);
