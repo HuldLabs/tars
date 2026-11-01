@@ -190,11 +190,13 @@ export function baseConfig({ env = process.env, platform = process.platform } = 
  */
 export function configDir({ project = process.cwd(), env = process.env, nome = nomeDoProjeto(project) } = {}) {
   const base = baseConfig({ env })
-  const legado = path.join(base, path.basename(path.resolve(project)))
   const novo = path.join(base, nome)
-  // Quem ja' tinha o cache pela pasta (ex.: `/workspace` no container) continua achando-o.
-  if (novo !== legado && !fs.existsSync(novo) && fs.existsSync(legado)) return legado
-  return novo
+  if (fs.existsSync(novo)) return novo
+  // Quem ja' tinha o cache pela pasta (ex.: `/workspace` no container) continua achando-o, e a
+  // worktree acha o do checkout PRINCIPAL (Kerr, 01/11: cada um resolvia um diretorio).
+  const pastas = [path.resolve(project), raizPrincipal(project)].filter(Boolean)
+  const legado = pastas.map((p) => path.join(base, path.basename(p))).find((d) => fs.existsSync(d))
+  return legado ?? novo
 }
 
 /**
@@ -202,6 +204,12 @@ export function configDir({ project = process.cwd(), env = process.env, nome = n
  * para outro diretorio de segredos (Kerr, 01/11). Ordem: remote `origin`, raiz do checkout
  * principal (worktree), pasta.
  */
+/** Raiz do checkout principal (numa worktree, o repo de onde ela saiu); null fora de git. */
+export function raizPrincipal(project, { spawn = spawnSync } = {}) {
+  const r = spawn('git', ['-C', project, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' })
+  return r.status === 0 && String(r.stdout).trim() ? path.dirname(String(r.stdout).trim()) : null
+}
+
 export function nomeDoProjeto(project, { spawn = spawnSync } = {}) {
   const git = (...a) => {
     const r = spawn('git', ['-C', project, ...a], { encoding: 'utf8' })
@@ -209,8 +217,8 @@ export function nomeDoProjeto(project, { spawn = spawnSync } = {}) {
   }
   const url = git('remote', 'get-url', 'origin')
   if (url) return path.basename(url.replace(/\/+$/, '')).replace(/\.git$/, '')
-  const comum = git('rev-parse', '--path-format=absolute', '--git-common-dir')
-  if (comum) return path.basename(path.dirname(comum))
+  const raiz = raizPrincipal(project, { spawn })
+  if (raiz) return path.basename(raiz)
   return path.basename(path.resolve(project))
 }
 

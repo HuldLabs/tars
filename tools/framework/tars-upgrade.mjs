@@ -62,7 +62,8 @@ export function notesBetween(blocos, from, to) {
   for (const b of blocos) {
     const kv = versionKey(b.version)
     if (kv === null) continue // cabecalho sem versao (ex.: `## [Unreleased]`)
-    if (compareVersions(b.version, to) > 0) continue
+    // Candidato `dev.N-rc.M` traz as notas da dev.N, que ele antecipa.
+    if (compareVersions(b.version, String(to).replace(/-rc\.\d+$/, '')) > 0) continue
     if (kf !== null && compareVersions(b.version, from) <= 0) continue
     out.push(b)
   }
@@ -74,7 +75,8 @@ export function lockVersion(project) {
   const file = join(project, '.ai', 'tars.lock')
   if (!existsSync(file)) return null
   try {
-    return JSON.parse(readFileSync(file, 'utf8'))?.tars?.version ?? null
+    const t = JSON.parse(readFileSync(file, 'utf8'))?.tars
+    return t?.de ?? t?.version ?? null
   } catch {
     return null
   }
