@@ -105,3 +105,7 @@ A mensagem de erro nomeia a **linha** e a chave, e **nunca** ecoa o valor (R4).
 | `secrets rotate` | DONO | gera a chave age nova, troca no cofre e recifra os versionados |
 | `secrets token set` | DONO | troca o token da service account (stdin oculto) |
 | `secrets git-credential <get\|store\|erase>` | git | entrega o PAT do cache só para os hosts de `git_hosts` |
+
+## Refs por ID
+
+No template, use `op://<cofre>/<ID do item>/<campo>`. Em teste do Kerr (01/11), o item por nome passou 1 de 5 vezes ("could not find item"), e por ID, 6 de 6.

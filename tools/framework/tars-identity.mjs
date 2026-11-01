@@ -272,7 +272,7 @@ export function carregarIdentidade({ cfg = {}, op = null, env = process.env, fs 
  * aval e' o token que o dono semeou (decisao do dono, 01/11): sem cache nao ha identidade. Deriva
  * a `.pub` com `ssh-keygen -y`, e chave invalida falha alta em vez de virar assinatura muda.
  */
-export function chaveDoCache({ id, valor, spawn = spawnSync, fs = { mkdirSync, writeFileSync, rmSync } } = {}) {
+export function chaveDoCache({ id, valor, email = null, allowedSigners = null, spawn = spawnSync, fs = { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } } = {}) {
   if (!id?.chave) throw new Error('sign-setup --from-cache: [identity].key_file nao declarado')
   if (!valor) throw new Error('sign-setup --from-cache: [identity].key_cache sem valor no cache (rode `tars secrets refresh`)')
   fs.mkdirSync(dirname(id.chave), { recursive: true })
@@ -284,6 +284,12 @@ export function chaveDoCache({ id, valor, spawn = spawnSync, fs = { mkdirSync, w
     throw new Error(`sign-setup --from-cache: chave invalida no cache: ${(pub.stderr || '').trim()}`)
   }
   fs.writeFileSync(`${id.chave}.pub`, pub.stdout, { mode: 0o644 })
+  // Sem o allowed_signers o commit assina e nao verifica (Kerr, 01/11). Linhas alheias ficam.
+  if (email && allowedSigners) {
+    const linha = `${email} ${pub.stdout.trim()}`
+    const atuais = fs.existsSync(allowedSigners) ? fs.readFileSync(allowedSigners, 'utf8').split('\n').filter(Boolean) : []
+    if (!atuais.includes(linha)) fs.writeFileSync(allowedSigners, [...atuais.filter((l) => !l.startsWith(`${email} `)), linha].join('\n') + '\n', { mode: 0o644 })
+  }
 }
 
 export function runIdentity({ sub, rest = [], cfg = {}, deps = {}, env = process.env, log = console.log } = {}) {
@@ -332,9 +338,12 @@ export function runIdentity({ sub, rest = [], cfg = {}, deps = {}, env = process
     const raiz = deps.raiz ?? cfg.raiz ?? process.cwd()
     const force = rest.includes('--force')
     const escopo = rest.includes('--global') ? ['--global'] : []
-    if (rest.includes('--from-cache')) chaveDoCache({ id, valor: deps.valorDoCache?.(cfg.key_cache), spawn: deps.spawn })
     // O `allowed_signers` vem de `[secrets].allowed_signers` (a mesma ref do `tars secrets`).
-    const asf = deps.allowedSigners ?? cfg.allowed_signers ?? null
+    const fromCache = rest.includes('--from-cache')
+    const declarado = deps.allowedSigners ?? cfg.allowed_signers ?? null
+    // Ref `op://` nao e' caminho: no --from-cache o arquivo nasce ao lado da chave.
+    const asf = fromCache && (!declarado || declarado.startsWith('op://')) ? `${id.chave}.allowed_signers` : declarado
+    if (fromCache) chaveDoCache({ id, valor: deps.valorDoCache?.(cfg.key_cache), email: cfg.git_email, allowedSigners: asf, spawn: deps.spawn })
     const desejado = {
       ...configAssinatura({ id, allowedSigners: asf, raiz }),
       'user.name': cfg.git_name ?? null,
