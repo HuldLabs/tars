@@ -4,6 +4,49 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.29
+
+### O que mudou
+- **Regeneração sem TTY.** `tars secrets refresh` funciona no binário, e
+  `tars identity sign-setup --from-cache [--global]` leva a chave do cache para `key_file`, deriva
+  a `.pub` e configura nome, e-mail e helper. `provision` lê o token de `[secrets]` e remove CRLF.
+- **`tars catalog`:** lista cada item como adotado, recusado ou pendente. Com
+  `docs/avaliar-catalogo.md`, vira passo da adoção e de toda atualização.
+- **Erros mostram a causa:** `refresh` e `token set` repassam o stderr do `op`.
+- **`check` e `doctor` acusam** `core.hooksPath` desligado (falha) e manifesto em versão diferente
+  do lock (aviso).
+- **Hook do git** não cai mais em checkout via `$TARS_HOME`: sem binário, falha dizendo o que falta.
+- **`TARS_HOME` de outra versão** é ignorado pelo binário, com aviso.
+- **O sync gera o hook de `Stop`.**
+- **Gates:** `no-add-all` roda em `pre-commit`; `lint-swallow` cobre shell e Rust.
+- **Guards:** `block-host-commit` novo; `block-secret-dump` aceita template `.tpl` e `src/secrets/`
+  e não cita mais o segtools; o resumo de sessão lê `.ai/context-digest.txt`.
+- **Boot e gates de agente:** o `sync` põe as `rules` no topo de `CLAUDE.md` e `AGENTS.md`, e
+  `[tars].agent_gates` liga a ponta `PreToolUse`. `fail-closed` passa sem JS staged.
+- **Gate `data-layout`** reprova arquivo novo fora de `data/<finalidade>/`.
+- **Doutrina:** `dados-do-projeto.md`, versão é lote e commit de agente no host.
+
+### Por que
+Relatos de Kerr, Endurance e segtools, e a regeneração automática pedida pelo dono.
+
+Bugs reportados que esta versão fecha: Kerr (01/11) TARS-BUG-7 a 24; Endurance (01/11) versão
+divergente, hooks desligados, hook sem `tars` no PATH, falso positivo do `block-secret-dump`,
+commit no host e provision em container; segtools (14/10) STOP-WIRING.
+
+### Arquivos impactados
+`tools/framework/tars*.mjs`, `.githooks/*`, `.ai/guards/*`, `.ai/gates/lint-swallow`, `docs/*`,
+`README.md`.
+
+### O que o consumidor faz
+- Rode `tars sync --upgrade`, `tars check`, `tars doctor` e `tars catalog`.
+- Garanta `tars` no PATH de todo shell que comita.
+- Se o resumo de sessão trazia regras do projeto, passe-as para `.ai/context-digest.txt`.
+- Para regenerar sem TTY, declare em `[identity]` `key_cache`, `git_name` e `git_email`.
+- Se ligou `.ai/base/gates/...` à mão no `settings.json`, declare em `agent_gates`: o sync agora é dono desse caminho.
+- Se `gpg.ssh.allowedSignersFile` já aponta outro caminho, `sign-setup --from-cache` acusa conflito: remova a config antiga ou use `--force`.
+- Use ID, não nome, nas refs `op://` do template.
+- Declare `block-host-commit` em `[tars].guards` se agentes rodam no host.
+
 ## 0.0.1-dev.28
 
 ### O que mudou

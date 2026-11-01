@@ -189,6 +189,8 @@ const USAGE = [
   '  identity revoke            DONO: apaga a chave local e NOMEIA os hosts a limpar',
   '  identity sign-setup        assinatura de commit por SSH: gpg.format/signingkey/',
   '                             allowedSignersFile no git do projeto; idempotente; --force',
+  '                             --from-cache: chave do cache para key_file, .pub e allowed_signers;',
+  '                             --global: grava no git global (container com .git compartilhado)',
   '',
   '  secrets scan [--onde X]    procura segredo em rc/profile, historico, transcripts, git',
   '                             (gitleaks) e templates; reporta so` arquivo:linha + o padrao',
