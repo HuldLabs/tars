@@ -91,7 +91,11 @@ function findRoot(start) {
 // (`tars-embedded.mjs`, gerado em build): materializado no cache do usuario, vira o TARS_HOME.
 function defaultTars() {
   if (!COMPILED) return null
-  return findRoot(dirname(process.execPath)) ?? materializar()
+  // Binario dentro de um checkout so' adota o catalogo dele na MESMA versao: em outra, mentia a
+  // propria versao (candidato dev.29 respondeu dev.28, Kerr 01/11).
+  const embutido = materializar()
+  const raiz = findRoot(dirname(process.execPath))
+  return raiz && syncMod.readVersion(raiz) === syncMod.readVersion(embutido) ? raiz : embutido
 }
 
 const args = process.argv.slice(2)

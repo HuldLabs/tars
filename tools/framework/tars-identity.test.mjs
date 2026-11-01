@@ -279,3 +279,13 @@ describe("sign-setup --from-cache (BUG-24)", () => {
     expect(() => chaveDoCache({ id: { chave: "/k" }, valor: undefined, fs: fsm() })).toThrow(/secrets refresh/);
   });
 });
+
+describe("allowed_signers no --from-cache (Kerr, 01/11)", () => {
+  it("gera, troca a linha do e-mail e preserva a alheia", () => {
+    const f = { "/as": "outro@x ssh-rsa B\neu@x ssh-ed25519 VELHA\n" };
+    const m = { existsSync: (n) => n in f, readFileSync: (n) => f[n], mkdirSync: () => {}, writeFileSync: (n, t) => { f[n] = t; }, rmSync: () => {} };
+    const spawn = () => ({ status: 0, stdout: "ssh-ed25519 AAA\n" });
+    chaveDoCache({ id: { chave: "/k" }, valor: "a", email: "eu@x", allowedSigners: "/as", spawn, fs: m });
+    expect(f["/as"]).toBe("outro@x ssh-rsa B\neu@x ssh-ed25519 AAA\n");
+  });
+});
