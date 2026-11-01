@@ -96,6 +96,8 @@ export function validateStructure(root = REPO) {
   const covered = new Map(TARGETS.map((t) => [t, 0]));
   for (const f of ruleFiles) {
     const fm = frontmatter(read(root, `${AI}/rules/${f}`) ?? "");
+    // `root: false` e' regra de apoio declarada (`ambiente.md`): nao conta como raiz do alvo.
+    if (fm?.root === "false") continue;
     if (!fm || fm.root !== "true") {
       errs.push(`${AI}/rules/${f} sem "root: true" no frontmatter`);
       continue;

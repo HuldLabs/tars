@@ -588,6 +588,13 @@ async function main() {
     console.log(USAGE)
     return
   }
+  // `<comando> --help` nunca executa o comando (Kerr: `identity sign-setup --help` rodava o setup).
+  const fim = args.indexOf('--')
+  const antes = fim === -1 ? args : args.slice(0, fim)
+  if (cmd !== 'hooks' && (antes.includes('--help') || antes.includes('-h'))) {
+    console.log(USAGE)
+    return
+  }
   const handler = COMMANDS[cmd]
   // O gate roda `node .ai/gates/<nome>/gate.mjs`: esse argv[1] NAO e' nosso comando — sem este
   // guarda o `TARS_GATE` (posto pelo `runHooks`) faria o CLI tentar despachar o caminho do gate.

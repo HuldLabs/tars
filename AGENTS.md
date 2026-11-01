@@ -1,3 +1,8 @@
+Please also reference the following rules as needed. The list below is provided in TOON format, and `@` stands for the project root directory.
+
+rules[1]{path}:
+  @.opencode/memories/ambiente.md
+
 # Princípios de boot
 
 Regra de boot de **todo** projeto que consome o Tars: o catálogo a leva ao consumidor
@@ -35,6 +40,28 @@ Porquê (incidente de 08/10/2026): o agente afirmou de memória como o push func
 do crash e errou; acionou a biometria do dono antes de verificar os caminhos que não a
 exigiam; e pediu ao dono ações que ele mesmo podia testar.
 
+## Quando perguntar e quando decidir (matriz única)
+
+Decisão do dono (14/10/2026). Substitui as versões conflitantes — "não agir em conversa sem
+ordem" (`docs/WORKING-AGREEMENT.md` do segtools), "pergunta não segura trabalho" e "só 4
+casos de pergunta" (mapas da curadoria 13/10, `seg-agentmem-1` #37/#38) e "perder por alvo"
+(`.ai/governance/perdas-por-alvo.md`). A régua é **uma**:
+
+| Situação | O que fazer |
+|---|---|
+| **Desconhecido** (não dá para medir o efeito sem executar) | **Pergunta** antes de agir |
+| **Irreversível** (apagar dado/infra de terceiro, push em produção, mudança sem rollback) | **Pergunta** antes de agir |
+| **Produção** (recurso do dono fora do write-set da tarefa) | **Pergunta** antes de agir |
+| **Reversível dentro do write-set da tarefa** (dá para desfazer com git, ou está em `.cache/`) | **Decide e entrega**, com `claim`/`verify` na prova |
+
+- **O write-set é o da tarefa**, não o repo inteiro: o que a tarefa mandou tocar é reversível
+  por construção (git); o resto continua exigindo pergunta.
+- **Decidir não é adivinhar:** vale para o reversível *ainda assim* medir antes de afirmar
+  (Regra zero). Decidir e errar dentro do write-set é reversível; perguntar o que já podia
+  medir custa um turno do dono.
+- **Pergunta não segura o resto:** enquanto a resposta não chega, siga o que **não** depende
+  dela e entregue o recorte; a pergunta fica nomeada com a fonte.
+
 ## Mantras (a régua de todo desenho)
 
 Toda decisão de arquitetura — e todo ADR — é julgada por estas bases, e o desenho **diz
@@ -60,15 +87,31 @@ como atende cada uma**:
 - **Agnosticidade.** De runtime e de stack: o núcleo não conhece a ferramenta nem o banco
   de quem o consome.
 
+## Idioma: identificador em inglês, texto em português
+
+Regra do dono, sem exceção de projeto (curadoria 14/10; `seg-agentmem-1` #27,
+`seg-agentmem-3` #3). A fronteira é **o que é símbolo** × **o que é lido por gente**:
+
+| Superfície | Idioma |
+|---|---|
+| Arquivo, pasta, módulo, plugin, tabela, coluna, tipo, função, variável, branch | **inglês** |
+| Texto de tela, docs, comentário de código, mensagem de commit, issue e comentário de issue, canal, **resposta ao dono** | **português** |
+
+- **Por que o identificador é em inglês.** Ele é lido por ferramentas e por convenção de
+  linguagem (import, rota, coluna de banco, `snake_case` de SQL): misturar idioma no símbolo
+  quebra busca, ordenação e o próprio hábito de quem lê código.
+- **Por que o texto é em português.** Quem lê é o dono e a equipe. Traduzir a saída para o
+  inglês não melhora nada e piora a precisão do que foi dito.
+- **A resposta ao dono entra na coluna do português.** Isso inclui resumo de entrega,
+  relatório de incidente e o texto do canal — não só o código.
+
 ## Doutrinas de extracao
 
-- **Idioma:** identificador (arquivo, pasta, módulo, plugin, tabela, coluna, tipo, função)
-  em **inglês**; texto de tela, doc, canal, commit e **resposta ao dono** em **português**.
-  A fronteira é o que o código consome × o que a pessoa lê: renomear identificador para
-  português quebra import/API e obriga tradução na fronteira; escrever prosa em inglês
-  para o dono custa leitura a quem decide. Não é preferência de estilo — é a mesma régua
-  dos dois lados do repositório (porte do bloco B5 do plano de 14/10; fontes
-  `seg-agentmem-1` #27, `seg-agentmem-3` #3).
+- **Conhecimento tem lugar por prazo, não por conveniência.** Fato/regra durável mora na
+  memória (`.ai/memory/`), estado de sessão no cursor (`HANDOFF.md`), o que falta na fila
+  (`BACKLOG.md`/tracker), incidente no ledger — e a mesma informação não mora em dois
+  lugares (o resto aponta). Regra que só existe no cursor morre com a sessão, em silêncio.
+  Fonte: `.ai/governance/onde-mora-o-conhecimento.md`.
 - **Versionamento:** toda peça extraída (Tars, Tomo, Sofon, Pion, Kipp, Lazarus, Endurance)
   nasce em `0.0.1-dev.N` e sobe a versão a cada entrega, com as notas de upgrade —
   `.ai/governance/versionamento-de-extracao.md`.
@@ -80,6 +123,11 @@ como atende cada uma**:
   (`TARS_PROD_ORDER=<data/motivo> <comando>`). Leitura (`ps`, `status`, `get`, `curl`) é
   livre; só a MUDANÇA é barrada — `.ai/gates/prod-guard/GATE.md` (doutrina
   `operacao/nada-em-prod-sem-ordem`).
+- **Bug do Tars é reportado e corrigido na próxima release.** Todo consumidor que encontrar um
+  bug no Tars (ou no `tars sync`/hook/gate) **reporta** no `BACKLOG` do tars com **repo, data e
+  reprodução** — e o bug **entra na próxima release**; contorno local só é temporário e fica
+  registrado como dívida nomeada. O `CHANGELOG` da release **lista os bugs reportados que
+  fechou**. Bug sem reprodução vira "a confirmar" — não vira dívida infinita.
 
 ## Ao fechar trabalho
 

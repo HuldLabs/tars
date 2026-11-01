@@ -38,5 +38,8 @@
       "docker images *": "allow",
       "git *": "allow"
     }
-  }
+  },
+  "instructions": [
+    ".opencode/memories/ambiente.md"
+  ]
 }
