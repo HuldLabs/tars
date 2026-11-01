@@ -34,7 +34,8 @@ export function listar(tars) {
 
 /** Junta catalogo, manifesto e decisoes. Declarado em qualquer hook de `[gates]` conta. */
 export function avaliar(itens, manifest = {}, decisoes = {}) {
-  const gates = Object.values(manifest.gates ?? {}).flat()
+  // `agent_gates` tambem e' adocao: o sync copia e liga o gate (Endurance, 01/11).
+  const gates = [...Object.values(manifest.gates ?? {}).flat(), ...(manifest.agentGates ?? [])]
   const declarados = (area) => (area === 'gates' ? gates : (manifest[area] ?? []))
   return itens.map((i) => {
     const d = decisoes[`${i.area}/${i.item}`]
