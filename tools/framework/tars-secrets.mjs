@@ -574,7 +574,7 @@ export function refresh(cfg, { env = process.env, tty = process.stdin.isTTY } = 
       throw new ErroConfig(
         `[secrets] o 1Password nao respondeu (ou uma referencia nao resolveu) — cache NAO atualizado: ${(inj.stderr || inj.error?.message || 'sem detalhe').trim()}\n` +
           `[secrets] Template: ${cfg.template}\n` +
-          `[secrets] Confira: cofre/campo existem, quem le' tem acesso ao cofre, e a cota nao esgotou. Cache anterior segue valido.`,
+          `[secrets] Confira: cofre/campo existem, quem le' tem acesso ao cofre, e a cota nao esgotou. Item por NOME falha de forma intermitente no 1Password: use o ID na ref. Cache anterior segue valido.`,
       )
     }
     const enc = roda('sops', ['--encrypt', '--input-type', 'json', '--output-type', 'json', '--age', rec, tmp])
