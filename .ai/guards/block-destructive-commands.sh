@@ -29,7 +29,7 @@ if printf '%s' "$CMD" | grep -Eq "(^|[[:space:]])${OVERRIDE_VAR}=1([[:space:]]|$
   exit 0
 fi
 
-LC="$(printf '%s' "$CMD" | tr '[:upper:]' '[:lower:]')"
+LC="$(so_comando "$CMD" | tr '[:upper:]"\047' '[:lower:]  ')"
 
 # docker compose down -v/--volumes (qualquer ordem de flags)
 if printf '%s' "$LC" | grep -Eq '(^|[;&|[:space:]])docker([[:space:]]+compose|-compose)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+down([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(-v|--volumes)([[:space:]]|$)'; then
