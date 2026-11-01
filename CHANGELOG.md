@@ -21,6 +21,8 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
 - **Gates:** `no-add-all` roda em `pre-commit`; `lint-swallow` cobre shell e Rust.
 - **Guards:** `block-host-commit` novo; `block-secret-dump` aceita template `.tpl` e `src/secrets/`
   e não cita mais o segtools; o resumo de sessão lê `.ai/context-digest.txt`.
+- **Boot e gates de agente:** o `sync` põe as `rules` no topo de `CLAUDE.md` e `AGENTS.md`, e
+  `[tars].agent_gates` liga a ponta `PreToolUse`. `fail-closed` passa sem JS staged.
 - **Doutrina:** `dados-do-projeto.md`, versão é lote e commit de agente no host.
 
 ### Por que
@@ -35,6 +37,7 @@ Relatos de Kerr, Endurance e segtools, e a regeneração automática pedida pelo
 - Garanta `tars` no PATH de todo shell que comita.
 - Se o resumo de sessão trazia regras do projeto, passe-as para `.ai/context-digest.txt`.
 - Para regenerar sem TTY, declare em `[identity]` `key_cache`, `git_name` e `git_email`.
+- Se ligou `.ai/base/gates/...` à mão no `settings.json`, declare em `agent_gates`: o sync agora é dono desse caminho.
 - Declare `block-host-commit` em `[tars].guards` se agentes rodam no host.
 
 ## 0.0.1-dev.28
