@@ -6,7 +6,9 @@ import {
   carregarIdentidade,
   configAssinatura,
   lerKnownHosts,
+  chaveDoCache,
   montarIdentidade,
+  provision,
   renderIdentidade,
   revoke,
   runIdentity,
@@ -246,5 +248,34 @@ describe("tars identity sign-setup — assinatura SSH idempotente (porta do Endu
     expect(r.ok).toBe(false);
     expect(logs.join("\n")).toMatch(/CONFLITO/);
     expect(escritos.some(([k]) => k === "gpg.format")).toBe(false);
+  });
+});
+
+describe("provision normaliza CRLF (BUG-20)", () => {
+  it("nenhum \\r chega ao arquivo da chave", () => {
+    const escrito = {};
+    const fsm = { existsSync: () => false, mkdirSync: () => {}, writeFileSync: (f, t) => { escrito[f] = t; } };
+    provision({ id: { chave: "/x/k" }, valor: "a\r\nb\r\n", tty: true, fs: fsm });
+    expect(escrito["/x/k"]).toBe("a\nb\n");
+  });
+});
+
+describe("sign-setup --from-cache (BUG-24)", () => {
+  const fsm = () => {
+    const f = {};
+    return { f, mkdirSync: () => {}, writeFileSync: (n, t) => { f[n] = t; }, rmSync: (n) => { delete f[n]; } };
+  };
+  it("grava chave sem CR e a .pub derivada", () => {
+    const m = fsm();
+    chaveDoCache({ id: { chave: "/k" }, valor: "a\r\n", spawn: () => ({ status: 0, stdout: "ssh-ed25519 AAA\n" }), fs: m });
+    expect(m.f).toEqual({ "/k": "a\n", "/k.pub": "ssh-ed25519 AAA\n" });
+  });
+  it("chave invalida falha alta e nao fica em disco", () => {
+    const m = fsm();
+    expect(() => chaveDoCache({ id: { chave: "/k" }, valor: "x", spawn: () => ({ status: 1, stderr: "error in libcrypto" }), fs: m })).toThrow(/libcrypto/);
+    expect(m.f).toEqual({});
+  });
+  it("cache sem o nome manda rodar o refresh", () => {
+    expect(() => chaveDoCache({ id: { chave: "/k" }, valor: undefined, fs: fsm() })).toThrow(/secrets refresh/);
   });
 });
