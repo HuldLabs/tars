@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse — bloqueia comandos que DESPEJAM segredos (sops/age, .env, env, docker).
-# Adaptado do Fabber (block-secret-dump.sh), sem `wp`/`op`: aqui os segredos vivem em
-# o cache local cifrado (ADR-013: ~/.cache/segtools/dev.env.sops + age.key) e o app NAO tem .env em texto puro.
+# Adaptado do Fabber (block-secret-dump.sh), sem `wp`/`op`: os segredos vivem no cache cifrado
+# do projeto (`tars secrets`), e o app NAO tem .env em texto puro.
 # Contrato: stdin {tool_name, tool_input:{command}}; exit 2 = block (stderr = motivo).
 # Fails OPEN: qualquer erro inesperado -> exit 0.
 set -uo pipefail
@@ -16,12 +16,11 @@ LC="$(printf '%s' "$CMD" | tr '[:upper:]' '[:lower:]')"
 
 block() {
   {
-    echo "BLOCKED by .ai/guards/block-secret-dump.sh: $1"
+    echo "BLOCKED by block-secret-dump: $1"
     echo ""
-    echo "Segredos ficam no cache local cifrado (ADR-013): ~/.cache/segtools/dev.env.sops"
+    echo "Segredos ficam no cache cifrado do projeto (tars secrets)."
     echo "Alternativas seguras:"
-    echo "  - node tools/framework/check-env.mjs   (imprime so PRESENCA: set/unset)"
-    echo "  - task secrets:names         (imprime so os NOMES das chaves)"
+    echo "  - tars secrets check         (confere sem abrir valor)"
     echo "  - compara por hash: <cmd> | sha256sum"
     echo "  - docker inspect --format '{{json .Mounts}}' <container>"
     echo "  - docker compose ps (nunca 'config')"
@@ -52,9 +51,9 @@ READERS='(^|[;&|[:space:]])(cat|bat|batcat|less|more|head|tail|sed|awk|strings|x
 # Ancora por CLASSE de separador (^|[[:space:]/]) — o `(^|/)` do GNU grep falha
 # de forma intermitente quando a entrada vem por PIPE (testado: exit 1 com o texto
 # presente); a classe e' estavel.
-SECRETFILE='(^|[[:space:]/])(\.env([.][a-z0-9_-]+)?|secrets/[^[:space:]]*|[^[:space:]]*\.(env|sops|key|pem|p12|pfx|token|credentials|netrc)|(id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc|\.pgpass))([[:space:]]|$)|\.cache/segtools|\.config/sops|keys\.txt'
+SECRETFILE='(^|[[:space:]/])(\.env([.][a-z0-9_-]+)?|secrets/[^[:space:]]+|[^[:space:]]*\.(env|sops|key|pem|p12|pfx|token|credentials|netrc)|(id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc|\.pgpass))([[:space:]]|$)|\.cache/segtools|\.config/sops|keys\.txt'
 # codigo-fonte dentro de secrets/ nao e valor de segredo (src/secrets/install.sh)
-SRCCODE='\.(sh|bash|zsh|py|mjs|cjs|js|ts|tsx|jsx|go|rs|rb|java|kt|md|json|toml|ya?ml|txt|html|css|scss)([[:space:]]|$)'
+SRCCODE='\.(tpl|sh|bash|zsh|py|mjs|cjs|js|ts|tsx|jsx|go|rs|rb|java|kt|md|json|toml|ya?ml|txt|html|css|scss)([[:space:]]|$)'
 if printf '%s' "$LC" | grep -Eq "$READERS"; then
   if printf '%s' "$LC" | grep -Eq "$SECRETFILE" && ! { printf '%s' "$LC" | grep -Eq '(^|[[:space:]/])secrets/.*'"$SRCCODE"; }; then
     # ler um .sops (CIFRADO) e inofensivo; mas so o VERBO-LEITOR puro: `cat a.sops`,
@@ -96,7 +95,7 @@ fi
 # termo secreto NO MESMO segmento ([^;&|]* nao cruza separador) — assim
 # `grep keys.txt` / `rg readFileSync` (executavel nao-interprete) NAO sao falso-positivo,
 # mas `node ... secrets/` apos `&&` ou `|` continua bloqueando.
-if printf '%s' "$LC" | grep -Eq '(^|[;&|])[[:space:]]*([a-z_][a-z0-9_]*=[^[:space:]]+[[:space:]]+)*(node|nodejs|python3?|deno|bun)[[:space:]][^;&|]*(secrets/|\.cache/segtools|age\.key|keys\.txt|\.config/sops|sops/age)'; then
+if printf '%s' "$LC" | grep -Eq '(^|[;&|])[[:space:]]*([a-z_][a-z0-9_]*=[^[:space:]]+[[:space:]]+)*(node|nodejs|python3?|deno|bun)[[:space:]][^;&|]*([^a-z0-9_/-]secrets/|\./secrets/|\.cache/segtools|age\.key|keys\.txt|\.config/sops|sops/age)'; then
   block "um interpretador (node/python/...) le secrets/ ou a chave age."
 fi
 

@@ -5,16 +5,14 @@ os arquivos que os agentes carregam no boot (`AGENTS.md`, `CLAUDE.md`,
 `.claude/**`, `.agents/**`, `.opencode/**`) são **pontes geradas** e finas, nunca a
 segunda fonte de verdade.
 
-Arquitetura completa: **`docs/adr/adr-019-camada-ai-canonica.md`** (rev. 2).
-
-## As 4 camadas (ADR-019 rev. 2)
+## As 4 camadas
 
 | # | Camada | O que é | Onde vive |
 |---|---|---|---|
 | 1 | **Conteúdo** | A verdade: regras, governança, skills, memória, hooks, MCP, permissões | `.ai/**` (este diretório) |
-| 2 | **Tradução** | Compila o conteúdo para o formato que cada ferramenta entende | `rulesync.jsonc` + `task ai:generate` |
+| 2 | **Tradução** | Compila o conteúdo para o formato que cada ferramenta entende | `rulesync.jsonc` |
 | 3 | **Runtime** | Guardas que rodam de fato na sessão (bloqueiam comando destrutivo, vazamento de segredo) | `.ai/guards/`, e as saídas `.claude/settings.json`, `.mcp.json`, `opencode.jsonc`, `.codex/` |
-| 4 | **Catálogo** | Skills de terceiros, instaladas por lockfile (nunca cópia à mão) | `.ai/skills.lock.json` + `task ai:skills:*` |
+| 4 | **Catálogo** | Skills de terceiros, instaladas por lockfile (nunca cópia à mão) | `.ai/skills.lock.json` |
 
 ## Mapa de pastas
 

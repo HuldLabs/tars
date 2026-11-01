@@ -69,3 +69,10 @@ Actions queimados).
 
 - `git branch -D` (perde trabalho calado; a poda usa `-d`, que barra o não
   incorporado), `reset`, `stash`, `git add -A/./-u/-f` e `--no-verify`.
+
+## Commit de agente no host
+
+Agente comita dentro do container. O guard `block-host-commit` barra `git commit` de agente no
+host, porque ali o commit usaria a assinatura do dono. Bypass só com aprovação explícita do dono,
+numa pergunta específica, feita sozinha e nunca em lote, válida para um único commit. Quem o humano
+comita no host não passa por este guard.

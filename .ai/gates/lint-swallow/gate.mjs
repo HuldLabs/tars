@@ -22,6 +22,12 @@ const allow = Array.isArray(params.allow) ? params.allow : []
 
 const JS = /\.(mjs|cjs|js|jsx|ts|tsx)$/i
 const PY = /\.py$/i
+const SH = /\.(sh|bash)$/i
+const RS = /\.rs$/i
+// Shell: saida de `git commit` filtrada ou anulada esconde a reprovacao do gate (BUG-7, Kerr).
+const SWALLOW_SH = /\bgit\s+commit\b.*(?:\|\s*(?:grep|tail|head)\b|\|\|\s*true\b)/
+// Rust: `Result` jogado fora sem tratar.
+const SWALLOW_RS = /^\s*let\s+_\s*=\s*.*\?*;\s*$|\.ok\(\);\s*$/
 
 // JS/TS: `catch` com corpo vazio — `catch {}`, `catch (e) {}`, `catch (e) { /* nada */ }`.
 // Casa no codigo JA' sem comentario (o comentario sai antes), entao `{ }` vazio e' vazio de verdade.
@@ -42,7 +48,7 @@ const tracked = trackedPaths(project)
 const modoProva = staged.length === 0
 if (modoProva) console.error('gate lint-swallow: nada staged — julgando a ARVORE RASTREADA (modo prova); sem staged NAO significa aprovado.')
 const candidatos = modoProva ? [...(tracked ?? [])] : staged.filter((f) => isTracked(tracked, f))
-const arquivos = candidatos.filter((f) => (JS.test(f) || PY.test(f)) && !allow.some((a) => f.includes(a)))
+const arquivos = candidatos.filter((f) => (JS.test(f) || PY.test(f) || SH.test(f) || RS.test(f)) && !allow.some((a) => f.includes(a)))
 
 /** A COLETA (compartilhada com `tars gates baseline`): os achados `<arquivo>:<linha>`. Pura
  *  quanto ao exit — quem julga e' o chamador. `lerLinha` amarra o hash do trecho da base. */
@@ -51,7 +57,7 @@ export function colher({ cwd = project } = {}) {
   for (const f of arquivos) {
     let txt
     try { txt = readFileSync(join(cwd, f), 'utf8') } catch { continue } // sumiu do disco: nada a julgar
-    const re = JS.test(f) ? SWALLOW_JS : SWALLOW_PY
+    const re = JS.test(f) ? SWALLOW_JS : SH.test(f) ? SWALLOW_SH : RS.test(f) ? SWALLOW_RS : SWALLOW_PY
     const linhas = txt.split(/\r?\n/).map((l) => l.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/, '').replace(/#.*$/, ''))
     linhas.forEach((codigo, i) => {
       if (re.test(codigo)) return achados.push(`${f}:${i + 1}`)

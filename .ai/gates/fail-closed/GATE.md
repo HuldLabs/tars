@@ -35,3 +35,5 @@ Negativo: `if (!reg) return { ok: true }` REPROVA.
 **Proveniencia** — porte da IDEIA do incidente do kipp (`seg-agentmem-2` #7) e do item B2.3
 do plano de release do Tars (14/10); a implementacao (julgamento da arvore pelo acorn que
 ja' esta' na arvore, via R1) e' nossa.
+
+**Requisito** — só para repo JS/TS com `vitest` instalado: o parser vem dele. Em outro repo, o gate reprova todo commit; não o declare.
