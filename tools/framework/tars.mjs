@@ -98,6 +98,13 @@ const cmd = args[0] ?? '--help'
 
 /** A raiz do CATALOGO, quando da' para saber: `TARS_HOME` > repo achado a partir do binario. */
 function tarsHome() {
+  // No binario, checkout de outra versao em TARS_HOME mentia em --version e check (BUG-14).
+  if (COMPILED && process.env.TARS_HOME) {
+    const proprio = defaultTars()
+    if (syncMod.readVersion(process.env.TARS_HOME) === syncMod.readVersion(proprio)) return process.env.TARS_HOME
+    console.error(`aviso: TARS_HOME (${process.env.TARS_HOME}) e' de outra versao; ignorado, uso o catalogo do binario`)
+    return proprio
+  }
   if (process.env.TARS_HOME) return process.env.TARS_HOME
   const d = defaultTars()
   return d && !d.startsWith('/$bunfs/') ? d : null
@@ -502,21 +509,40 @@ async function upgradeCommand(rest, project) {
 
 /** `tars --version` — a versao do catalogo (fonte: `package.json`). */
 function versionCommand() {
-  const tars = resolve(process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars())
+  const tars = resolve(tarsHome() ?? syncMod.findTars())
   const v = syncMod.readVersion(tars)
   console.log(v ?? 'desconhecida')
+}
+
+/** Imprime o que `divergenciasDeAdocao` acha; devolve quantas. Sem manifesto nao ha o que julgar. */
+async function acusaDivergencias(project) {
+  const raiz = resolve(project ?? process.cwd())
+  if (!existsSync(join(raiz, '.ai', 'tars.toml'))) return 0
+  const lockFile = join(raiz, '.ai', 'tars.lock')
+  const lock = existsSync(lockFile) ? JSON.parse(readFileSync(lockFile, 'utf8')) : null
+  const achados = syncMod.divergenciasDeAdocao(raiz, await syncMod.readManifest(raiz), lock)
+  for (const a of achados) console.error(a.startsWith('AVISO') ? a : `FALHA: ${a}`)
+  return achados.filter((a) => !a.startsWith('AVISO')).length
 }
 
 /** Monta as funcoes de despacho por comando; `check` e' `sync` com `--check` forcado. */
 const COMMANDS = {
   init: (rest, project) => sync('init', rest, project),
   sync: (rest, project) => sync('sync', rest, project),
-  check: (rest, project) => sync('sync', [...rest, '--check'], project),
+  check: async (rest, project) => {
+    const n = await acusaDivergencias(project)
+    await sync('sync', [...rest, '--check'], project)
+    if (n) process.exit(1)
+  },
   adopt: adoptCommand,
   hooks: runHooksCommand,
   promote: promoteCommand,
   curation: curationCommand,
-  doctor: doctorCommand,
+  doctor: async (rest, project) => {
+    const n = await acusaDivergencias(project)
+    await doctorCommand(rest, project)
+    if (n) process.exit(1)
+  },
   gates: gatesCommand,
   verify: verifyCommand,
   memory: memoryCommand,

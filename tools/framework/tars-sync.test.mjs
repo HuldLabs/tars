@@ -1,3 +1,4 @@
+import { divergenciasDeAdocao } from "./tars-sync.mjs";
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -1082,16 +1083,15 @@ describe("tars-sync — paridade Windows", () => {
     expect(deadHooks(project, await readManifest(project))).toBeNull();
   });
 
-  it("o corpo do hook procura nesta ordem: binario, PATH, fonte do catalogo, node do repo", () => {
+  it("o corpo do hook procura nesta ordem: binario, PATH, node do repo (nunca checkout alheio)", () => {
     const b = hookBody("pre-commit");
     const home = b.indexOf("$tars_home/dist/tars");
     const path = b.indexOf("command -v tars");
-    const catalogo = b.indexOf("node \"$tars_home/tools/framework/tars.mjs\"");
     const node = b.indexOf("node \"$root/tools/framework/tars.mjs\"");
     expect(home).toBeGreaterThan(-1);
     expect(path).toBeGreaterThan(home);
-    expect(catalogo).toBeGreaterThan(path);
-    expect(node).toBeGreaterThan(catalogo);
+    expect(b).not.toContain("node \"$tars_home/tools/framework/tars.mjs\"");
+    expect(node).toBeGreaterThan(path);
     expect(b.startsWith("#!/usr/bin/env sh")).toBe(true);
   });
 
@@ -1103,7 +1103,6 @@ describe("tars-sync — paridade Windows", () => {
     expect(b).toContain('tars_home="${TARS_HOME:-/projects/tars}"');
     expect(erro).toContain("$tars_home/dist/tars");
     expect(erro).toContain("'tars' no PATH");
-    expect(erro).toContain("$tars_home/tools/framework/tars.mjs");
     expect(erro).toContain("$root/tools/framework/tars.mjs");
     expect(b).toContain("exit 1");
   });
@@ -1174,8 +1173,19 @@ describe("tars-sync — hook do catalogo roda em consumidor sem o motor (inciden
       cwd: raiz,
     });
     expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("nao achei o motor do Tars");
+    expect(r.stderr).toContain("nao achei o binario do Tars");
     // A mensagem NOMEIA o caminho: e' o que faz o dono achar o problema sem ler o script.
-    expect(r.stderr).toContain(path.join(vazio, "tools", "framework", "tars.mjs"));
+    expect(r.stderr).toContain("no PATH");
   });
 });
+
+describe('divergenciasDeAdocao (Endurance 01/11)', () => {
+  it('versao divergente vira AVISO', () => {
+    const [a] = divergenciasDeAdocao('/nao/existe', { version: '1', gates: {} }, { tars: { version: '2' } })
+    expect(a).toMatch(/^AVISO/)
+  })
+  it('hook declarado sem hooksPath e falha', () => {
+    const [a] = divergenciasDeAdocao('/nao/existe', { gates: { 'pre-commit': ['gitleaks'] } }, null)
+    expect(a).toMatch(/core.hooksPath/)
+  })
+})
