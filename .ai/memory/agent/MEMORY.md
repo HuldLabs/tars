@@ -1,0 +1,3 @@
+- [Merge só do corte](merge-so-corte.md) — dono mergeia só PR de versão; o resto eu mergeio como Daneel
+- [Crase no docker exec](docker-exec-crase.md) — crase e $ em bash -c com aspas duplas expandem antes; script em arquivo
+- [Script por tarefa](script-por-tarefa.md) — temporario com nome por tarefa; conferir a mensagem antes do commit
