@@ -14,8 +14,11 @@ export function soComando(cmd) {
     if (h) fim = h[1]
     linhas.push(l)
   }
-  return linhas
-    .join('\n')
-    .replace(/((?:^|\s)(?:-m|--message|echo|printf)(?:\s+-[a-z]+)*\s+)("[^"]*"|'[^']*')/g, "$1''")
-    .replace(/["']/g, ' ')
+  let s = linhas.join('\n').replace(/((?:^|\s)(?:-m|--message)\s+)("[^"]*"|'[^']*')/g, '$1_')
+  // echo/printf so' imprimem: todo argumento citado do segmento e' texto. Canalizado para um
+  // shell, o texto vira comando e segue julgado (Endurance, 01/11: `printf '%s' 'git add -A'`).
+  if (!/\|\s*(?:ba|z|da)?sh\b/.test(s)) {
+    s = s.replace(/(?:^|[\s;&|])(?:echo|printf)\b[^;&|\n]*/g, (seg) => seg.replace(/"[^"]*"|'[^']*'/g, '_'))
+  }
+  return s.replace(/["']/g, ' ')
 }

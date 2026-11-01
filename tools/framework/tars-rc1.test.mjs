@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { compareVersions } from "./tars-upgrade.mjs";
+import { compareVersions, lockVersion, notesBetween } from "./tars-upgrade.mjs";
 import { gravaVersaoDoManifesto } from "./tars-sync.mjs";
 import { configDir, nomeDoProjeto } from "./tars-secrets.mjs";
 import { soComando } from "../../.ai/gates/lib-comando.mjs";
@@ -79,5 +79,40 @@ describe("fail-closed sem dependencia do consumidor", () => {
     spawnSync("git", ["add", "--", "a.mjs"], { cwd: d });
     const r = spawnSync(process.execPath, [path.join(RAIZ, ".ai/gates/fail-closed/gate.mjs")], { cwd: d, encoding: "utf8", env: { ...process.env, TARS_PROJECT: d } });
     expect(r.stderr).not.toMatch(/parser|NAO julguei/);
+  });
+});
+
+describe("rodada rc.2 (Endurance e Kerr, 01/11)", () => {
+  it("printf com varios argumentos citados e' texto; canalizado para sh, nao", () => {
+    expect(achar("printf '%s\\n' 'git add -A' 'git push --force'")).toBeNull();
+    expect(julga("printf '%s\\n' 'git add -A' 'git push --force'")).toBeNull();
+    expect(achar(`printf '{"tool_input":{"command":"%s"}}' "git add -A"`)).toBeNull();
+    expect(achar("printf 'git add -A' | sh")).not.toBeNull();
+  });
+  it("worktree acha o legado do checkout principal", () => {
+    const base = tmp();
+    const raiz = path.join(tmp(), "workspace");
+    fs.mkdirSync(raiz);
+    const g = (...a) => spawnSync("git", a, { cwd: raiz });
+    g("init", "-q"); g("config", "user.email", "t@t"); g("config", "user.name", "t");
+    g("remote", "add", "origin", "https://x/HuldLabs/kerr.git");
+    g("commit", "-q", "--allow-empty", "-m", "x");
+    const wt = path.join(raiz, ".cache", "adopt-rc");
+    g("worktree", "add", "-q", wt);
+    fs.mkdirSync(path.join(base, "workspace"));
+    const env = { TARS_SECRETS_DIR: base };
+    expect(configDir({ project: wt, env })).toBe(path.join(base, "workspace"));
+    expect(configDir({ project: raiz, env })).toBe(path.join(base, "workspace"));
+  });
+});
+
+describe("upgrade-notes depois do --upgrade (Endurance, 01/11)", () => {
+  it("o lock guarda a origem e o rc traz as notas da dev que antecipa", () => {
+    const d = tmp();
+    fs.mkdirSync(path.join(d, ".ai"));
+    fs.writeFileSync(path.join(d, ".ai", "tars.lock"), JSON.stringify({ tars: { version: "0.0.1-dev.30-rc.2", de: "0.0.1-dev.29" } }));
+    expect(lockVersion(d)).toBe("0.0.1-dev.29");
+    const blocos = [{ version: "0.0.1-dev.30", corpo: "" }, { version: "0.0.1-dev.29", corpo: "" }];
+    expect(notesBetween(blocos, "0.0.1-dev.29", "0.0.1-dev.30-rc.2").map((b) => b.version)).toEqual(["0.0.1-dev.30"]);
   });
 });

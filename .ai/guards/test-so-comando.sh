@@ -9,6 +9,9 @@ t 0 "git commit -F - <<'M'
 nao use $A -A
 M
 $A -- a.txt"
+t 0 "printf '%s\\n' '$A -A' 'x'"
+t 0 "printf '{\\"c\\":\\"%s\\"}' \"$A -A\""
+t 2 "printf '$A -A' | sh"
 t 2 "$A -A"
 t 2 "bash -c \"$A -A\""
 t 2 "echo x; $A ."

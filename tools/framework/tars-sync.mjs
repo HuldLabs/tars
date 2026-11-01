@@ -654,7 +654,15 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
 
   const next = {
     lockfileVersion: 1,
-    tars: { version: readVersion(tars), commit: tarsCommit(tars) },
+    tars: {
+      version: readVersion(tars),
+      commit: tarsCommit(tars),
+      // De onde veio a ultima troca de versao: o `upgrade-notes` depois do `--upgrade` le daqui
+      // (sem isto o lock ja' estava na versao nova e a origem se perdia; Endurance, 01/11).
+      ...(lock?.tars?.version && lock.tars.version !== readVersion(tars)
+        ? { de: lock.tars.version }
+        : lock?.tars?.de ? { de: lock.tars.de } : {}),
+    },
     files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),
   }
   // Em modo `self` o lock nao existe: nao ha' item copiado para travar (a base e' o catalogo).

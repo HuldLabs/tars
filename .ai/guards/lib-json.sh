@@ -30,8 +30,15 @@ let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{
 # aspas de -m/--message/echo/printf). Mensagem de commit citando `git add -A` nao e' o comando
 # (coord Tars, 01/11). `bash -c "..."` continua julgado: ali o texto E' comando.
 so_comando() {
-  printf '%s\n' "$1" | awk '
+  local s
+  s="$(printf '%s\n' "$1" | awk '
     fim != "" { if ($0 == fim) fim = ""; next }
     { if (match($0, /<<-?[[:space:]]*["'"'"']?[A-Za-z_][A-Za-z0-9_]*["'"'"']?/)) { m = substr($0, RSTART, RLENGTH); gsub(/<<-?[[:space:]]*|["'"'"']/, "", m); fim = m } print }' |
-  sed -E "s/((^|[[:space:]])(-m|--message|echo|printf)([[:space:]]+-[a-z]+)*[[:space:]]+)(\"[^\"]*\"|'[^']*')/\1''/g"
+    sed -E "s/((^|[[:space:]])(-m|--message)[[:space:]]+)(\"[^\"]*\"|'[^']*')/\1_/g")"
+  # echo/printf so' imprimem: todo argumento citado do segmento e' texto, salvo canalizado para
+  # um shell (Endurance, 01/11). Par do `soComando` de `.ai/gates/lib-comando.mjs`.
+  if ! printf '%s' "$s" | grep -Eq '\|[[:space:]]*(ba|z|da)?sh([[:space:]]|$)'; then
+    s="$(printf '%s\n' "$s" | sed -E ":a; s/((^|[[:space:];&|])(echo|printf)([^;&|\"']*_)*[^;&|\"']*)(\"[^\"]*\"|'[^']*')/\1_/; ta")"
+  fi
+  printf '%s\n' "$s"
 }
