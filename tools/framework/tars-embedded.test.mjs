@@ -92,7 +92,8 @@ describe('binario compilado SEM checkout (fatia 2a, item 2)', () => {
     const r2 = rodarBin(['doctor', '--project', dir])
     const catalogo = (r2.stdout.match(/catalogo (.+)/) ?? [])[1]
     expect(catalogo).toBeTruthy()
-    expect(r2.stdout).toMatch(/PHANTOM 0/)
+    // A saida vai na falha: o PHANTOM intermitente so' aparece com a suite inteira em paralelo.
+    expect(r2.stdout, r2.stdout + r2.stderr).toMatch(/PHANTOM 0/)
     expect(r2.stdout).not.toMatch(/nao achei a raiz do Tars/)
   })
 
