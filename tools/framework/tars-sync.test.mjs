@@ -1189,3 +1189,34 @@ describe('divergenciasDeAdocao (Endurance 01/11)', () => {
     expect(a).toMatch(/core.hooksPath/)
   })
 })
+
+describe('layout de dados (BUG-18)', () => {
+  it('var/ e data/ solto viram AVISO; finalidade passa', () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tars-dados-'))
+    fs.mkdirSync(path.join(d, 'var'))
+    fs.mkdirSync(path.join(d, 'data/dev'), { recursive: true })
+    fs.mkdirSync(path.join(d, 'data/solto'))
+    const r = divergenciasDeAdocao(d, { gates: {} }, null)
+    expect(r.join()).toContain('var/')
+    expect(r.join()).toContain('solto')
+    expect(r.join()).not.toContain('dev')
+  })
+})
+
+describe('gate data-layout (BUG-18)', () => {
+  it('reprova var/ e data/ solto; aceita data/dev', () => {
+    const gate = path.resolve('.ai/gates/data-layout/gate.mjs')
+    const roda = (f) => {
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tars-dl-'))
+      const g = (...a) => spawnSync('git', a, { cwd: d })
+      g('init', '-q')
+      fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true })
+      fs.writeFileSync(path.join(d, f), 'x')
+      g('add', '--', f)
+      return spawnSync('node', [gate], { env: { ...process.env, TARS_PROJECT: d } }).status
+    }
+    expect(roda('var/a')).toBe(1)
+    expect(roda('data/solto/a')).toBe(1)
+    expect(roda('data/dev/a')).toBe(0)
+  })
+})

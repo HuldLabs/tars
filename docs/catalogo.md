@@ -10,6 +10,7 @@ Gerado por `tars catalog --md`; não edite à mão.
 | `colocacao-arquivo` | o **LOCAL** onde o arquivo nasce, pela **MATRIZ** (`familia -> allowed`): |
 | `commit-msg` | a MENSAGEM do commit no padrao `<emoji> <type>(<scope>): <descricao>` (INV-GIT-2), com o |
 | `daneel-acoes` | as 3 CONDIÇÕES DE PARADA da Daneel que exigem ordem expressa do dono |
+| `data-layout` | nenhum arquivo staged em `var/` nem em `data/` fora de `runtime/`, `dev/`, `poc/` |
 | `fail-closed` | a AUSENCIA de trava nao pode virar APROVACAO silenciosa. Le' os arquivos |
 | `gitleaks` | nenhum segredo no que vai ser commitado: roda o `gitleaks` (`protect --staged`, ou |
 | `healthcheck` | `--version` **nao e' healthcheck**. O gate le' os arquivos de operacao |

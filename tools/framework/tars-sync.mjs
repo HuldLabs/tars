@@ -977,6 +977,10 @@ export function divergenciasDeAdocao(project, manifest, lock) {
   }
   // Doutrina `dados-do-projeto`: dado perene mora em `data/` (BUG-18).
   if (existsSync(join(project, 'var'))) out.push('AVISO: pasta var/ no repo; dado perene mora em data/ (doutrina dados-do-projeto)')
+  const dados = join(project, 'data')
+  const finalidades = ['runtime', 'dev', 'poc', 'bench']
+  const soltos = existsSync(dados) ? readdirSync(dados).filter((d) => !d.startsWith('.') && !finalidades.includes(d)) : []
+  if (soltos.length) out.push(`AVISO: data/ fora das finalidades: ${soltos.join(', ')} (doutrina dados-do-projeto)`)
   return out
 }
 
