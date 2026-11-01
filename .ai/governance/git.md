@@ -72,7 +72,9 @@ Actions queimados).
 
 ## Commit de agente no host
 
-Agente comita dentro do container. O guard `block-host-commit` barra `git commit` de agente no
-host, porque ali o commit usaria a assinatura do dono. Bypass só com aprovação explícita do dono,
-numa pergunta específica, feita sozinha e nunca em lote, válida para um único commit. Quem o humano
+Agente comita dentro do container. O guard `block-host-commit` barra, para agente no host, toda operação git que pode assinar
+ou abrir SSH (`commit`, `tag`, `merge`, `rebase`, `cherry-pick`, `revert`, `am`, `stash`, `pull`,
+`push`, `fetch`, `clone`...); leitura e operação local que não assina seguem livres. No host, essas
+operações usariam a assinatura e o SSH do dono. Bypass só com aprovação explícita do dono,
+numa pergunta específica, feita sozinha e nunca em lote, válida para um único comando. Quem o humano
 comita no host não passa por este guard.
