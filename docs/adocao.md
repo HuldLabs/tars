@@ -148,11 +148,11 @@ Passo a passo, na ordem:
 
 6. **Memória e o par do método.** `tars memory audit`; crie `BACKLOG.md` e `HANDOFF.md` se
    faltarem.
-7. **Boot do agente.** O `sync` não reescreve `AGENTS.md` nem `CLAUDE.md`. Faça-os apontar para
-   `.ai/base/rules/` e ponha o texto próprio do resumo de sessão em `.ai/context-digest.txt`.
-8. **Ligar a ponta de agente dos gates.** Declare `prod-guard`, `no-add-all` e `daneel-acoes` em
-   `[gates]`; a ponta `PreToolUse` deles entra hoje como hook à mão no `.claude/settings.json`,
-   e o sync preserva entrada de outro dono.
+7. **Boot do agente.** Declare `rules` no `.ai/tars.toml`: o `sync` as põe no topo de `CLAUDE.md`
+   e `AGENTS.md`, entre as marcas `tars:boot`. O resto do arquivo é seu. Regras próprias do resumo
+   de sessão vão em `.ai/context-digest.txt`.
+8. **Gates de agente.** Declare `agent_gates = ["prod-guard", "no-add-all", "daneel-acoes"]` em
+   `[tars]`: o `sync` copia e liga a ponta `PreToolUse`.
 9. Rode `tars adopt` de novo até sobrar só o que você decidiu deixar como aviso, e depois
    `tars doctor`.
 

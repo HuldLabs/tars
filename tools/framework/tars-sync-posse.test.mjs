@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { alheios, claudeSettings, isCatalog } from "./tars-sync.mjs";
+import { alheios, blocoDeBoot, claudeSettings, isCatalog } from "./tars-sync.mjs";
 
 // SYNC-PRE-TOOL (14/10): o sync reescrevia o PreToolUse inteiro e derrubava o `prod-guard`
 // posto a mao. Ele so' e' dono do comando que gera; o resto fica.
@@ -78,5 +78,25 @@ describe("Stop gerado pelo sync (STOP-WIRING)", () => {
   it("sem o arquivo, nenhum Stop gerado (nao aponta para o que nao existe)", () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), "tars-stop-"));
     expect(claudeSettings({}, d, null).hooks.Stop).toEqual([]);
+  });
+});
+
+describe("gates de agente e boot (BUG-9, BUG-11)", () => {
+  it("agent_gates vira PreToolUse e nao duplica no 2o sync", () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "tars-ag-"));
+    fs.mkdirSync(path.join(d, ".ai/base/gates/prod-guard"), { recursive: true });
+    fs.writeFileSync(path.join(d, ".ai/base/gates/prod-guard/prod-guard.sh"), "exit 0\n");
+    const m = { agentGates: ["prod-guard"] };
+    const a = claudeSettings(m, d, null);
+    const b = claudeSettings(m, d, a);
+    const n = (x) => x.hooks.PreToolUse.flatMap((e) => e.hooks).filter((h) => h.command.includes("prod-guard")).length;
+    expect(n(a)).toBe(1);
+    expect(n(b)).toBe(1);
+  });
+  it("bloco de boot entra no topo e e idempotente", () => {
+    const a = blocoDeBoot("meu texto\n", "regra");
+    expect(a.startsWith("<!-- tars:boot")).toBe(true);
+    expect(a).toContain("meu texto");
+    expect(blocoDeBoot(a, "regra")).toBe(a);
   });
 });

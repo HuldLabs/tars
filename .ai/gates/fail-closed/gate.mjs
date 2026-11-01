@@ -168,16 +168,17 @@ const mensagem = (achados) => [
 
 // --- CLI (pre-commit) -------------------------------------------------------
 if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
-  if (!parseAcorn) {
-    console.error('gate fail-closed: parser (acorn do vitest) ausente — NAO julguei o staged. Rode bun install.')
-    process.exit(1)
-  }
   const r = spawnSync('git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACM'], { cwd: project, encoding: 'utf8' })
   if (r.status !== 0 || typeof r.stdout !== 'string') {
     console.error('gate fail-closed: sem git — NAO julguei o staged.')
     process.exit(1)
   }
   const arquivos = r.stdout.split('\0').filter(Boolean).filter((f) => JS.test(f) && !allow.some((x) => f.includes(x)))
+  // Sem JS no commit nao ha o que julgar: repo sem Node nao reprova por falta do parser (BUG-10).
+  if (arquivos.length && !parseAcorn) {
+    console.error('gate fail-closed: parser (acorn do vitest) ausente — NAO julguei o staged. Rode bun install.')
+    process.exit(1)
+  }
   const achados = []
   for (const f of arquivos) {
     let texto
