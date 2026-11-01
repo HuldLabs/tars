@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gitHooksCheck } from './tars-doctrines.mjs'
-import { claudeSettings, readManifest } from './tars-sync.mjs'
+import { claudeSettings, readManifest, sync } from './tars-sync.mjs'
 
 const TARS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -37,5 +37,13 @@ describe('Tars — dogfood: o catalogo consome a si mesmo', () => {
     const atual = JSON.parse(fs.readFileSync(file, 'utf8'))
     expect(claudeSettings(await readManifest(TARS), TARS, atual)).toEqual(atual)
     expect(fs.existsSync(path.join(TARS, '.githooks', 'commit-msg'))).toBe(true)
+  })
+})
+
+describe('check no proprio catalogo', () => {
+  it('sync --check em modo self nao acusa nao copiado', async () => {
+    const r = await sync({ tars: TARS, project: TARS, check: true, log: () => {} })
+    expect(r.absent).toEqual([])
+    expect(r.stale).toEqual([])
   })
 })
