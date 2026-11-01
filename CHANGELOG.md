@@ -4,6 +4,48 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.30
+
+### O que mudou
+- **`tars catalog` conta `agent_gates` como adotado**, e o `healthcheck` isenta a cópia do gate
+  em `.ai/base/gates/`.
+- **`fail-closed` sem dependência do consumidor:** o parser (acorn 8.14.0, MIT) viaja com o gate,
+  em `vendor/`, e o `.ts` é julgado no binário pelo transpilador do Bun. Antes o gate quebrava
+  todo commit no binário e exigia o vitest do repo.
+- **Gates e guards não julgam texto citado:** mensagem de `-m`/`--message`, corpo de heredoc e
+  argumentos de `echo`/`printf` são texto. `bash -c "..."` e `printf ... | sh` seguem julgados, e o
+  `no-add-all` não lê mais flags de outras linhas. Uma regra só, em `lib-comando.mjs` (gates) e
+  `so_comando` (guards).
+- **`sync --upgrade` grava `[tars].version` no manifesto**, e o lock guarda de onde veio
+  (`tars.de`): o `upgrade-notes` logo depois mostra só o que veio depois da versão anterior.
+- **Versão candidata (`X.Y.Z-dev.N-rc.M`)** é aceita e traz as notas da `dev.N`.
+- **`gates baseline` julga a árvore inteira**, mesmo com algo staged.
+- **Diretório de segredos pelo repo:** sai do remote `origin` ou do checkout principal, não do
+  nome da pasta; worktree e container acham o mesmo cache, e o diretório antigo continua valendo.
+- **`secrets check` mostra o bot de `[identity]`**; `lint-swallow` pega `let _ =` depois de `{`/`;`.
+- **`commit-msg` reconhece `test-*.sh` como teste.**
+- **`tars check` no repo do Tars** não reprova mais com "nao copiado".
+
+### Por que
+Rodadas de adoção com candidato (rc.1 a rc.3) no Kerr e no Endurance, pedidas pelo dono para
+achar os bugs antes do corte, e os relatos sobre a dev.29.
+
+Bugs reportados que esta versão fecha: Kerr (01/11) TARS-BUG-25, 26, 27 e RC1-A a RC2-A;
+Endurance (01/11) catalog e agent_gates, healthcheck na cópia, no-add-all multilinha, texto
+citado nos gates (rc.1 a rc.3), upgrade-notes com rc e versão do manifesto.
+
+### Arquivos impactados
+`.ai/gates/{fail-closed,healthcheck,no-add-all,daneel-acoes,prod-guard,lint-swallow,commit-msg}/`,
+`.ai/gates/lib-comando.mjs`, `.ai/guards/{lib-json,block-destructive-commands}.sh`,
+`tools/framework/tars-{sync,upgrade,secrets,catalog}.mjs`.
+
+### O que o consumidor faz
+- Rode `tars self-update --version 0.0.1-dev.30`; o `[tars].version` do manifesto passa a ser
+  gravado sozinho.
+- Quem recusou o `fail-closed` por exigir vitest pode reavaliá-lo (`tars catalog`).
+- Quem contornava os guards com mensagem em arquivo pode voltar a usar `-m`.
+- Segredos: nada a fazer; o diretório antigo continua achado.
+
 ## 0.0.1-dev.29
 
 ### O que mudou

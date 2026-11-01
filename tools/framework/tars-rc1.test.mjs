@@ -116,3 +116,12 @@ describe("upgrade-notes depois do --upgrade (Endurance, 01/11)", () => {
     expect(notesBetween(blocos, "0.0.1-dev.29", "0.0.1-dev.30-rc.2").map((b) => b.version)).toEqual(["0.0.1-dev.30"]);
   });
 });
+
+describe("rodada rc.3 (Endurance, 01/11)", () => {
+  it("echo com ; dentro das aspas e' texto", () => {
+    const c = 'echo "nunca git add -A; nunca git push --force; nunca op item edit"';
+    expect(achar(c)).toBeNull();
+    expect(julga(c)).toBeNull();
+    expect(achar('echo "x"; git add -A')).not.toBeNull();
+  });
+});
