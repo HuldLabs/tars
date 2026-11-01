@@ -54,8 +54,11 @@ READERS='(^|[;&|[:space:]])(cat|bat|batcat|less|more|head|tail|sed|awk|strings|x
 SECRETFILE='(^|[[:space:]/])(\.env([.][a-z0-9_-]+)?|secrets/[^[:space:]]+|[^[:space:]]*\.(env|sops|key|pem|p12|pfx|token|credentials|netrc)|(id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc|\.pgpass))([[:space:]]|$)|\.cache/segtools|\.config/sops|keys\.txt'
 # codigo-fonte dentro de secrets/ nao e valor de segredo (src/secrets/install.sh)
 SRCCODE='\.(tpl|sh|bash|zsh|py|mjs|cjs|js|ts|tsx|jsx|go|rs|rb|java|kt|md|json|toml|ya?ml|txt|html|css|scss)([[:space:]]|$)'
+# Filtro do jq (`jq -r .token`) e' campo de JSON, nao arquivo (Endurance, 01/11: com `sed`/`cat`
+# no mesmo comando, o `.token` casava como arquivo de segredo).
+SCAN="$(printf '%s' "$LC" | sed -E "s/(^|[^a-z])jq([[:space:]]+-[a-z]+)*[[:space:]]+['\"]?\.[a-z0-9_.]+//g")"
 if printf '%s' "$LC" | grep -Eq "$READERS"; then
-  if printf '%s' "$LC" | grep -Eq "$SECRETFILE" && ! { printf '%s' "$LC" | grep -Eq '(^|[[:space:]/])secrets/.*'"$SRCCODE"; }; then
+  if printf '%s' "$SCAN" | grep -Eq "$SECRETFILE" && ! { printf '%s' "$LC" | grep -Eq '(^|[[:space:]/])secrets/.*'"$SRCCODE"; }; then
     # ler um .sops (CIFRADO) e inofensivo; mas so o VERBO-LEITOR puro: `cat a.sops`,
     # nunca `cat secrets/x | cat` (o ultimo alimenta um leitor real com texto puro).
     if ! { printf '%s' "$LC" | grep -Eq '\.sops([[:space:]]|$)'; } \
