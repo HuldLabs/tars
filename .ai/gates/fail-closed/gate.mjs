@@ -23,7 +23,9 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { stripTypeScriptTypes } from 'node:module'
+// Import de namespace: o nomeado quebrava o gate inteiro no binario (Bun sem a funcao, BUG-27).
+import * as nodeModule from 'node:module'
+const stripTypeScriptTypes = nodeModule.stripTypeScriptTypes
 
 const project = process.env.TARS_PROJECT ?? process.cwd()
 const params = JSON.parse(process.env.TARS_GATE_PARAMS || '{}')
@@ -51,6 +53,7 @@ const raizesDoCatalogo = () => {
 }
 
 let parseAcorn = null
+const falhasDoParser = []
 for (const raiz of raizesDoCatalogo()) {
   const glob = spawnSync('sh', ['-c', 'ls ' + JSON.stringify(path.join(raiz, 'node_modules/vitest/dist/chunks')) + '/acorn.*.js 2>/dev/null | head -1'], { encoding: 'utf8' })
   const arquivo = (glob.stdout || '').trim()
@@ -58,7 +61,10 @@ for (const raiz of raizesDoCatalogo()) {
   try {
     const mod = await import(pathToFileURL(arquivo).href)
     if (typeof mod.p === 'function') { parseAcorn = mod.p; break }
-  } catch { /* segue para a proxima raiz */ }
+  } catch (e) {
+    // Raiz com acorn ilegivel: tenta a proxima, e o motivo sai se nenhuma servir (BUG-26).
+    falhasDoParser.push(`${arquivo}: ${e.message}`)
+  }
 }
 
 /** O que um no carrega de TEXTO: literal, template, identificador, chave de objeto. */
@@ -143,6 +149,7 @@ function todosIfs(node, achados = []) {
 export function julgaArquivo(arquivo, texto) {
   let js = texto
   if (/[.]ts$/i.test(arquivo)) {
+    if (typeof stripTypeScriptTypes !== 'function') return null
     try { js = stripTypeScriptTypes(texto) } catch { return null }
   }
   let ast
@@ -176,7 +183,7 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
   const arquivos = r.stdout.split('\0').filter(Boolean).filter((f) => JS.test(f) && !allow.some((x) => f.includes(x)))
   // Sem JS no commit nao ha o que julgar: repo sem Node nao reprova por falta do parser (BUG-10).
   if (arquivos.length && !parseAcorn) {
-    console.error('gate fail-closed: parser (acorn do vitest) ausente — NAO julguei o staged. Rode bun install.')
+    console.error('gate fail-closed: parser (acorn do vitest) ausente — NAO julguei o staged. Rode bun install.' + (falhasDoParser.length ? ` (${falhasDoParser.join('; ')})` : ''))
     process.exit(1)
   }
   const achados = []
