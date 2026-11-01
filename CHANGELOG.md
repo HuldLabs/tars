@@ -4,6 +4,39 @@ Toda versao `0.0.1-dev.N` traz as 4 subsecoes abaixo (formato parseavel por `tar
 upgrade-notes`). O consumidor roda `tars upgrade-notes` depois de um `tars sync` que subiu a
 versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atual.
 
+## 0.0.1-dev.29
+
+### O que mudou
+- **Regeneração sem TTY.** `tars secrets refresh` funciona no binário, e
+  `tars identity sign-setup --from-cache [--global]` leva a chave do cache para `key_file`, deriva
+  a `.pub` e configura nome, e-mail e helper. `provision` lê o token de `[secrets]` e remove CRLF.
+- **`tars catalog`:** lista cada item como adotado, recusado ou pendente. Com
+  `docs/avaliar-catalogo.md`, vira passo da adoção e de toda atualização.
+- **Erros mostram a causa:** `refresh` e `token set` repassam o stderr do `op`.
+- **`check` e `doctor` acusam** `core.hooksPath` desligado (falha) e manifesto em versão diferente
+  do lock (aviso).
+- **Hook do git** não cai mais em checkout via `$TARS_HOME`: sem binário, falha dizendo o que falta.
+- **`TARS_HOME` de outra versão** é ignorado pelo binário, com aviso.
+- **O sync gera o hook de `Stop`.**
+- **Gates:** `no-add-all` roda em `pre-commit`; `lint-swallow` cobre shell e Rust.
+- **Guards:** `block-host-commit` novo; `block-secret-dump` aceita template `.tpl` e `src/secrets/`
+  e não cita mais o segtools; o resumo de sessão lê `.ai/context-digest.txt`.
+- **Doutrina:** `dados-do-projeto.md`, versão é lote e commit de agente no host.
+
+### Por que
+Relatos de Kerr, Endurance e segtools, e a regeneração automática pedida pelo dono.
+
+### Arquivos impactados
+`tools/framework/tars*.mjs`, `.githooks/*`, `.ai/guards/*`, `.ai/gates/lint-swallow`, `docs/*`,
+`README.md`.
+
+### O que o consumidor faz
+- Rode `tars sync --upgrade`, `tars check`, `tars doctor` e `tars catalog`.
+- Garanta `tars` no PATH de todo shell que comita.
+- Se o resumo de sessão trazia regras do projeto, passe-as para `.ai/context-digest.txt`.
+- Para regenerar sem TTY, declare em `[identity]` `key_cache`, `git_name` e `git_email`.
+- Declare `block-host-commit` em `[tars].guards` se agentes rodam no host.
+
 ## 0.0.1-dev.28
 
 ### O que mudou
