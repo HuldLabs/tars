@@ -1169,7 +1169,8 @@ describe("tars-sync — hook do catalogo roda em consumidor sem o motor (inciden
     fs.mkdirSync(vazio);
     const r = spawnSync("sh", [path.join(raiz, "prepare-commit-msg"), path.join(raiz, "msg.txt")], {
       encoding: "utf8",
-      env: { ...process.env, TARS_HOME: vazio },
+      // PATH sem `tars`: na maquina de quem tem o binario instalado o hook o acharia e passaria.
+      env: { ...process.env, TARS_HOME: vazio, PATH: "/usr/bin:/bin" },
       cwd: raiz,
     });
     expect(r.status).not.toBe(0);
