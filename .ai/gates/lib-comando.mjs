@@ -18,7 +18,8 @@ export function soComando(cmd) {
   // echo/printf so' imprimem: todo argumento citado do segmento e' texto. Canalizado para um
   // shell, o texto vira comando e segue julgado (Endurance, 01/11: `printf '%s' 'git add -A'`).
   if (!/\|\s*(?:ba|z|da)?sh\b/.test(s)) {
-    s = s.replace(/(?:^|[\s;&|])(?:echo|printf)\b[^;&|\n]*/g, (seg) => seg.replace(/"[^"]*"|'[^']*'/g, '_'))
+    // O segmento vai ate' o separador FORA de aspas: `;` citado nao o encerra (Endurance, 01/11).
+    s = s.replace(/(?:^|[\s;&|])(?:echo|printf)\b(?:"[^"]*"|'[^']*'|[^;&|\n"'])*/g, (seg) => seg.replace(/"[^"]*"|'[^']*'/g, '_'))
   }
   return s.replace(/["']/g, ' ')
 }
