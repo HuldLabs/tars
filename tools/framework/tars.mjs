@@ -62,6 +62,7 @@ import * as identityMod from './tars-identity.mjs'
 // `tars adopt` (dev.19): o ROTEIRO de adocao de repo pre-existente — SO' LEITURA. O
 // julgamento mora no modulo dono (tars-adopt.mjs); aqui so' o despacho fino (R3).
 import * as adoptMod from './tars-adopt.mjs'
+import * as catalogMod from './tars-catalog.mjs'
 // FATIA 2A: o catalogo EMBUTIDO no binario. O import ESTATICO e' o que faz o
 // `bun build --compile` enxerga-lo e embutir (`tars-embedded.mjs` e' GERADO no build por
 // `tars-embed-catalog.mjs`; ver `defaultTars`). So' `materializar` e' usado aqui.
@@ -130,6 +131,7 @@ const USAGE = [
   '                             o comando de cada item (hooks, gates, baseline, secrets,',
   '                             memoria, doutrinas) e acusa hook manual fora do Tars.',
   '                             SO` LEITURA: diagnostica, nao altera (exit != 0 se falta algo).',
+  '  catalog [--json|--md]      o catalogo x este repo: adotado, recusado ou pendente (so` le)',
   '  hooks <hook> [args...]     roda os gates do hook (pre-commit|commit-msg|pre-push|local)',
   '  promote --area <> --item   sobe um item comprovado do projeto para o catalogo',
   '  curation [--advance --reviewed <r,..>] [--json]  rotina por PONTEIRO: le so` o delta de conhecimento',
@@ -199,7 +201,7 @@ const USAGE = [
 async function sync(action, rest, project) {
   const mod = syncMod
   const opts = {
-    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars()),
+    tars: resolve(argValue(rest, '--tars') ?? tarsHome() ?? mod.findTars()),
     project: resolve(argValue(rest, '--project') ?? project),
   }
   if (action === 'init') return void (await mod.init(opts))
@@ -245,7 +247,7 @@ async function promoteCommand(rest, project) {
   if (!mod.AREA?.[area]) throw new Error(`use --area <memory|skill|gate> e --item <nome>`)
   if (!item) throw new Error('falta --item <nome>')
   await mod.AREA[area]({
-    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? mod.findTars()),
+    tars: resolve(argValue(rest, '--tars') ?? tarsHome() ?? mod.findTars()),
     project: resolve(argValue(rest, '--project') ?? project),
     item,
   })
@@ -255,7 +257,7 @@ async function promoteCommand(rest, project) {
 /** `tars curation` — rotina por PONTEIRO (docs/CURATION.md): mede o delta, nao generaliza. */
 async function curationCommand(rest, project) {
   const mod = curationMod
-  const tars = resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars())
+  const tars = resolve(argValue(rest, '--tars') ?? tarsHome() ?? syncMod.findTars())
   const reposDir = resolve(argValue(rest, '--repos') ?? join(tars, '..'))
   const stateFile = resolve(argValue(rest, '--state') ?? join(tars, '.ai', 'curation.json'))
   const reviewed = (argValue(rest, '--reviewed') ?? '').split(',').map((x) => x.trim()).filter(Boolean)
@@ -295,7 +297,7 @@ async function doctorModulo() {
 /** `tars doctor` — despacho fino para o modulo dono (a classificacao mora la', nao aqui). */
 async function doctorCommand(rest, project) {
   const r = (await doctorModulo()).doctor({
-    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars()),
+    tars: resolve(argValue(rest, '--tars') ?? tarsHome() ?? syncMod.findTars()),
     project: resolve(argValue(rest, '--project') ?? project ?? process.cwd()),
   })
   if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
@@ -498,7 +500,7 @@ function argValues(list, name) {
 /** `tars upgrade-notes [--from <>]` — as notas de upgrade do catalogo (modulo dono). */
 async function upgradeCommand(rest, project) {
   const r = upgradeMod.upgradeNotes({
-    tars: resolve(argValue(rest, '--tars') ?? process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars()),
+    tars: resolve(argValue(rest, '--tars') ?? tarsHome() ?? syncMod.findTars()),
     project: resolve(argValue(rest, '--project') ?? project ?? process.cwd()),
     from: argValue(rest, '--from'),
   })
@@ -512,6 +514,18 @@ function versionCommand() {
   const tars = resolve(tarsHome() ?? syncMod.findTars())
   const v = syncMod.readVersion(tars)
   console.log(v ?? 'desconhecida')
+}
+
+/** `tars catalog [--json|--md]` — o catalogo x o repo (so' le); pendente da' exit != 0. */
+async function catalogCommand(rest, project) {
+  const tars = resolve(tarsHome() ?? syncMod.findTars())
+  const itens = catalogMod.listar(tars)
+  if (rest.includes('--md')) return console.log(catalogMod.markdown(itens))
+  const raiz = resolve(argValue(rest, '--project') ?? project ?? process.cwd())
+  const r = catalogMod.avaliar(itens, await syncMod.readManifest(raiz), catalogMod.lerDecisoes(raiz))
+  if (rest.includes('--json')) console.log(JSON.stringify(r, null, 2))
+  else for (const i of r) console.log(`${i.estado.padEnd(9)} ${i.area}/${i.item}${i.porque ? ` (${i.porque})` : ''}  ${i.resumo}`)
+  if (r.some((i) => i.estado === 'pendente')) process.exit(1)
 }
 
 /** Imprime o que `divergenciasDeAdocao` acha; devolve quantas. Sem manifesto nao ha o que julgar. */
@@ -535,6 +549,7 @@ const COMMANDS = {
     if (n) process.exit(1)
   },
   adopt: adoptCommand,
+  catalog: catalogCommand,
   hooks: runHooksCommand,
   promote: promoteCommand,
   curation: curationCommand,
@@ -555,7 +570,7 @@ const COMMANDS = {
   'upgrade-notes': upgradeCommand,
   'release-notes': (rest) => releaseNotesMod.cli(rest),
   'self-update': (rest, project) =>
-    selfUpdateMod.cli(rest, { atual: syncMod.readVersion(resolve(process.env.TARS_HOME ?? defaultTars() ?? syncMod.findTars())), project }),
+    selfUpdateMod.cli(rest, { atual: syncMod.readVersion(resolve(tarsHome() ?? syncMod.findTars())), project }),
   git: gitCommand,
 }
 

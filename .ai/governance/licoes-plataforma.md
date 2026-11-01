@@ -9,7 +9,7 @@ incident; a fix without prevention guarantees the next one.
 
 - **Symptom.** `ssh-keygen -y`, `ssh-add`, `ssh` or the signing of a commit (`gpg.format=ssh`) fails
   with `Load key "...": error in libcrypto`, even though the file starts with
-  `-----BEGIN OPENSSH PRIVATE KEY-----` and ends with the `END` line.
+  the OpenSSH private key header and ends with the `END` line.
 - **Cause.** The key was saved with **CRLF** line endings (Windows): pasted or edited on Windows,
   stored that way in the vault (1Password) and copied to Linux as is. OpenSSH does not accept the `\r`.
   The OpenSSH-versus-PKCS#8 format is **not** the cause; check the header before suspecting it.

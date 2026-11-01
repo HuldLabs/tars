@@ -6,6 +6,8 @@
 - JS/TS — `catch` de corpo vazio: `catch {}`, `catch (e) {}`, `catch (e) { /* nada */ }`;
 - Python — `except` cujo corpo e' so' `pass`/`...`, na mesma linha (`except: pass`) ou no bloco
   (`except:` + `pass` indentado abaixo).
+- shell — `git commit` com saida filtrada (`| grep`) ou anulada (`|| true`);
+- Rust — `let _ = ...;` e `.ok();` soltos.
 
 Comentario nao conta: `/* */`, `//` e `#` saem da linha antes do teste. Um `catch` que trata,
 propaga ou registra passa — o alvo e' a falha SILENCIOSA, nao o tratamento de erro.

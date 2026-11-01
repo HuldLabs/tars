@@ -14,12 +14,11 @@ SOURCE="$(jget source)"; CWD="$(jget cwd)"
 ROOT="${CLAUDE_PROJECT_DIR:-$CWD}"; [ -z "$ROOT" ] && ROOT="$(pwd)"; [ -d "$ROOT" ] || ROOT="$(pwd)"
 
 print_line "[context-digest] ($SOURCE) segredos/estado ficam em disco; o resumo abaixo evita re-descobrir."
-print_line "skills obrigatorias: app-extraction, security-testing (leia o SKILL.md de cada uma)."
-print_line "regras que NAO voltam sozinhas:"
-print_line "  - devcontainer-first: rode ferramenta DENTRO dele (devcontainers exec), nao no host."
-print_line "  - segredos: cache local cifrado ~/.cache/segtools/dev.env.sops (ADR-013; 1Password e a fonte); o template versionado e secrets/dev.env.tpl; apps/hub/.env e PROIBIDO; use task secrets:*."
-print_line "  - nunca --no-verify; verificar PELA SAIDA do comando, nao pela afirmacao."
-print_line "  - verde = task check (typecheck+unit+int+build+e2e)."
+# Texto do projeto vem do proprio projeto (BUG-8): o catalogo nao conhece nenhum consumidor.
+if [ -f "$ROOT/.ai/context-digest.txt" ]; then
+  while IFS= read -r l; do print_line "$l"; done < "$ROOT/.ai/context-digest.txt"
+fi
+print_line "regra: nunca --no-verify; verificar PELA SAIDA do comando, nao pela afirmacao."
 
 BRANCH=""; command -v git >/dev/null 2>&1 && BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 [ -z "$BRANCH" ] && BRANCH="(nao-git)"

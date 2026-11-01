@@ -17,8 +17,11 @@ o catálogo (`.ai/` e `templates/`) vem embutido. Toda tag `v*` (processo único
 
 **Na máquina (ou numa imagem com rede):**
 
+Troque `V` pela versão mais recente da
+[página de Releases](https://github.com/HuldLabs/tars/releases).
+
 ```sh
-V=0.0.1-dev.19
+V=<versão>
 curl -fsSLO "https://github.com/HuldLabs/tars/releases/download/v$V/tars-linux-amd64"
 curl -fsSLO "https://github.com/HuldLabs/tars/releases/download/v$V/sha256sums"
 sha256sum -c --ignore-missing sha256sums        # tem de dizer OK; senão, pare
@@ -33,17 +36,31 @@ do GitHub, repita com `-H "Authorization: Bearer $GH_TOKEN"`.
 por tag móvel:
 
 ```dockerfile
-COPY --from=ghcr.io/huldlabs/tars:0.0.1-dev.19@sha256:<digest> /tars /usr/local/bin/tars
+COPY --from=ghcr.io/huldlabs/tars:<versão>@sha256:<digest> /tars /usr/local/bin/tars
 ```
 
 Pré-release não move `latest`: fixe sempre a versão.
+
+**Em devcontainer:** instale o binário na imagem (como acima) para ele estar no PATH de todo shell.
+Os hooks do git procuram `tars` no PATH e, sem ele, reprovam o commit dizendo o que falta.
+`TARS_HOME` não é necessário; no binário, um `TARS_HOME` de outra versão é ignorado com aviso.
+
+**Em CI:** baixe o binário com a verificação de `sha256sums` e rode `tars check` e `tars doctor`.
+
+**Pré-requisitos por recurso:** `git` sempre; `gitleaks` para o gate de mesmo nome; `op`, `sops`,
+`age` e `ssh-keygen` para segredos e assinatura; `node` ou `bun` para gates `.mjs`, quando o binário
+não puder reexecutar a si mesmo.
+
+**Atualização rápida:** `tars self-update [--version V]` baixa, confere o sha256, troca o binário e
+roda `sync --upgrade`.
 
 ## 2. Repo novo
 
 ```sh
 cd meu-repo
 tars init              # cria .ai/tars.toml mínimo e .ai/memory/
-$EDITOR .ai/tars.toml  # declare skills, gates, guards e memória que o projeto usa
+$EDITOR .ai/tars.toml  # declare o que o projeto usa, decidido em docs/avaliar-catalogo.md
+tars catalog           # o que existe e o que falta decidir (docs/avaliar-catalogo.md)
 tars sync              # traz o declarado para .ai/base/, gera o wiring e liga .githooks
 tars doctor            # confere doutrina × gate × prova (exit != 0 em PHANTOM/DRIFT)
 ```
@@ -74,7 +91,8 @@ OK     backlog       BACKLOG.md + HANDOFF.md
 
 Passo a passo, na ordem:
 
-1. **Manifesto e base.** `tars init` (se faltar) e depois `tars sync`.
+1. **Manifesto, avaliação e base.** `tars init` (se faltar), avalie o catálogo contra o repo
+   ([`avaliar-catalogo.md`](avaliar-catalogo.md)) e depois `tars sync`.
 2. **Hooks.** Hook escrito à mão fora do Tars aparece como **alheio**: o `sync` não o
    sobrescreve. Para entregar ao Tars, `tars sync --adopt pre-commit` (guarda o original
    em `pre-commit.bak`).
@@ -107,7 +125,8 @@ Passo a passo, na ordem:
 
    Host fora de `git_hosts` não recebe credencial nenhuma.
 
-5. **Identidade e assinatura** (repo onde a automação comita):
+5. **Identidade e assinatura** (só se a automação comita com identidade própria declarada em
+   `[identity]`; quem assina pelo devcontainer sem esse bloco pula este passo):
 
    ```sh
    tars identity provision     # DONO, com TTY, uma vez por máquina
@@ -115,9 +134,26 @@ Passo a passo, na ordem:
    tars identity verify        # read-only; sem identidade, diz o comando que o dono roda
    ```
 
+   **Em container, sem TTY e sem o app do 1Password:** o dono roda uma vez
+   `tars secrets token set`; esse token é o aval. Declare em `[identity]` `key_file`, `key_cache`
+   (nome da chave no cache), `git_name`, `git_email` e, se quiser, `git_helper`. Depois:
+
+   ```sh
+   tars secrets refresh
+   tars identity sign-setup --from-cache --global
+   ```
+
+   A chave sai do cache para `key_file` (0600, sem CRLF), a `.pub` é derivada, e chave inválida
+   falha alto. `--global` evita gravar no `.git/config` compartilhado com o host.
+
 6. **Memória e o par do método.** `tars memory audit`; crie `BACKLOG.md` e `HANDOFF.md` se
    faltarem.
-7. Rode `tars adopt` de novo até sobrar só o que você decidiu deixar como aviso, e depois
+7. **Boot do agente.** O `sync` não reescreve `AGENTS.md` nem `CLAUDE.md`. Faça-os apontar para
+   `.ai/base/rules/` e ponha o texto próprio do resumo de sessão em `.ai/context-digest.txt`.
+8. **Ligar a ponta de agente dos gates.** Declare `prod-guard`, `no-add-all` e `daneel-acoes` em
+   `[gates]`; a ponta `PreToolUse` deles entra hoje como hook à mão no `.claude/settings.json`,
+   e o sync preserva entrada de outro dono.
+9. Rode `tars adopt` de novo até sobrar só o que você decidiu deixar como aviso, e depois
    `tars doctor`.
 
 ## 4. Atualizar para uma versão nova
@@ -136,6 +172,9 @@ tars upgrade-notes
 # 4. confira
 tars doctor
 tars adopt
+
+# 5. avalie o que a versão trouxe de novo para este repo
+tars catalog           # docs/avaliar-catalogo.md
 ```
 
 O `upgrade-notes` imprime, de cada versão entre o lock e a atual, as quatro partes do
@@ -146,7 +185,20 @@ Se o `sync` recusar por versão ("motor X != lock Y") **sem você ter trocado o 
 binário errado no PATH: troque o binário, não use `--upgrade`. Se você trocou de propósito,
 o `--upgrade` é o caminho.
 
-## 5. Quando algo dá errado
+**Voltar uma versão:** reinstale o binário anterior, rode `tars sync --upgrade` e confira com
+`tars check`; `git revert` do commit da atualização também volta `.ai/base` e o lock.
+
+**Item que você adaptou na base:** não edite `.ai/base`, o sync reescreve. Use parâmetro em
+`[gates.params]` ou item próprio em `[gates].local`.
+
+**Vários repos:** atualize primeiro um consumidor de referência, confira, e só então os outros.
+
+## 5. Como relatar um bug do Tars
+
+Registre no `BACKLOG.md` do Tars: repo, data, versão, comando exato, saída real, esperado e
+obtido, se é regressão e o contorno. Sem reprodução, o item fica "a confirmar".
+
+## 6. Quando algo dá errado
 
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
@@ -154,4 +206,7 @@ o `--upgrade` é o caminho.
 | primeiro commit reprova centenas de achados antigos | repo adotado sem linha de base | `tars gates baseline` |
 | `No-Release:` ignorado numa worktree | versão anterior à dev.19 | atualize; o gate lê a mensagem no `commit-msg` |
 | `tars doctor` acusa DRIFT em doutrina `org/*` | referência a caminho que não existe nesta máquina | atualize; as doutrinas usam `repo:caminho` relativo |
+| `nao achei o binario do Tars` no commit | `tars` fora do PATH do shell | instale o binário no PATH |
+| `check` falha com `core.hooksPath` desligado | hooks fora do ar, nenhum gate roda | `tars sync` |
+| `aviso: TARS_HOME ... outra versao` | checkout antigo na variável | remova a variável |
 | `sync` apagou arquivo de guard | versão anterior à dev.19 com motor ≠ lock | atualize; agora recusa e nunca apaga item citado |

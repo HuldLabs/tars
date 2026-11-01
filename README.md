@@ -305,52 +305,8 @@ catálogo — a promoção é revisada à mão. Escreve no working tree do Tars,
 
 ## Catálogo atual
 
-### Gates (`.ai/gates/<nome>/GATE.md`)
-
-| Gate | Hook | O que cobra |
-|---|---|---|
-| `commit-msg` | `commit-msg` | mensagem `<emoji> <type>(<scope>): <descrição>`, sujeito ≤ 72; `feat/refactor/perf` exigem `Lesson:` (1 linha) ou o bloco de 4 campos (`erro/porque/causa raiz/correcao`), `fix/hotfix` exigem `Incident:` **em 4 campos** (`causa raiz` ≠ `porque`) ou `No-Incident:` |
-| `gitleaks` | `pre-commit` | nenhum segredo no que vai ser commitado (`protect --staged`); sem o binário, avisa alto e passa |
-| `no-add-all` | `pre-commit` + `PreToolUse` de agente | nenhum `git add` amplo (`-A`/`--all`/`-u`/`.`), `git add -f` ou `git commit -a` |
-
-Cada gate tem uma ficha curta (`GATE.md`): o que cobra, em que hook, stacks (`any`/`ts`/`python`)
-e parâmetros. Os parâmetros vêm do config do projeto (`[gates.params.<nome>]`), não do catálogo.
-
-Os gates que dependem da topologia do projeto (`layout-check`, `ds-gate`, `full-check`)
-entram como **ficha apontando** — o motor é do Sofon/consumidor, o Tars só descreve o contrato.
-
-### Skills (`.ai/skills/<nome>/`)
-
-`agent-coordination` · `app-extraction` · `security-testing` · `segtools-frontend` ·
-`segtools-database` · `segtools-sdd` · `segtools-content` · `segtools-writing` ·
-`shadcn` · `migrate-radix-to-base` · `daneel` (identidade de automação do ecossistema) ·
-`senior-research` (pesquisa com fonte datada; **portada do vault `ai-brain`**) ·
-`backup-restore` (backup só é real quando restaura) · `telemetria` (capacidade core por hook;
-OTel como plugin) · `iac` (infra por ficha) · e os `fabber-*` (front/api/nextjs/debug,
-transitórios).
-
-**R1 antes de absorver:** nenhuma skill daqui é escrita do zero — antes de absorver, procure a
-versão que já existe (repo próprio, `/projects/*`, `ai-brain`); **porte a original**, marque o
-que for genuinamente novo, e registre origem em `docs/CURATION.md` §3.
-
-O inventário de acessos da Daneel é **gerado**: `tars acessos daneel [--out <arquivo.md>]`
-(GitHub, 1Password por nome, hosts SSH, ferramentas) — read-only e barrado por padrão de segredo.
-
-### Regras, governança e guardas
-
-- `.ai/rules/` — `overview.md`, `claude.md` (regras de topo por alvo) e `ambiente.md`
-  (**nunca cruzar sistemas de arquivos** — repo e ferramenta do mesmo lado).
-- `.ai/governance/` — autoridade, precedência, `EVOLUTION.md` (auto-evolução de sessão),
-  `source-of-truth.md`, `perdas-por-alvo.md`, `novo-repo.md` (o **método de nascer repo**).
-- `.ai/governance/novo-repo.md` — **como nasce um repo/app novo do ecossistema** (8 passos:
-  criar no GitHub, README com papel + origem do nome, BACKLOG no commit inicial, `tars init`
-  + `tars sync`, `0.0.1-dev.1` + CHANGELOG, ADRs, registro no `huldlabs`, repo irmão).
-  Modelos em `templates/` (`README.tpl.md`, `BACKLOG.tpl.md`).
-- `.ai/guards/` — guardas de runtime (`block-secret-dump`, `block-destructive-commands`,
-  `ensure-memory-link`, `precompact-persist-state`, `sessionstart-context-digest`,
-  `stop-unfinished-work`), em `.sh` com testes.
-- `.ai/hooks.jsonc` · `.ai/mcp.jsonc` · `.ai/permissions.jsonc` — config fonte dos hooks, MCP
-  e permissões; o `rulesync` traduz para cada ferramenta (ADR-019).
+A lista completa, gerada, está em [`docs/catalogo.md`](docs/catalogo.md). Para decidir o que um
+repo adota, siga [`docs/avaliar-catalogo.md`](docs/avaliar-catalogo.md).
 
 **Bug do Tars reportado vira release.** A regra vale para todo consumidor e mora em
 `.ai/rules/principles.md` (boot): quem achar um bug no Tars (ou no `tars sync`/hook/gate)
@@ -359,6 +315,10 @@ release** e o `CHANGELOG` **lista os reportados que fechou**. Contorno local é 
 como dívida nomeada; report sem reprodução vira "a confirmar", nunca dívida infinita.
 
 ## Como um projeto novo começa
+
+**Manuais:** [instalar, adotar e atualizar](docs/adocao.md) ·
+[avaliar o catálogo](docs/avaliar-catalogo.md) · [catálogo](docs/catalogo.md) ·
+[segredos](docs/secrets.md) · [identidade](docs/identity.md) · [curadoria](docs/CURATION.md).
 
 > **Guia prático:** instalar o binário publicado, adotar repo existente (`tars adopt`) e
 > atualizar versão, passo a passo e com exemplos, em [`docs/adocao.md`](docs/adocao.md).
