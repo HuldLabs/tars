@@ -20,11 +20,12 @@ import { findTars, readVersion } from './tars-sync.mjs'
 
 /** Versao `0.0.1-dev.N` -> comparavel por N; `0.0.1` (release) vem depois de todo dev. */
 export function versionKey(v) {
-  const m = /^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/.exec(String(v ?? '').trim())
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+)(?:-rc\.(\d+))?)?$/.exec(String(v ?? '').trim())
   if (!m) return null
-  const [, major, minor, patch, dev] = m
-  // Sem sufixo `-dev` = release final: dev N fica logo abaixo (soma fracionaria).
-  const devPart = dev === undefined ? 1 : Number(dev) / 1000
+  const [, major, minor, patch, dev, rc] = m
+  // Sem sufixo `-dev` = release final: dev N fica logo abaixo (soma fracionaria). O candidato
+  // `dev.N-rc.M` fica entre dev.(N-1) e dev.N.
+  const devPart = dev === undefined ? 1 : rc === undefined ? Number(dev) / 1000 : (Number(dev) - 1 + Number(rc) / 1000) / 1000
   return Number(major) * 1e6 + Number(minor) * 1e3 + Number(patch) + devPart
 }
 
@@ -89,7 +90,7 @@ export function upgradeNotes({ tars, project, from } = {}) {
   if (!existsSync(changelogPath)) return { version, from: origem, notas: [], faltando: 'CHANGELOG.md ausente no catalogo' }
   const blocos = parseChangelog(readFileSync(changelogPath, 'utf8'))
   if (origem && compareVersions(origem, version) === null)
-    return { version, from: origem, notas: [], faltando: `versao do lock ilegivel: '${origem}' (esperado X.Y.Z[-dev.N])` }
+    return { version, from: origem, notas: [], faltando: `versao do lock ilegivel: '${origem}' (esperado X.Y.Z[-dev.N[-rc.M]])` }
   // Versao do lock que o CHANGELOG nao conhece (esquema antigo, ex.: `1.0.0` antes do
   // `0.0.1-dev.N`): comparar diria "ja' em dia" e esconderia tudo (seo-brain, 14/10). Sem
   // ponto de partida conhecido, mostra TODAS as notas ate' a atual e diz por que.

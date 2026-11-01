@@ -10,8 +10,8 @@
 // APROVACAO sem nomear a AUSENCIA / o NADA / o motivo da isencao e reprovada com
 // arquivo:linha — nomear o lugar e o que torna o conserto possivel.
 // 
-// LINT DE VERDADE, sobre a ARVORE: o arquivo vai ao parser (acorn, o mesmo que o vitest ja
-// embarca — R1: nao se instala parser novo) e o julgamento anda sobre IfStatement /
+// LINT DE VERDADE, sobre a ARVORE: o arquivo vai ao parser (acorn, que viaja em vendor/ junto do
+// gate — R1: parser pronto, nao escrito aqui) e o julgamento anda sobre IfStatement /
 // alternate / consequent, entao comentario, string e regex do proprio codigo nao confundem.
 // .ts passa pelo stripTypeScriptTypes antes; o que o parser nao aceitar NAO e julgado — e
 // isso e DITO, nunca passa calado.
@@ -22,10 +22,12 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
 // Import de namespace: o nomeado quebrava o gate inteiro no binario (Bun sem a funcao, BUG-27).
 import * as nodeModule from 'node:module'
-const stripTypeScriptTypes = nodeModule.stripTypeScriptTypes
+// No binario (Bun) a funcao do Node nao existe; o transpilador do Bun faz o mesmo papel.
+const stripTypeScriptTypes =
+  nodeModule.stripTypeScriptTypes ??
+  (globalThis.Bun ? (t) => new globalThis.Bun.Transpiler({ loader: 'ts' }).transformSync(t) : null)
 
 const project = process.env.TARS_PROJECT ?? process.cwd()
 const params = JSON.parse(process.env.TARS_GATE_PARAMS || '{}')
@@ -33,39 +35,9 @@ const allow = Array.isArray(params.allow) ? params.allow : []
 
 const JS = /[.](mjs|cjs|js|ts)$/i
 
-// --- o parser (acorn embarcado no vitest; R1: ja esta na arvore) -------------
-//
-// O vitest bundla o acorn em node_modules/vitest/dist/chunks/acorn.*.js, com a unica
-// exportacao `p` (o proprio parse). Resolver pelo disco e o unico caminho; se ele nao
-// estiver la, o gate NAO julga — e diz que nao julgou (fail-closed: quem le sabe que a
-// trava nao correu).
-const raizesDoCatalogo = () => {
-  const raizes = [path.resolve(project)]
-  // O gate mora no CATALOGO, que pode estar num worktree SEM node_modules (o bun install
-  // roda no checkout principal). O git-common-dir DO PROPRIO GATE aponta para o .git
-  // compartilhado — a raiz do checkout principal e o pai dele.
-  const aqui = path.dirname(fileURLToPath(import.meta.url))
-  const r = spawnSync('git', ['-C', aqui, 'rev-parse', '--git-common-dir'], { encoding: 'utf8' })
-  const gitDir = (r.stdout || '').trim()
-  if (gitDir) raizes.push(path.dirname(path.resolve(aqui, gitDir)))
-  raizes.push(path.dirname(path.dirname(path.dirname(aqui))))
-  return raizes
-}
-
-let parseAcorn = null
-const falhasDoParser = []
-for (const raiz of raizesDoCatalogo()) {
-  const glob = spawnSync('sh', ['-c', 'ls ' + JSON.stringify(path.join(raiz, 'node_modules/vitest/dist/chunks')) + '/acorn.*.js 2>/dev/null | head -1'], { encoding: 'utf8' })
-  const arquivo = (glob.stdout || '').trim()
-  if (!arquivo) continue
-  try {
-    const mod = await import(pathToFileURL(arquivo).href)
-    if (typeof mod.p === 'function') { parseAcorn = mod.p; break }
-  } catch (e) {
-    // Raiz com acorn ilegivel: tenta a proxima, e o motivo sai se nenhuma servir (BUG-26).
-    falhasDoParser.push(`${arquivo}: ${e.message}`)
-  }
-}
+// O parser viaja COM o gate (acorn 8.14.0, MIT, em vendor/): antes ele vinha do vitest do
+// consumidor, e repo sem Node reprovava todo commit (Kerr, 01/11).
+import { parse as parseAcorn } from './vendor/acorn.mjs'
 
 /** O que um no carrega de TEXTO: literal, template, identificador, chave de objeto. */
 function textos(node, achados = []) {
@@ -180,12 +152,7 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
     console.error('gate fail-closed: sem git — NAO julguei o staged.')
     process.exit(1)
   }
-  const arquivos = r.stdout.split('\0').filter(Boolean).filter((f) => JS.test(f) && !allow.some((x) => f.includes(x)))
-  // Sem JS no commit nao ha o que julgar: repo sem Node nao reprova por falta do parser (BUG-10).
-  if (arquivos.length && !parseAcorn) {
-    console.error('gate fail-closed: parser (acorn do vitest) ausente — NAO julguei o staged. Rode bun install.' + (falhasDoParser.length ? ` (${falhasDoParser.join('; ')})` : ''))
-    process.exit(1)
-  }
+  const arquivos = r.stdout.split('\0').filter(Boolean).filter((f) => JS.test(f) && !f.includes('/vendor/') && !allow.some((x) => f.includes(x)))
   const achados = []
   for (const f of arquivos) {
     let texto

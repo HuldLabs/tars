@@ -29,7 +29,7 @@ const SWALLOW_SH = /\bgit\s+commit\b.*(?:\|\s*(?:grep|tail|head)\b|\|\|\s*true\b
 // Rust: `Result` jogado fora sem tratar.
 // So' o descarte como instrucao inteira: `let x = f().ok();` usa o valor e passa. Motivo em
 // comentario `//` na mesma linha isenta (descarte de proposito e' legitimo, mas escrito).
-const SWALLOW_RS = /^\s*let\s+_\s*=|^(?!\s*(?:let\b|return\b|\.))[^=]*\.ok\(\);\s*$/
+const SWALLOW_RS = /(?:^|[{;])\s*let\s+_\s*=|^(?!\s*(?:let\b|return\b|\.))[^=]*\.ok\(\);\s*$/
 
 // JS/TS: `catch` com corpo vazio — `catch {}`, `catch (e) {}`, `catch (e) { /* nada */ }`.
 // Casa no codigo JA' sem comentario (o comentario sai antes), entao `{ }` vazio e' vazio de verdade.
@@ -47,10 +47,11 @@ const tracked = trackedPaths(project)
 // Nada staged = MODO PROVA (a `prova` da doutrina `fail/erro-nao-se-engole`, rodada por `tars
 // doctor` numa arvore limpa): julga a arvore RASTREADA, para a prova seguir falsificavel — um
 // `exit 0` mudo ali seria PHANTOM. Ausencia de staged NAO e' aprovacao, e o gate diz isso.
-const modoProva = staged.length === 0
+// A linha de base (`--findings`) e' da ARVORE: com algo staged ela gravava so' o staged (Kerr, 01/11).
+const modoProva = staged.length === 0 || process.argv.includes('--findings')
 if (modoProva) console.error('gate lint-swallow: nada staged — julgando a ARVORE RASTREADA (modo prova); sem staged NAO significa aprovado.')
 const candidatos = modoProva ? [...(tracked ?? [])] : staged.filter((f) => isTracked(tracked, f))
-const arquivos = candidatos.filter((f) => (JS.test(f) || PY.test(f) || SH.test(f) || RS.test(f)) && !allow.some((a) => f.includes(a)))
+const arquivos = candidatos.filter((f) => (JS.test(f) || PY.test(f) || SH.test(f) || RS.test(f)) && !f.includes('/vendor/') && !allow.some((a) => f.includes(a)))
 
 /** A COLETA (compartilhada com `tars gates baseline`): os achados `<arquivo>:<linha>`. Pura
  *  quanto ao exit — quem julga e' o chamador. `lerLinha` amarra o hash do trecho da base. */

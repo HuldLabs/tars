@@ -14,6 +14,7 @@
 // Contrato do hook (igual aos guards de `.ai/guards/` e ao `no-add-all`): stdin = JSON do
 // harness {hook_event_name, tool_name, tool_input:{command}}; exit 2 = block (stderr = motivo);
 // FALHA ABERTA em payload ruim (guarda-corpo, nao barreira).
+import { soComando } from '../lib-comando.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -35,6 +36,7 @@ export const REGRAS = [
 
 /** Primeira regra violada: {nome, dica, trecho} ou null. Com a ordem do dono, nunca viola. */
 export function achar(comando, env = {}) {
+  comando = soComando(String(comando ?? ''))
   if (typeof comando !== 'string' || !comando.trim()) return null
   const temOrdem = ORDEM.test(comando) || ORDEM.test(env.TARS_PROD_ORDER ?? '')
   if (temOrdem) return null
