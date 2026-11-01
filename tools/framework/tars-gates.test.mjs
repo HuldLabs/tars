@@ -459,7 +459,7 @@ describe("gate no-add-all", () => {
     },
   );
 
-  it.each(["git add -- src/a.ts", "git commit -F msg -- src/a.ts", "git status", "ls -la"])(
+  it.each(["git add -- src/a.ts", "git commit -F msg -- src/a.ts", "git status", "ls -la", "git add -- a.txt\ngit commit -q -F - <<'M'\nmsg\nM\ngit push -q -u origin x"])(
     "deixa passar %s",
     (cmd) => {
       const r = rodar([gate], { input: payload(cmd) });
@@ -617,5 +617,15 @@ describe("gate release-guard", () => {
     const msgFile = path.join(path.isAbsolute(gitDir) ? gitDir : path.join(wt, gitDir), "COMMIT_EDITMSG");
     fs.writeFileSync(msgFile, "chore: x\n\nNo-Release: regeneracao de indice\n");
     expect(rodar([gate], { env: { TARS_PROJECT: wt } }).status).toBe(0);
+  });
+});
+
+describe("o catalogo passa no proprio lint-swallow (BUG-26)", () => {
+  it("nenhum gate do catalogo engole erro", () => {
+    const r = spawnSync(process.execPath, [GATE("lint-swallow", "gate.mjs"), "--findings"], {
+      encoding: "utf8",
+      env: { ...process.env, TARS_PROJECT: path.join(HERE, "..", "..") },
+    });
+    expect(r.stdout.split("\n").filter((l) => l.startsWith(".ai/gates/"))).toEqual([]);
   });
 });
