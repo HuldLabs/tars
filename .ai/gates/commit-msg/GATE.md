@@ -12,6 +12,11 @@ falta, a instrucao ambigua, o buraco de processo) e `correcao:` (o arquivo/gate 
 `porque` na `causa raiz` reprova: se sao a mesma frase, nao se cavou o nivel. "ter mais cuidado" e' vago
 e reprova como `causa raiz` e como `correcao`.
 
+Alem dos 4, o bloco leva tres campos: `origem:` (o que fez o buraco nascer; sem ela, o bloco
+REPROVA), `hipoteses:` (o que foi testado e descartado) e `propagacao:` (a camada que impede a
+classe de voltar, ou `n/a` com o motivo). Os nomes sao exatamente estes; campo com outro nome
+conta como ausente, e o gate lista os que faltam.
+
 **Em que hook** — `commit-msg` (git passa o caminho do arquivo da mensagem como `$1`).
 
 **Stacks** — `any` (precisa de `node` no PATH).

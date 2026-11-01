@@ -629,3 +629,15 @@ describe("o catalogo passa no proprio lint-swallow (BUG-26)", () => {
     expect(r.stdout.split("\n").filter((l) => l.startsWith(".ai/gates/"))).toEqual([]);
   });
 });
+
+describe("commit-msg com campo ausente (Endurance, 01/11)", () => {
+  it("bloco sem `porque` reprova nomeando o que falta, sem TypeError", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tars-cm-"));
+    const msg = path.join(dir, "m");
+    fs.writeFileSync(msg, "🐛 fix(x): y\n\nIncident:\n  sintoma: a\n  causa raiz: b\n  origem: c\n  hipoteses: d\n");
+    const r = rodar([GATE("commit-msg", "gate.mjs"), msg], { env: { TARS_PROJECT: dir, TARS_ACTOR: "", CLAUDECODE: "" } });
+    expect(r.status).toBe(1);
+    expect(r.stderr).not.toMatch(/TypeError/);
+    expect(r.stderr).toMatch(/porque/);
+  });
+});

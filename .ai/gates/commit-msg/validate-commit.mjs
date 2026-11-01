@@ -82,7 +82,7 @@ function blocoLicao(msg) {
 }
 
 /** Normaliza para comparar causa raiz × porque (minúsculas, sem pontuação/acento de borda). */
-const norm = (s) => s.toLowerCase().replace(/[.;:!?\s]+$/g, '').trim();
+const norm = (s) => String(s ?? '').toLowerCase().replace(/[.;:!?\s]+$/g, '').trim();
 
 /**
  * Exige o registro do tipo. O gate aceita DUAS formas:
@@ -141,7 +141,7 @@ function requireTrailer(type, tr, blocos, kind) {
   };
   // `causa raiz` == `porque` = nao cavou o nivel. Vale para o Incident E para a licao: a
   // frase repetida e' o sintoma, nao a causa (fabber LESSONS-LEARNED.md).
-  const mesmas = b['causa raiz'] && norm(b['causa raiz']) === norm(b['porque']);
+  const mesmas = b['causa raiz'] && b['porque'] && norm(b['causa raiz']) === norm(b['porque']);
   const exigeCausa = () => {
     console.error(`\ncommit-msg: '${cap}' tem 'causa raiz' igual ao 'porque' — cave um nivel.`);
     console.error('  `porque` e o mecanismo imediato; `causa raiz` e o buraco ESTRUTURAL que o permitiu');
