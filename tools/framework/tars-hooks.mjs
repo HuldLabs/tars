@@ -26,7 +26,7 @@
 // silencio). Sem `[gates.params.<nome>.when]` o gate roda como sempre.
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HOOKS, parseToml } from './tars-sync.mjs'
 import { actor, avalia, descreveWhen } from './tars-actor.mjs'
@@ -102,6 +102,9 @@ export function command(dir, hook, runtime) {
     }
     const gate = join(dir, 'gate.mjs')
     if (existsSync(gate)) return js(gate)
+    // Gate com ponta de comando homonima (`no-add-all/no-add-all.mjs`, BUG-16).
+    const homonimo = join(dir, `${basename(dir)}.mjs`)
+    if (existsSync(homonimo)) return js(homonimo)
     return null
   }
   if (dir.endsWith('.mjs')) return js(dir)

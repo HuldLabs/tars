@@ -925,6 +925,22 @@ export function usesGitHooks(project, hooksPath = hooksPathOf(project), manifest
 }
 
 /** A pasta efetiva dos hooks: o declarado, senao o default do projeto. */
+/**
+ * O que `check` e `doctor` acusam alem da base (Endurance, 01/11): manifesto em versao diferente
+ * do lock e gate de hook git declarado com `core.hooksPath` desligado, em que nada roda no commit.
+ */
+export function divergenciasDeAdocao(project, manifest, lock) {
+  const out = []
+  const lockV = lock?.tars?.version
+  if (manifest?.version && lockV && manifest.version !== lockV) {
+    out.push(`AVISO: .ai/tars.toml declara a versao ${manifest.version}, mas o lock esta em ${lockV} (acerte o manifesto ou rode \`tars sync --upgrade\`)`)
+  }
+  if (declaredGitHooks(manifest ?? {}).length && hooksPathOf(project) === null) {
+    out.push('gates de hook git declarados, mas core.hooksPath esta desligado: o commit nao roda gate nenhum (rode `tars sync`)')
+  }
+  return out
+}
+
 export function effectiveHooksPath(project) {
   return hooksPathOf(project) ?? DEFAULT_HOOKS_PATH
 }
@@ -1041,11 +1057,10 @@ export function hookBody(hook) {
     'tars_home="${TARS_HOME:-/projects/tars}"\n' +
     'if [ -x "$tars_home/dist/tars" ]; then exec "$tars_home/dist/tars" hooks ' + hook + ' "$@"; fi\n' +
     'if command -v tars >/dev/null 2>&1; then exec tars hooks ' + hook + ' "$@"; fi\n' +
-    'if [ -f "$tars_home/tools/framework/tars.mjs" ]; then exec node "$tars_home/tools/framework/tars.mjs" hooks ' + hook + ' "$@"; fi\n' +
     'if [ -f "$root/tools/framework/tars.mjs" ]; then exec node "$root/tools/framework/tars.mjs" hooks ' + hook + ' "$@"; fi\n' +
     // Aspas SIMPLES no texto citado: crase dentro de `"..."` e' substituicao de comando —
     // o `sh` EXECUTARIA `tars sync` ao so' MONTAR a mensagem de erro (Incident: hook mudo).
-    'echo "hook ' + hook + ': nao achei o motor do Tars — procurei $tars_home/dist/tars, \'tars\' no PATH, $tars_home/tools/framework/tars.mjs e $root/tools/framework/tars.mjs (rode \'tars sync\')" >&2\n' +
+    'echo "hook ' + hook + ': nao achei o binario do Tars — ponha \'tars\' no PATH deste shell; procurei $tars_home/dist/tars, \'tars\' no PATH e $root/tools/framework/tars.mjs" >&2\n' +
     'exit 1\n'
   )
 }
