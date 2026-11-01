@@ -14,6 +14,7 @@
 // add/commit amplo. As regras que dependem da topologia do segtools (docker volumes,
 // DROP/TRUNCATE, lane gate, caminho de .cache/) ficaram de fora de proposito: aquilo e' do
 // projeto, nao do catalogo.
+import { soComando } from '../lib-comando.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -28,6 +29,7 @@ export const REGRAS = [
 /** Primeira regra violada: {nome, dica, trecho} ou null. */
 export function achar(comando) {
   if (typeof comando !== 'string' || !comando.trim()) return null
+  comando = soComando(comando)
   for (const [re, nome, dica] of REGRAS) {
     const m = comando.match(re)
     if (m) return { nome, dica, trecho: m[0].trim() }

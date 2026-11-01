@@ -428,8 +428,9 @@ async function handoffCommand(rest, project) {
 async function secretsCommand(rest, project) {
   const raiz = resolve(project ?? process.env.TARS_PROJECT ?? process.cwd())
   const file = join(raiz, '.ai', 'tars.toml')
-  const tabela = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')).secrets ?? {} : {}
-  const cfg = secretsMod.lerConfig(tabela, { project: raiz })
+  const toml = existsSync(file) ? syncMod.parseToml(readFileSync(file, 'utf8')) : {}
+  const tabela = toml.secrets ?? {}
+  const cfg = secretsMod.lerConfig(tabela, { project: raiz, identityBot: toml.identity?.bot })
   const sub = rest[0]
   // Dois donos, um despacho: o ciclo do cofre (refresh/check/rotate/token) fica no modulo
   // original; a manipulacao de segredo, no de operacoes. `exec` e' do segundo porque e' la'

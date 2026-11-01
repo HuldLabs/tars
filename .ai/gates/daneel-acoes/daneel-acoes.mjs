@@ -16,6 +16,7 @@
 // OVERRIDE: so' o OPERADOR, por invocacao — `DANEEL_ALLOW=1 <cmd>`. Um agente setar a variavel
 // por conta propria e' exatamente o comportamento que este hook existe para impedir (mesma
 // regra do `block-destructive-commands`).
+import { soComando } from '../lib-comando.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -53,8 +54,8 @@ export const OVERRIDE_VAR = 'DANEEL_ALLOW'
 
 /** Bloqueia se o comando casa alguma condicao de parada. Devolve o motivo, ou null. */
 export function julga(command) {
-  const cmd = String(command ?? '')
-  if (!cmd) return null
+  const cmd = soComando(String(command ?? ''))
+  if (!cmd.trim()) return null
   if (new RegExp(`(^|[\\s;])(export\\s+)?${OVERRIDE_VAR}=1([\\s;]|$)`).test(cmd)) return null
   if (new RegExp(`(^|[\\s;])env\\s[^;]*${OVERRIDE_VAR}=1`).test(cmd)) return null
   for (const [re, nome, dica] of REGRAS) {

@@ -188,8 +188,30 @@ export function baseConfig({ env = process.env, platform = process.platform } = 
  * Onde moram chave, cache, template e token quando o projeto nao declara caminho. Um lugar
  * so' (R3): o nome do projeto e' o diretorio — nada de constante com nome de pessoa.
  */
-export function configDir({ project = process.cwd(), env = process.env } = {}) {
-  return path.join(baseConfig({ env }), path.basename(path.resolve(project)))
+export function configDir({ project = process.cwd(), env = process.env, nome = nomeDoProjeto(project) } = {}) {
+  const base = baseConfig({ env })
+  const legado = path.join(base, path.basename(path.resolve(project)))
+  const novo = path.join(base, nome)
+  // Quem ja' tinha o cache pela pasta (ex.: `/workspace` no container) continua achando-o.
+  if (novo !== legado && !fs.existsSync(novo) && fs.existsSync(legado)) return legado
+  return novo
+}
+
+/**
+ * O nome do projeto e' o do REPO, nao o da pasta: worktree e container (`/workspace`) apontavam
+ * para outro diretorio de segredos (Kerr, 01/11). Ordem: remote `origin`, raiz do checkout
+ * principal (worktree), pasta.
+ */
+export function nomeDoProjeto(project, { spawn = spawnSync } = {}) {
+  const git = (...a) => {
+    const r = spawn('git', ['-C', project, ...a], { encoding: 'utf8' })
+    return r.status === 0 ? String(r.stdout).trim() : ''
+  }
+  const url = git('remote', 'get-url', 'origin')
+  if (url) return path.basename(url.replace(/\/+$/, '')).replace(/\.git$/, '')
+  const comum = git('rev-parse', '--path-format=absolute', '--git-common-dir')
+  if (comum) return path.basename(path.dirname(comum))
+  return path.basename(path.resolve(project))
 }
 
 /** O PERFIL do usuario: FORA de repo (o projeto nunca o versiona), um por maquina. */
@@ -289,7 +311,7 @@ function exigeRef(cfg, campo, env = process.env) {
  * so'), e cada violacao GRITA nomeando o que faltou (R4) — um `source` ausente nao pode
  * virar "usa o que der".
  */
-export function lerConfig(secrets = {}, { project = process.cwd(), env = process.env, perfil } = {}) {
+export function lerConfig(secrets = {}, { project = process.cwd(), env = process.env, perfil, identityBot = null } = {}) {
   const dir = configDir({ project, env })
   const emPerfil = perfil ?? lerPerfil({ env })
   const key_scope = secrets.key_scope ?? 'project'
@@ -343,6 +365,11 @@ export function lerConfig(secrets = {}, { project = process.cwd(), env = process
   // e falharia de um subdiretorio, longe da causa (R4). Absoluto e `~` passam intactos.
   if (secrets.template !== undefined && secrets.template !== null) {
     cfg.template = caminhoDoProjeto(secrets.template, projetoAbs)
+  }
+  // O bot da identidade mora em `[identity].bot`; o refs dizia "nenhum" com ele declarado (Kerr, 01/11).
+  if (!cfg.bot && identityBot) {
+    cfg.bot = identityBot
+    cfg._origem = { ...(cfg._origem ?? {}), bot: 'identity' }
   }
   return { ...cfg, key_scope, source: secrets.source, sops_config, sops_files, gerado, projeto: projetoAbs, dir }
 }
@@ -986,7 +1013,7 @@ export function doctorDoProjeto(root, { env = process.env, fs: fsm = fs, ...rest
   const tabs = parseToml(fsm.readFileSync(file, 'utf8'))
   if (!tabs.secrets && !tabs.identity) return null
   try {
-    const cfg = lerConfig(tabs.secrets ?? {}, { project: root, env })
+    const cfg = lerConfig(tabs.secrets ?? {}, { project: root, env, identityBot: tabs.identity?.bot })
     return doctor(cfg, { env, fs: fsm, cwd: root, remoteNome: tabs.identity?.remote ?? 'origin', ...rest })
   } catch (e) {
     if (e instanceof ErroConfig) return { ok: false, linhas: [{ nome: 'secrets', ok: false, detalhe: e.message }] }

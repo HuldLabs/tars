@@ -6,18 +6,16 @@ cujo ramo guardado **retorna aprovacao** (`{ ok: true }`, `true`, `'ok'`) **sem 
 que — sem `motivo`/`erro`/`porque`/`nada`/`ausente`/etc. no que devolve.
 
 O defeito e' de FORMA, e o julgamento anda sobre a ARVORE (nao e' heuristica de texto): o
-`acorn` que o `vitest` ja' embarca (`node_modules/vitest/dist/chunks/acorn.*.js`) parseia o
-arquivo e o gate decide sobre `IfStatement` / `consequent` / `alternate` — comentario,
-string e regex do proprio codigo nao confundem. `.ts` passa pelo `stripTypeScriptTypes`
-antes. O que o parser nao aceitar **nao e' julgado — e o gate DIZ que nao julgou**.
+`acorn` que viaja com o gate (`vendor/acorn.mjs`, 8.14.0, MIT) parseia o arquivo e o gate decide sobre `IfStatement` / `consequent` / `alternate` — comentario,
+string e regex do proprio codigo nao confundem. `.ts` passa antes pelo `stripTypeScriptTypes` do Node ou pelo
+transpilador do Bun, no binario. O que o parser nao aceitar **nao e' julgado — e o gate DIZ que nao julgou**.
 
 **Por que** — doutrina B2.3 (plano de release de 14/10). A fonte e' um incidente real do
 kipp (`seg-agentmem-2` #7): o codigo cobrava a trava quando ela EXISTIA e, quando nao
 existia, `return`ava verde — o buraco ficava exatamente onde a protecao tinha de valer.
 "Nada a checar" virou "esta tudo certo". Regra que nao e' teste e' sugestao.
 
-**Fail-closed de verdade** — se o parser (`acorn` do `vitest`) nao estiver na arvore, ou se
-o `git` nao responder, o gate **REPROVA** (`exit 1`) dizendo que NAO julgou. Nunca deixa
+**Fail-closed de verdade** — se o `git` nao responder, o gate **REPROVA** (`exit 1`) dizendo que NAO julgou. Nunca deixa
 passar calado: um gate que nao corre e' pior que gate nenhum, porque da' a sensacao de
 cobertura.
 
@@ -36,4 +34,4 @@ Negativo: `if (!reg) return { ok: true }` REPROVA.
 do plano de release do Tars (14/10); a implementacao (julgamento da arvore pelo acorn que
 ja' esta' na arvore, via R1) e' nossa.
 
-**Requisito** — `vitest` instalado quando o commit leva JS/TS; sem JS staged, o gate passa.
+**Requisito** — nenhum: o parser (acorn) vem junto do gate, em `vendor/`.

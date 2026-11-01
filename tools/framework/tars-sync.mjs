@@ -558,6 +558,15 @@ export const isSelf = (tars, project) => Boolean(tars) && resolve(tars) === reso
  */
 export const isCatalog = (dir) => existsSync(join(dir, '.ai', 'VERSION')) && existsSync(join(dir, 'tools', 'framework', 'tars-sync.mjs'))
 
+/** Troca o `version` da tabela `[tars]` do `.ai/tars.toml`; o resto do arquivo fica intacto. */
+export async function gravaVersaoDoManifesto(project, versao) {
+  const file = join(project, '.ai', 'tars.toml')
+  if (!existsSync(file)) return
+  const txt = await readFile(file, 'utf8')
+  const novo = txt.replace(/(\[tars\][^[]*?^version\s*=\s*)"[^"]*"/m, `$1"${versao}"`)
+  if (novo !== txt) await writeFile(file, novo)
+}
+
 export async function sync({ tars = findTars(), project = process.cwd(), check = false, upgrade = false, adopt = [], log = console.log } = {}) {
   const manifest = await readManifest(project)
   const self = isSelf(tars, project) || isCatalog(project)
@@ -580,6 +589,9 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     )
   }
   if (divergente && upgrade) log(`upgrade declarado: Tars ${doLock} -> ${doMotor}.`)
+  // A troca declarada vale tambem para o manifesto: sem isto o `check` seguia apontando a versao
+  // antiga e mandava rodar o proprio `--upgrade` (Endurance e Kerr, 01/11).
+  if (upgrade && !check && doMotor) await gravaVersaoDoManifesto(project, doMotor)
   const p = await plan({ tars, project, manifest, lock })
   // Modo `self`: a base E' o catalogo, nao ha' copia para faltar nem drift de lock. Sem isto o
   // `tars check` no proprio repo do Tars reprovava sempre com "nao copiado" (dev.28 e dev.29).
@@ -974,7 +986,7 @@ export function divergenciasDeAdocao(project, manifest, lock) {
   const out = []
   const lockV = lock?.tars?.version
   if (manifest?.version && lockV && manifest.version !== lockV) {
-    out.push(`AVISO: .ai/tars.toml declara a versao ${manifest.version}, mas o lock esta em ${lockV} (acerte o manifesto ou rode \`tars sync --upgrade\`)`)
+    out.push(`AVISO: .ai/tars.toml declara a versao ${manifest.version}, mas o lock esta em ${lockV} (rode \`tars sync --upgrade\` com o binario da versao que quer, ou acerte \`version\` no manifesto)`)
   }
   if (declaredGitHooks(manifest ?? {}).length && hooksPathOf(project) === null) {
     out.push('gates de hook git declarados, mas core.hooksPath esta desligado: o commit nao roda gate nenhum (rode `tars sync`)')
