@@ -18,4 +18,7 @@ describe("tars catalog", () => {
   it("markdown lista por area", () => {
     expect(markdown(itens)).toContain("| `gitleaks` | a |");
   });
+  it("agent_gates conta como adotado", () => {
+    expect(avaliar(itens, { agentGates: ["healthcheck"] })[1].estado).toBe("adotado");
+  });
 });

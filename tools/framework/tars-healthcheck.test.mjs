@@ -67,6 +67,11 @@ describe("gate healthcheck — o par positivo/negativo, com repo real", () => {
     expect(rodar(dir).status).toBe(0);
   });
 
+  it("a copia do gate em .ai/base/gates/ do consumidor nao e' operacao (Endurance, 01/11)", () => {
+    const dir = repo({ ".ai/base/gates/healthcheck/gate.mjs": fs.readFileSync(GATE, "utf8") });
+    expect(rodar(dir).status).toBe(0);
+  });
+
   it("o mesmo caminho SEM o defeito nao reprova (o gate nao passa por vacuidade)", () => {
     const dir = repo({ "compose.yaml": compose('"CMD", "curl", "-fsS", "http://127.0.0.1:5080/healthz"'), "receitas/deploy.py": "def main():\n    return 0\n" });
     expect(rodar(dir).status).toBe(0);

@@ -23,12 +23,13 @@ const project = process.env.TARS_PROJECT ?? process.cwd()
 const params = JSON.parse(process.env.TARS_GATE_PARAMS || '{}')
 const allow = Array.isArray(params.allow) ? params.allow : []
 
-// O proprio diretorio de gates nao e' arquivo de OPERACAO: `.ai/gates/**/gate.mjs` cita
+// O proprio diretorio de gates (e a copia do consumidor em `.ai/base/gates/`, Endurance 01/11)
+// nao e' arquivo de OPERACAO: `.ai/gates/**/gate.mjs` cita
 // "healthcheck" e `--version` como DOCUMENTACAO do que cobra — julgar a fonte do gate
 // contra si mesma da' falso positivo (achado ao rodar o gate com os hooks ligados).
 // Vale o mesmo para arquivo de TESTE (`*.test.mjs`/`test_*.py`): a fixture traz `--version`
 // como DADO do caso, nao como healthcheck real do projeto.
-const NAO_E_OPERACAO = /(^|\/)\.ai\/gates\/|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]+\.py$/
+const NAO_E_OPERACAO = /(^|\/)\.ai\/(base\/)?gates\/|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]+\.py$/
 
 // O que declarar saude: o nome do campo em yaml/toml (healthcheck, test, HEALTHCHECK) e o
 // passo de post-apply (assert_health, aguarda_saudavel, wait_healthy).
