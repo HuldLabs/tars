@@ -278,7 +278,7 @@ describe("gate commit-msg — teste vermelho no fix (TARS-RED-1)", () => {
   });
 
   it("fix que toca teste em shell passa: *.test.sh, *_test.sh, *.bats e test/ (Endurance, 14/10)", () => {
-    for (const t of ["tools/gen-catalogo.test.sh", "tools/x_test.sh", "test/x.bats", "test/node-bun/test.sh"]) {
+    for (const t of ["tools/gen-catalogo.test.sh", "tools/x_test.sh", "test/x.bats", "test/node-bun/test.sh", ".ai/guards/test-x.sh"]) {
       expect(valida(FIX, repoCom(["tools/framework/tars-verify.mjs", t])).status).toBe(0);
     }
   });

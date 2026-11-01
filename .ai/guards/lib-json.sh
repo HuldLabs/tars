@@ -25,3 +25,13 @@ let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{
     process.stdout.write(typeof d==="string"?d:"");}catch(e){}
 });' "$1" 2>/dev/null || true
 }
+
+# so_comando: o comando sem o que comprovadamente e' TEXTO (corpo de heredoc e o argumento entre
+# aspas de -m/--message/echo/printf). Mensagem de commit citando `git add -A` nao e' o comando
+# (coord Tars, 01/11). `bash -c "..."` continua julgado: ali o texto E' comando.
+so_comando() {
+  printf '%s\n' "$1" | awk '
+    fim != "" { if ($0 == fim) fim = ""; next }
+    { if (match($0, /<<-?[[:space:]]*["'"'"']?[A-Za-z_][A-Za-z0-9_]*["'"'"']?/)) { m = substr($0, RSTART, RLENGTH); gsub(/<<-?[[:space:]]*|["'"'"']/, "", m); fim = m } print }' |
+  sed -E "s/((^|[[:space:]])(-m|--message|echo|printf)([[:space:]]+-[a-z]+)*[[:space:]]+)(\"[^\"]*\"|'[^']*')/\1''/g"
+}
