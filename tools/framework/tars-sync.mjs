@@ -171,6 +171,8 @@ export async function readManifest(project) {
     version: tars.version ?? null,
     skills: tars.skills ?? [],
     rules: tars.rules ?? [],
+    // Gates so' de agente (ponta `PreToolUse`), sem hook git: no-add-all, prod-guard, daneel-acoes.
+    agentGates: tars.agent_gates ?? [],
     memory: tars.memory ?? [],
     guards: tars.guards ?? [],
     governance: tars.governance ?? [],
@@ -251,7 +253,7 @@ const hookGuards = (manifest) => (manifest.guards ?? []).filter((g) => !isGuardT
 export const declare = (manifest, { tars } = {}) =>
   AREAS.flatMap((area) => {
     if (area === 'gates') {
-      const gates = HOOKS.filter((h) => h !== 'local').flatMap((h) => manifest.gates[h] ?? [])
+      const gates = [...new Set([...HOOKS.filter((h) => h !== 'local').flatMap((h) => manifest.gates[h] ?? []), ...(manifest.agentGates ?? [])])]
       const deps = tars ? gateDeps(gates, tars).filter((d) => !gates.includes(d)) : []
       return [...gates.map((item) => ({ area, item })), ...deps.map((item) => ({ area, item }))]
     }
@@ -827,13 +829,21 @@ function baseHooks(project) {
  * fica — reescrever o evento inteiro derrubava o `prod-guard` calado (SYNC-PRE-TOOL, 14/10).
  * Guard que saiu do manifesto continua sendo do sync: some, como deve.
  */
-const MANAGED = /^bash "\$CLAUDE_PROJECT_DIR\/\.ai\/(base\/)?guards\//
+const MANAGED = /^bash "\$CLAUDE_PROJECT_DIR\/\.ai\/((base\/)?guards|base\/gates)\//
 
 /** Entradas de `atual` cujo comando nao e' do sync, no formato de `byMatcher`. */
 export function alheios(entries = []) {
   return byMatcher(entries.flatMap((e) => (e.hooks ?? [])
     .filter((h) => !MANAGED.test(h.command ?? ''))
     .map((h) => ({ matcher: e.matcher, command: h.command }))))
+}
+
+/** A ponta `PreToolUse` dos gates de `agent_gates` (BUG-11): `.ai/base/gates/<nome>/<nome>.sh`. */
+export function agentGateHooks(project, manifest) {
+  const cmds = (manifest.agentGates ?? [])
+    .filter((g) => project && existsSync(join(project, '.ai', 'base', 'gates', g, `${g}.sh`)))
+    .map((g) => ({ type: 'command', command: `bash "$CLAUDE_PROJECT_DIR/.ai/base/gates/${g}/${g}.sh"` }))
+  return cmds.length ? [{ matcher: 'Bash', hooks: cmds }] : []
 }
 
 export function claudeSettings(manifest, project = null, atual = null) {
@@ -849,7 +859,7 @@ export function claudeSettings(manifest, project = null, atual = null) {
     env: { ...NONINTERACTIVE_ENV, ...(manifest.env ?? {}), ...ACTOR_ENV },
     hooks: {
       ...(atual?.hooks ?? {}),
-      PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest)), ...fora('PreToolUse')],
+      PreToolUse: [...base.PreToolUse, ...(project ? projectGuardHooks(project, manifest) : preToolUseFor(manifest)), ...agentGateHooks(project, manifest), ...fora('PreToolUse')],
       PreCompact: [...base.PreCompact, ...fora('PreCompact')],
       SessionStart: [...base.SessionStart, ...fora('SessionStart')],
       Stop: [...base.Stop, ...fora('Stop')],
@@ -858,7 +868,34 @@ export function claudeSettings(manifest, project = null, atual = null) {
 }
 
 /** Escreve `<project>/.claude/settings.json` — idempotente (mesmo conteudo, nada muda). */
+const BOOT_INI = '<!-- tars:boot (gerado pelo tars sync; nao edite) -->'
+const BOOT_FIM = '<!-- /tars:boot -->'
+
+/** Poe as regras declaradas no topo do arquivo de boot, entre marcas (BUG-9). Idempotente. */
+export function blocoDeBoot(atual, regras) {
+  const bloco = `${BOOT_INI}\n${regras.trim()}\n${BOOT_FIM}\n`
+  const i = atual.indexOf(BOOT_INI)
+  const f = atual.indexOf(BOOT_FIM)
+  if (i !== -1 && f !== -1) return atual.slice(0, i) + bloco + atual.slice(f + BOOT_FIM.length + 1)
+  return atual ? `${bloco}\n${atual}` : bloco
+}
+
+async function writeBoot(project, manifest) {
+  const textos = (manifest.rules ?? [])
+    .map((r) => join(project, '.ai', 'base', 'rules', `${r}.md`))
+    .filter(existsSync)
+    .map((f) => readFileSync(f, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, ''))
+  if (!textos.length) return
+  for (const nome of ['CLAUDE.md', 'AGENTS.md']) {
+    const file = join(project, nome)
+    const atual = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    const novo = blocoDeBoot(atual, textos.join('\n\n'))
+    if (novo !== atual) await writeFile(file, novo)
+  }
+}
+
 export async function writeWiring(project, manifest) {
+  await writeBoot(project, manifest)
   const dir = join(project, '.claude')
   const file = join(dir, 'settings.json')
   let atual = null
@@ -938,6 +975,8 @@ export function divergenciasDeAdocao(project, manifest, lock) {
   if (declaredGitHooks(manifest ?? {}).length && hooksPathOf(project) === null) {
     out.push('gates de hook git declarados, mas core.hooksPath esta desligado: o commit nao roda gate nenhum (rode `tars sync`)')
   }
+  // Doutrina `dados-do-projeto`: dado perene mora em `data/` (BUG-18).
+  if (existsSync(join(project, 'var'))) out.push('AVISO: pasta var/ no repo; dado perene mora em data/ (doutrina dados-do-projeto)')
   return out
 }
 

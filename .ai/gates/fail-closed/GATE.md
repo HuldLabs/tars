@@ -36,4 +36,4 @@ Negativo: `if (!reg) return { ok: true }` REPROVA.
 do plano de release do Tars (14/10); a implementacao (julgamento da arvore pelo acorn que
 ja' esta' na arvore, via R1) e' nossa.
 
-**Requisito** — só para repo JS/TS com `vitest` instalado: o parser vem dele. Em outro repo, o gate reprova todo commit; não o declare.
+**Requisito** — `vitest` instalado quando o commit leva JS/TS; sem JS staged, o gate passa.
