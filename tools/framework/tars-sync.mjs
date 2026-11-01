@@ -580,7 +580,11 @@ export async function sync({ tars = findTars(), project = process.cwd(), check =
     )
   }
   if (divergente && upgrade) log(`upgrade declarado: Tars ${doLock} -> ${doMotor}.`)
-  const { missing, stale, absent, copied, removed } = await plan({ tars, project, manifest, lock })
+  const p = await plan({ tars, project, manifest, lock })
+  // Modo `self`: a base E' o catalogo, nao ha' copia para faltar nem drift de lock. Sem isto o
+  // `tars check` no proprio repo do Tars reprovava sempre com "nao copiado" (dev.28 e dev.29).
+  const { missing, copied } = p
+  const [stale, absent, removed] = self ? [[], [], []] : [p.stale, p.absent, p.removed]
   // Familia D: a saida gerada orfa e' calculada AQUI, com o manifesto de agora e o lock de
   // ANTES de a base ser reescrita (o lock novo ja' perdeu a skill removida).
   const { orphan, foreign } = prunePlan(project, manifest, lock)
