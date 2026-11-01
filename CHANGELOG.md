@@ -23,6 +23,7 @@ versao: o comando imprime SO' as notas entre a versao do `.ai/tars.lock` e a atu
   e não cita mais o segtools; o resumo de sessão lê `.ai/context-digest.txt`.
 - **Boot e gates de agente:** o `sync` põe as `rules` no topo de `CLAUDE.md` e `AGENTS.md`, e
   `[tars].agent_gates` liga a ponta `PreToolUse`. `fail-closed` passa sem JS staged.
+- **Gate `data-layout`** reprova arquivo novo fora de `data/<finalidade>/`.
 - **Doutrina:** `dados-do-projeto.md`, versão é lote e commit de agente no host.
 
 ### Por que
