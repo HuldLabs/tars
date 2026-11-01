@@ -27,7 +27,9 @@ const RS = /\.rs$/i
 // Shell: saida de `git commit` filtrada ou anulada esconde a reprovacao do gate (BUG-7, Kerr).
 const SWALLOW_SH = /\bgit\s+commit\b.*(?:\|\s*(?:grep|tail|head)\b|\|\|\s*true\b)/
 // Rust: `Result` jogado fora sem tratar.
-const SWALLOW_RS = /^\s*let\s+_\s*=\s*.*\?*;\s*$|\.ok\(\);\s*$/
+// So' o descarte como instrucao inteira: `let x = f().ok();` usa o valor e passa. Motivo em
+// comentario `//` na mesma linha isenta (descarte de proposito e' legitimo, mas escrito).
+const SWALLOW_RS = /^\s*let\s+_\s*=|^(?!\s*(?:let\b|return\b|\.))[^=]*\.ok\(\);\s*$/
 
 // JS/TS: `catch` com corpo vazio — `catch {}`, `catch (e) {}`, `catch (e) { /* nada */ }`.
 // Casa no codigo JA' sem comentario (o comentario sai antes), entao `{ }` vazio e' vazio de verdade.
@@ -58,8 +60,10 @@ export function colher({ cwd = project } = {}) {
     let txt
     try { txt = readFileSync(join(cwd, f), 'utf8') } catch { continue } // sumiu do disco: nada a julgar
     const re = JS.test(f) ? SWALLOW_JS : SH.test(f) ? SWALLOW_SH : RS.test(f) ? SWALLOW_RS : SWALLOW_PY
-    const linhas = txt.split(/\r?\n/).map((l) => l.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/, '').replace(/#.*$/, ''))
+    const crus = txt.split(/\r?\n/)
+    const linhas = crus.map((l) => l.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/, '').replace(/#.*$/, ''))
     linhas.forEach((codigo, i) => {
+      if (RS.test(f) && crus[i].includes('//')) return
       if (re.test(codigo)) return achados.push(`${f}:${i + 1}`)
       // `except:` sozinho e o `pass` na linha de baixo = o mesmo erro engolido.
       if (PY.test(f) && PY_EXCEPT.test(codigo) && /^\s*(?:pass|\.\.\.)\s*$/.test(linhas[i + 1] ?? '')) achados.push(`${f}:${i + 1}`)

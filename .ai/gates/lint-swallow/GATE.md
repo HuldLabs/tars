@@ -7,7 +7,8 @@
 - Python — `except` cujo corpo e' so' `pass`/`...`, na mesma linha (`except: pass`) ou no bloco
   (`except:` + `pass` indentado abaixo).
 - shell — `git commit` com saida filtrada (`| grep`) ou anulada (`|| true`);
-- Rust — `let _ = ...;` e `.ok();` soltos.
+- Rust — `let _ = ...;` e `.ok();` como instrução inteira. `let x = f().ok();` passa, e um comentario
+  `//` na mesma linha com o motivo isenta o descarte de proposito.
 
 Comentario nao conta: `/* */`, `//` e `#` saem da linha antes do teste. Um `catch` que trata,
 propaga ou registra passa — o alvo e' a falha SILENCIOSA, nao o tratamento de erro.
