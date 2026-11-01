@@ -9,7 +9,7 @@
 # portanto, so' os GATES e os GUARDS que o Tars usa — nao ha' `[tars].skills/rules/memory`
 # a copiar para lugar nenhum (o catalogo E' a fonte desses itens).
 [tars]
-version = "0.0.1-dev.7"
+version = "0.0.1-dev.30"
 
 # Governanca que o PROPRIO Tars usa (o catalogo E' a fonte; o `doctor` cobra doutrina x
 # gate x prova). `novo-repo` (dev.13) e' o metodo de nascer repo — prova no consumidor.
