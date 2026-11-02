@@ -11,7 +11,12 @@
 
 ## Estado
 
-- dev.30 cortada em 01/11/2026 depois de 4 rodadas de adoção com candidato (rc.1 a rc.4) no Kerr e no Endurance; as duas últimas voltaram limpas.
+- **Publicada:** dev.30 (01/11/2026), depois de 4 rodadas de adoção com candidato (rc.1 a rc.4) no Kerr e no Endurance; as duas últimas voltaram limpas.
+- **Lote da dev.31, no `main`, sem corte:** #62 (`commit-msg` nomeia campo ausente), #63 (`block-host-commit` barra todo git que assina ou abre SSH), #65 (suíte sem lixo no `/tmp`), #67 (token da máquina no `adocao.md`), #68 (`verify` usa o `known_hosts`). Falta o CHANGELOG da dev.31. Não é urgente; antes do corte, rodada de adoção com candidato (ordem do dono: nada de versão por pingue-pongue de erro).
+- **Decisões do dono (01-02/11):** só o PR de corte espera o dono, salvo quando ele manda mergear; token da máquina no devcontainer (bind readonly + `token_file` no projeto); bug reportado sempre se corrige, venha de onde vier; bypass do guard de host só com pergunta específica e sozinha.
+- **Aguardam o dono:** (1) implementar E8-STACK-DEVCONTAINER e H1-SSH-AGENT (BACKLOG); (2) `w/licoes-homelab`: 9 incidentes e 15 regras que só existem nesse branch, levar ao `main` ou descartar; (3) backups do Tars no pool `ssd-x400` (ryzentu): falta acesso, pelo SSH do dono dispara o 1Password; (4) apagar `/home/node/.cache/tars-arquivo/2026-11-01/` (resgate de 08/10).
+- **Aberto:** TEST-FLAKY-1 (a confirmar); medir a partida do binário para decidir sobre Rust; `.tar` de outras sessões no `/tmp` do container, sem dono identificado.
+- **Armadilhas:** script no container vai por `docker exec -i ... bash -s < arquivo` (o `docker cp` falhou); commit conferido por código de saída; binário candidato fica fora de checkout do Tars.
 
 ## Como operar
 
