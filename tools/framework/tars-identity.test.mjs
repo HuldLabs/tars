@@ -7,6 +7,7 @@ import {
   configAssinatura,
   lerKnownHosts,
   chaveDoCache,
+  sshDeHostDefault,
   montarIdentidade,
   provision,
   renderIdentidade,
@@ -287,5 +288,13 @@ describe("allowed_signers no --from-cache (Kerr, 01/11)", () => {
     const spawn = () => ({ status: 0, stdout: "ssh-ed25519 AAA\n" });
     chaveDoCache({ id: { chave: "/k" }, valor: "a", email: "eu@x", allowedSigners: "/as", spawn, fs: m });
     expect(f["/as"]).toBe("outro@x ssh-rsa B\neu@x ssh-ed25519 AAA\n");
+  });
+});
+
+describe("verify usa o known_hosts declarado (Homelab, 02/11)", () => {
+  it("a sonda passa UserKnownHostsFile ao ssh", () => {
+    let args = [];
+    sshDeHostDefault("nuc", { knownHostsFile: "/w/known_hosts", spawn: (_c, a) => { args = a; return { status: 0, stdout: "" }; } });
+    expect(args).toContain("UserKnownHostsFile=/w/known_hosts");
   });
 });

@@ -139,8 +139,11 @@ export function verify({ id, sshDeHost = () => ({ ok: false, out: 'sem sonda' })
 }
 
 /** Sonda default do host: `ssh -o BatchMode=yes -o ConnectTimeout=10 <h> true`. */
-export function sshDeHostDefault(host, { env = process.env, spawn = spawnSync } = {}) {
-  const r = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, 'true'], {
+export function sshDeHostDefault(host, { env = process.env, spawn = spawnSync, knownHostsFile = null } = {}) {
+  // O `known_hosts` declarado vale tambem na sonda: sem isto o ssh usava o do usuario e dava
+  // "Host key verification failed" com o host fixado (Homelab, 02/11).
+  const fixado = knownHostsFile ? ['-o', `UserKnownHostsFile=${knownHostsFile}`] : []
+  const r = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', ...fixado, host, 'true'], {
     encoding: 'utf8',
     timeout: 15000,
     env,
@@ -317,7 +320,7 @@ export function runIdentity({ sub, rest = [], cfg = {}, deps = {}, env = process
     const idHost = rest.indexOf('--host')
     const hosts = idHost === -1 ? id.hosts : [rest[idHost + 1]]
     const knownHosts = lerKnownHosts(cfg.known_hosts, deps.fs ? { fs: deps.fs } : {})
-    const sshDeHost = deps.sshDeHost ?? ((h) => sshDeHostDefault(h, { env, spawn: deps.spawn }))
+    const sshDeHost = deps.sshDeHost ?? ((h) => sshDeHostDefault(h, { env, spawn: deps.spawn, knownHostsFile: cfg.known_hosts }))
     const r = verify({ id: { ...id, hosts }, sshDeHost, knownHosts })
     log(saida(renderVerify({ ...id, hosts }, r)))
     if (!r.ok) process.exitCode = 1
