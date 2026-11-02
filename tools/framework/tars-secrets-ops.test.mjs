@@ -1,3 +1,5 @@
+import { redator as redatorDoExec } from "./tars-secrets-ops.mjs";
+import { filtraMapa } from "./tars-secrets.mjs";
 // `tars secrets` (S2b) — o contrato da manipulacao de segredo: UM parser de endereco, compare
 // em tempo constante que so' diz `igual`/`diferente`, destino `env:`/`cache:` RECUSADO, `move`
 // que nunca apaga a origem sem confirmacao, `rm` que ARQUIVA o item e tira a LINHA certa do
@@ -560,3 +562,26 @@ describe('auditoria: o ator vem do AMBIENTE de quem chama', () => {
     expect(audita({ TARS_ACTOR: undefined, CLAUDECODE: undefined }).ator).toBe('human')
   })
 })
+
+describe("exec nao vaza forma transformada do valor (Homelab, 02/11)", () => {
+  const corpo = ["b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB", "AAAAMwAAAAtzc2gtZWQyNTUxOQAAACDfalsofalsofalsofalsofa"];
+  const pem = `-----BEGIN OPENSSH PRIVATE KEY-----\n${corpo.join("\n")}\n-----END OPENSSH PRIVATE KEY-----\n`;
+  const passa = (t) => { const r = redatorDoExec([pem]); return r.empurra(t) + r.fim(); };
+  it("mascara o valor com \\n escapado (repr/JSON)", () => {
+    expect(passa(`x ${JSON.stringify(pem)} y`)).not.toContain(corpo[0]);
+  });
+  it("mascara linha solta, corpo colado e base64", () => {
+    expect(passa(`${corpo[0]}\n`)).not.toContain(corpo[0]);
+    expect(passa(corpo.join(""))).not.toContain(corpo[1]);
+    const b = Buffer.from(pem).toString("base64");
+    expect(passa(b)).not.toContain(b);
+  });
+  it("texto comum passa intacto", () => {
+    expect(passa("converge ok\n")).toBe("converge ok\n");
+  });
+  it("--only deixa so' os nomes pedidos e recusa nome fora do cache", () => {
+    expect(filtraMapa({ A: "1", B: "2" }, ["A"])).toEqual({ A: "1" });
+    expect(filtraMapa({ A: "1" }, null)).toEqual({ A: "1" });
+    expect(() => filtraMapa({ A: "1" }, ["Z"])).toThrow(/Z/);
+  });
+});

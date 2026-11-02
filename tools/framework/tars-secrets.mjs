@@ -661,16 +661,27 @@ export function envDoFilho(mapa, { env = process.env, cfg } = {}) {
 }
 
 /**
+ * `--only`: so' os nomes pedidos chegam ao filho. Nome fora do cache grita: filtro que some
+ * calado deixaria a ferramenta rodar sem a credencial e falhar longe daqui.
+ */
+export function filtraMapa(mapa, only = null) {
+  if (!only) return mapa
+  const faltam = only.filter((k) => !(k in mapa))
+  if (faltam.length) throw new ErroConfig(`[secrets] --only: fora do cache: ${faltam.join(', ')}`)
+  return Object.fromEntries(only.map((k) => [k, mapa[k]]))
+}
+
+/**
  * `exec` — decifra em memoria e roda o filho por ARGV (sem shell). Com `shell: true` o Node
  * remontaria a linha numa string e todo metacaractere (`;`, `|`, `$( )`) deixaria de ser DADO
  * e viraria sintaxe — com os segredos ja' no ambiente. Quem precisa de shell pede um.
  */
-export function exec(cfg, argv, { env = process.env, spawn = spawnSync } = {}) {
+export function exec(cfg, argv, { env = process.env, spawn = spawnSync, only = null } = {}) {
   if (!argv.length) throw new ErroConfig('uso: tars secrets exec -- <cmd> [args]')
   if (!fs.existsSync(cfg.cache_file)) {
     throw new ErroConfig(`[secrets] cache ausente em ${cfg.cache_file} — rode \`tars secrets refresh\``)
   }
-  const r = spawn(argv[0], argv.slice(1), { stdio: 'inherit', env: envDoFilho(decifraMapa(cfg), { env, cfg }), shell: false })
+  const r = spawn(argv[0], argv.slice(1), { stdio: 'inherit', env: envDoFilho(filtraMapa(decifraMapa(cfg), only), { env, cfg }), shell: false })
   if (r.error) throw new ErroConfig(`[secrets] nao consegui executar '${argv[0]}': ${r.error.message}`)
   return { status: r.status ?? 1 }
 }
