@@ -12,4 +12,4 @@ Cada tarefa usa arquivos temporarios com nome proprio (`.s-<tarefa>.sh`, `.m-<ta
 
 **Why:** em 01/11/2026, reusar `.s.sh`/`.m` falhou 3 vezes: o Write recusava por "modificado desde a leitura", o script antigo rodava no lugar e quase commitou com a mensagem do corte da dev.30.
 
-**How to apply:** ao escrever script de commit/merge no container, nomeie pelo branch; `set -euo pipefail`; confira a mensagem e a mudanca esperada antes do commit.
+**How to apply:** ao escrever script de commit/merge no container, nomeie pelo branch; `set -euo pipefail`; confira a mensagem e a mudanca esperada antes do commit. O commit e' conferido pelo CODIGO DE SAIDA (`git commit ... >log 2>&1 || { tail log; exit 1; }`), nunca por `grep FALHOU`: em 01/11 o gate reprovou com outra frase e o script seguiu como se tivesse commitado.

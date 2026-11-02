@@ -134,8 +134,23 @@ Passo a passo, na ordem:
    tars identity verify        # read-only; sem identidade, diz o comando que o dono roda
    ```
 
-   **Em container, sem TTY e sem o app do 1Password:** o dono roda uma vez
-   `tars secrets token set`; esse token é o aval. Declare em `[identity]` `key_file`, `key_cache`
+   **Token no devcontainer (padrão):** use o token da máquina, sem semear nada por projeto. O
+   bootstrap dos `dotfiles` grava `~/.config/tars/automation/op-sa.token` (600) no host. Monte-o
+   somente leitura no `devcontainer.json` e aponte `token_file` no `.ai/tars.toml`:
+
+   ```json
+   "mounts": ["source=${localEnv:HOME}/.config/tars/automation/op-sa.token,target=/run/tars/op-sa.token,type=bind,readonly"]
+   ```
+
+   ```toml
+   [secrets]
+   token_file = "/run/tars/op-sa.token"
+   ```
+
+   O usuário do container precisa ler o arquivo, e o modo continua 600 ou 400. Sem esse arquivo
+   na máquina, o caminho manual é `tars secrets token set`, com o app do 1Password ausente ou não.
+
+   **Em container, sem TTY e sem o app do 1Password:** o token acima é o aval. Declare em `[identity]` `key_file`, `key_cache`
    (nome da chave no cache), `git_name`, `git_email` e, se quiser, `git_helper`. Depois:
 
    ```sh
