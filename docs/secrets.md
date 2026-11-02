@@ -100,7 +100,7 @@ A mensagem de erro nomeia a **linha** e a chave, e **nunca** ecoa o valor (R4).
 | Comando | Quem | O que faz |
 |---|---|---|
 | `secrets refresh` | — | abre o cofre (1Password) e regrava o cache cifrado do projeto |
-| `secrets exec -- <cmd>` | — | roda `<cmd>` com o cache decifrado no env, sem shell |
+| `secrets exec [--only A,B] -- <cmd>` | — | roda `<cmd>` com o cache decifrado no env, sem shell; `--only` entrega só esses nomes (use por padrão em ferramenta de terceiro). Fora de TTY, a saída mascara o valor e as formas derivadas (`\n` escapado, linha do PEM, base64); a máscara é rede de proteção, não garantia |
 | `secrets check` | — | julga chave/token/cache/recipient/template **sem** abrir o cofre |
 | `secrets rotate` | DONO | gera a chave age nova, troca no cofre e recifra os versionados |
 | `secrets token set` | DONO | troca o token da service account (stdin oculto) |

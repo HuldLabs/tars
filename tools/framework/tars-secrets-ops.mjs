@@ -21,7 +21,7 @@ import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { actor } from './tars-actor.mjs'
 import { findSecretsIds } from './secrets-patterns.mjs'
-import {
+import { filtraMapa,
   AMBIENTE_ACUSADO,
   ErroConfig,
   comTmp,
@@ -664,8 +664,23 @@ function globTpl(dir) {
  * caracteres e' o mesmo piso do resto do modulo: abaixo disso nao ha' entropia, e mascarar
  * toda ocorrencia de `x` mutilaria a saida sem esconder segredo nenhum.
  */
+/**
+ * As formas em que um valor sai sem ser igual a ele: a ferramenta imprime repr/JSON (`\\n`
+ * escapado), uma linha do PEM, o corpo colado ou base64. So' o literal deixava a chave passar
+ * (Homelab, 02/11).
+ */
+export function variantes(valor) {
+  const s = String(valor)
+  const t = s.replace(/\r\n/g, '\n').trimEnd()
+  const escapa = (x) => JSON.stringify(x).slice(1, -1)
+  const out = [s, t, escapa(s), escapa(t), Buffer.from(s).toString('base64'), Buffer.from(t).toString('base64')]
+  const linhas = t.split('\n').map((l) => l.trim()).filter((l) => l.length >= 16)
+  if (t.includes('\n')) out.push(...linhas, linhas.join(''), t.replace(/\n/g, '\\r\\n'))
+  return out
+}
+
 export function redator(valores = []) {
-  const alvos = [...new Set(valores.map(String).filter((v) => v.length >= 8))].sort((a, b) => b.length - a.length)
+  const alvos = [...new Set(valores.flatMap(variantes).filter((v) => v.length >= 8))].sort((a, b) => b.length - a.length)
   const segura = alvos.length ? Math.max(...alvos.map((v) => v.length)) - 1 : 0
   let buf = ''
   const mascara = (t) => {
@@ -720,15 +735,15 @@ export function redator(valores = []) {
  * terminal e' dele). Fora disso — pipe, CI, ou `--redact` pedido — a saida do filho passa por
  * um pipe e todo valor do cache vira `***`.
  */
-export function execRedigido(cfg, argv, { env = process.env, redact = false, ttySaida = process.stdout.isTTY, spawnFn = spawn, saida = process.stdout, erro = process.stderr } = {}) {
+export function execRedigido(cfg, argv, { env = process.env, redact = false, ttySaida = process.stdout.isTTY, spawnFn = spawn, saida = process.stdout, erro = process.stderr, only = null } = {}) {
   if (!argv.length) throw new ErroConfig('uso: tars secrets exec -- <cmd> [args]')
   if (!fs.existsSync(cfg.cache_file)) {
     throw new ErroConfig(`[secrets] cache ausente em ${cfg.cache_file} — rode \`tars secrets refresh\``)
   }
   const mapa = decifraMapa(cfg)
-  if (ttySaida && !redact) return exec(cfg, argv, { env })
+  if (ttySaida && !redact) return exec(cfg, argv, { env, only })
   return new Promise((resolve, reject) => {
-    const filho = spawnFn(argv[0], argv.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], env: envDoFilho(mapa, { env, cfg }), shell: false })
+    const filho = spawnFn(argv[0], argv.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], env: envDoFilho(filtraMapa(mapa, only), { env, cfg }), shell: false })
     const rOut = redator(Object.values(mapa))
     const rErr = redator(Object.values(mapa))
     filho.stdout.setEncoding('utf8')
@@ -753,10 +768,19 @@ export function execRedigido(cfg, argv, { env = process.env, redact = false, tty
 }
 
 function cmdExec(rest, ctx) {
-  const redact = rest.includes('--redact')
-  const argv = rest.filter((a) => a !== '--redact')
-  const limpo = argv[0] === '--' ? argv.slice(1) : argv
-  return execRedigido(ctx.cfg, limpo, { env: ctx.env, redact, saida: ctx.saida, erro: ctx.erro })
+  // Flag do `exec` so' antes do comando: depois dele, tudo e' argumento do filho.
+  let i = 0
+  let redact = false
+  let only = null
+  for (; i < rest.length; i++) {
+    if (rest[i] === '--redact') redact = true
+    else if (rest[i] === '--only') {
+      only = String(rest[++i] ?? '').split(',').filter(Boolean)
+      if (!only.length) throw new ErroConfig('uso: tars secrets exec --only A,B -- <cmd>')
+    } else break
+  }
+  const limpo = rest[i] === '--' ? rest.slice(i + 1) : rest.slice(i)
+  return execRedigido(ctx.cfg, limpo, { env: ctx.env, redact, saida: ctx.saida, erro: ctx.erro, only })
 }
 
 // --- AUDITORIA ------------------------------------------------------------------------
