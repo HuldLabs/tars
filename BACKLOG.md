@@ -47,6 +47,19 @@ A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mes
 
 ## Bugs reportados por consumidores
 
+### Reportados 08/11 (kerr)
+- **[GUARD] comando longo em primeiro plano** — repo: `kerr`; data: 08/11/2026; reprodução: a regra
+  "comando >~10 s vai para segundo plano" (CLAUDE.md, memória do agente) foi descumprida 6 vezes numa
+  sessão (commit pela worktree com gates, `npm audit`, `bun add`, `uv lock`, `pytest`, `next build`), e o
+  dono teve de cobrar de novo. Fazer: guard `PreToolUse` (Bash) que barra em primeiro plano os padrões
+  sabidamente longos (`gates.sh`, `*wt-commit*.sh`, `pytest`, `next build`, `bun|npm (install|add|audit)`,
+  `uv (lock|sync)`, `docker build`) quando a chamada não traz `run_in_background`; mensagem nomeia a regra.
+- **[BUG] `.venv` compartilhado com worktree vira de versão no gate** — repo: `kerr`; data: 08/11/2026;
+  reprodução: worktree de commit liga `.venv` do checkout; o `uv.lock` da worktree difere do instalado;
+  `tests/test_mcp_smoke.py` roda `uv run --with "mcp[cli]"`, que sincroniza o `.venv` de todos durante o
+  gate → vermelho NOVO falso (3x) e o ambiente do checkout rebaixado (certifi/otel). Fazer: o gate roda com
+  `UV_NO_SYNC=1` (ou `--no-sync`) e falha alto se o `.venv` não bate com o lock da árvore commitada.
+
 ### Fila da dev.23 (14/10)
 - **[BUG] CHANGELOG com data no título engole seções** (Endurance): `## 0.0.1-dev.2 — 13/10/2026` não é reconhecido como cabeçalho, e o `release-notes` junta a dev.2 e a dev.1 dentro da dev.3, sem avisar (fere a R4). Fazer: aceitar sufixo após a versão **e** falhar alto se uma linha `## ` não for parseável.
 - **`release-notes` para imagem/artefato OCI** (Endurance): a verificação diz "binário provado na sua libc" (o endurance troca com `sed`, frágil) e o `--image` diz "binário em /<bin>", que não serve para imagem base. Fazer: `--kind bin|image` (ou `--verify`/`--image-note`) com o texto de cada caso.
