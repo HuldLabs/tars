@@ -72,7 +72,9 @@ como atende cada uma**:
   mercado. Porte a **lógica**, adaptada à nossa proporção; **nunca** credenciais, dados,
   bancos, hosts ou ambiente de outro projeto. Reinventar a roda é proibido.
 - **R2 · KISS.** Menos código, mesma função, mais rápido. Estenda antes de criar; sem
-  abstração antecipada; apagar é entrega; medir, não achar.
+  abstração antecipada; apagar é entrega; medir, não achar. KISS é **simples no mecanismo**,
+  não "adiar até alguém pedir": o desenho e o modelo de dados cobrem tudo o que já se sabe;
+  a construção vem por fase, e o que fica de fora é mapeado (tela planejada), nunca esquecido.
 - **R3 · SSOT.** Toda regra, cálculo, validação, lista e componente existe em **um** lugar;
   o resto consome. Duplicação é defeito, não estilo — inclusive em docs.
 - **R4 · Falha rápida e alta.** Comece pelo menor caso: 1 ou 2 testes, valide, só então o
@@ -86,6 +88,22 @@ como atende cada uma**:
   (API, CLI, tela, evento), sem editar o núcleo.
 - **Agnosticidade.** De runtime e de stack: o núcleo não conhece a ferramenta nem o banco
   de quem o consome.
+- **Consistência declarada.** Toda escrita diz a garantia de que precisa: ACID com o nível de
+  isolamento escolhido, ou consistência eventual com o mecanismo nomeado (outbox
+  transacional + consumidor idempotente, versão/token de consistência). Três camadas, cada uma
+  pega um problema: **lock otimista** (coluna de versão; conflito = 409) para duas edições do
+  mesmo objeto; **constraint, gatilho ou `SERIALIZABLE`** para regra sobre o conjunto (write
+  skew: "o último dono", cota, soma); **chave de idempotência** para ação externa repetida.
+  Nada de transação distribuída (2PC) sem medida.
+- **Carga com limite.** Toda fila, worker, consumidor, chamada de LLM e rota cara tem teto
+  (cota, timeout, tamanho) e recusa **explícita** acima dele (429/503 com o motivo) —
+  backpressure, nunca degradação calada. Desempenho se mede em **percentil (p99) sob carga**,
+  nunca pela média.
+- **Isolamento por construção.** Toda leitura e escrita passa pela porta de acesso **no
+  código** (o RLS é defesa em profundidade, não a regra); menor privilégio; autor real em
+  toda escrita (a pessoa, nunca o papel de banco nem o id do provedor); a identidade não vem
+  do pedido. Rota nova que recebe id de objeto nasce com teste de IDOR (outra organização =
+  404) — inclusive na query e no corpo.
 
 ## Idioma: identificador em inglês, texto em português
 
