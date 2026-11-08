@@ -5,6 +5,16 @@ What changed, when, and why. Newest first. This file exists so a future auditor 
 re-deriving it. Provenance rule (`SKILL.md` §1): a client may appear **only** as the source
 of a generic lesson — never its hosts, keys, tokens, URLs or data.
 
+## 2026-11-08 (22nd round) - Session/limiter/cost anti-patterns (public self-audit series)
+
+**Source.** A public video series auditing its own session-based login (10 audits), used as a
+generic lesson only. **Carried in:** `modules/service-hardening-antipatterns.md` rows 7–13
+(asymmetric KDF cost without a global budget; limiter state in process memory; sliding session
+without absolute cap; renew×logout race with unchecked UPDATE; critical advisory in an auth
+dependency; weak/breached password and flat lockout; JWT outliving logout), row 4 extended
+(XFF also poisons session/audit trail), and the **composition rule** (rank combined rows).
+First application: SELD/IAM, 2026-11-08 — row 11 LIVE (better-auth 1.7.5), fixed to 1.7.18.
+
 ## 2026-09-27 (21st round) - Command injection in the secrets wrapper (own tooling)
 
 **Incident.** `tools/secrets.mjs` rebuilt `argv` into a string and ran it with `shell: true`;
@@ -119,7 +129,7 @@ fix" into a one-command step.
 ## 2026-09-24 (12th round) - Probe classification: HTTP 200 + error body is a denial (soft-deny)
 
 **Incident.** The QVE Financeiro engagement (`apps/qve-financeiro`, `docs/security/qve-financeiro-lessons.md`)
-swept all 94 actions of a single-dispatcher PHP API as one role. Classifying by **status code** was
+swept all 94 actions of a single-dispatcher PHP API as one role. Classifying by **status code** was <!-- tars:runtime-ok — PHP é o alvo auditado, não runtime do catálogo -->
 wrong: `adminAtivar`/`adminDefinirVitalicio`/`getSaasMetrics` answered **HTTP 200 with
 `{"error":"Acesso negado"}`** while `updateUser`/`getUsers`/`savePlanejamentoDRE` answered a real
 `403`. A status-only sweep reads all four as "ok". The inverse also appeared: `trocarPlano` returned
