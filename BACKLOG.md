@@ -8,6 +8,11 @@
 `a-confirmar` → `nao-refinado` → `ready` → `in-progress` → `blocked` → `fixed`
 
 ## Em andamento
+- [ ] **BUG (reportado pelo kerr, 08/11): `lint-swallow` roda no checkout do `TARS_PROJECT`, não na worktree do commit.**
+  Reprodução: no kerr, `git worktree add .cache/wt-X -b feat/x HEAD`; dentro dela `git add <arquivo>` e `git commit`.
+  O gate lê `git diff --cached` com cwd=/projects/kerr (índice vazio ali), cai em "modo prova" e reprova 62
+  arquivos alheios. Esperado: o gate usa o `git rev-parse --show-toplevel` do commit (a worktree). Contorno
+  temporário (dívida nomeada): commitar pelo `.cache/coordkerr-wt-commit.sh`. Origem do relato: worker SB-169.
 
 | # | item | estado | detalhe |
 |---|---|---|---|
@@ -62,6 +67,9 @@ Regra do dono (11/10, `.ai/rules/principles.md`): bug do Tars reportado por um c
 
 | # | repo | data | reprodução | estado |
 |---|---|---|---|---|
+| TARS-BUG-29 | Kerr (coord) | 2026-11-04 | **lacuna (método)**  Nada no pré-compactação nem no fechamento prova que o que o dono pediu e o que o agente concluiu saiu da conversa para o repo: o `precompact-persist-state` só barra HANDOFF/BACKLOG/DELIVERED sem commit. No Kerr (03–04/11) o agente deu a pesquisa de modelos como perdida três vezes; estava no repo. Proposta: guard/skill que, antes de compactar e ao fechar o dia, extrai as mensagens do dono da transcrição (`~/.claude/projects/<proj>/<sessão>.jsonl`) e aponta as respostas do agente com números medidos ausentes de bench/docs/BACKLOG/HANDOFF. Protótipo local, temporário (dívida nomeada): `kerr/tools/coord/session_audit.py` (931 mensagens, 2 respostas fora do repo). |
+| TARS-BUG-30 | seo-brain (coord) | 2026-11-04 | **lacuna (gate local no commit-msg)**  `tars-hooks.mjs` `planGates` (l. 60-66) só aceita gate local (item com `/`) no `pre-commit`; no `commit-msg` ele é filtrado, e o `pre-commit` roda antes de a mensagem existir. Reprodução: `[gates] commit-msg = ["commit-msg", "tools/read_gate.py"]` no `.ai/tars.toml` do seo-brain → o gate local não roda. Caso de uso: exigir `Read: <docs>` na mensagem de commit que cria tela/módulo/rota/migração (dono, 04/11). Proposta: `commit-msg` aceitar item com `/` e passar o caminho do arquivo da mensagem, como o `commit-msg` do catálogo. | aberto |
+| TARS-BUG-31 | kerr-crawler (coord Kuant) | 2026-11-07 | **`tars secrets exec` e o `git-credential` só respondem numa pasta com `.ai/tars.toml`, e não procuram nas pastas acima.** Reprodução (devcontainer do kerr-crawler): `cd /workspace/.cache/x && tars secrets exec -- true` → `tars secrets: [secrets] source e' OBRIGATORIO (use automation \| owner; nao ha' fallback entre as fontes)`. O mesmo vale para o helper `!tars secrets git-credential` de `/etc/gitconfig` quando o git roda fora do repo, por exemplo um `cargo fetch` de dependência git privada (o cargo busca em `~/.cargo/git`): `fatal: could not read Username`. A mensagem não diz de que pasta o tars leu nem qual arquivo faltou (fere a R4). Proposta: (1) subir até o `.git` mais próximo procurando `.ai/tars.toml`; (2) uma fonte de máquina (`key_scope = "machine"` já existe) para o helper fora de repo; (3) a mensagem nomear a pasta e o arquivo procurados. Contorno local, temporário (dívida nomeada): `kerr-crawler/tools/coord/kuant-fetch.sh` roda o exec na raiz do repo e passa o token por `GIT_CONFIG_*` só no ambiente do processo. | aberto |
 | TARS-BUG-1 | segtools | 2026-10-11 | `node tools/framework/tars-doctrines.mjs` acusa PHANTOM em `fail/erro-nao-se-engole`: a prova escreve o fixture em `/tmp`, mas o gate lê os arquivos **staged** — então a prova nunca dispara e a doutrina passa por PHANTOM | a-confirmar (prova não exercita o gate; fatia irmã) |
 | TARS-BUG-2 | Endurance (coord) | 2026-10-14 | `tars sync` grava hook de catálogo no `PreToolUse` do **Bash** do consumidor — o hook só deveria valer para as ferramentas que o catálogo declara. Reprodução: consumidor novo + `tars sync` → `hooks.jsonc` do consumidor lista o hook em `PreToolUse:Bash` | fixed = END-SYNC-1 (dev.26) |
 | TARS-BUG-3 | Endurance (coord) | 2026-10-14 | `tars sync` **não remove** do consumidor um guard que saiu de `.ai/base` (só acrescenta) — o consumidor fica com guard fantasma que o catálogo não tem mais | fixed = END-SYNC-2 (dev.19) |
