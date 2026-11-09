@@ -50,7 +50,8 @@ A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mes
   correções da origem para reaplicar. Fonte: SELD ADR-0002 §7.4.
 - **Aviso vira teste (proposta, aguarda o dono; kerr 08/11)**: com LLM o atacante transforma CVE em teste contra
   qualquer código em minutos. Na defesa: cada aviso novo das dependências e da origem das peças portadas vira teste
-  automático gerado por LLM e rodado no gate contra as superfícies do consumidor (base: skill `security-testing`).
+  automático gerado por LLM e rodado no gate contra as superfícies do consumidor. Motor: o **segtools** (testes de
+  segurança em clientes autorizados; aperfeiçoar, não criar), com a skill `security-testing`.
   Fonte: SELD ADR-0002 §7.4.
 
 ## Bugs reportados por consumidores
