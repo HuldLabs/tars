@@ -48,6 +48,10 @@ A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mes
   projetos e bibliotecas, e a falha da origem vem junto, invisível ao `npm audit`/Dependabot (casam versão de pacote,
   não trecho copiado). Manifesto por repo (origem: repo, commit, arquivo → destino) + checagem periódica dos avisos e
   correções da origem para reaplicar. Fonte: SELD ADR-0002 §7.4.
+- **Aviso vira teste (proposta, aguarda o dono; kerr 08/11)**: com LLM o atacante transforma CVE em teste contra
+  qualquer código em minutos. Na defesa: cada aviso novo das dependências e da origem das peças portadas vira teste
+  automático gerado por LLM e rodado no gate contra as superfícies do consumidor (base: skill `security-testing`).
+  Fonte: SELD ADR-0002 §7.4.
 
 ## Bugs reportados por consumidores
 
