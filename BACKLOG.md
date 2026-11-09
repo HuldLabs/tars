@@ -44,6 +44,10 @@ A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mes
 - **`tars release prepare`** (Endurance, 14/10): montar o PR final pelo modelo `templates/PR-RELEASE.tpl.md`, subindo a fonte da versão, abrindo a seção do CHANGELOG e listando os bugs reportados.
 - **Gate de nível da versão**: o `release-guard` reprova commit que muda a versão para fora de `dev.N+1` (sai de `-dev`, sobe patch/minor/major) sem o trailer `Nivel-Aprovado: <data> <onde o dono confirmou>` — a regra de `release.md` §Quem decide o nível vira cobrança.
 - **Descontinuar**: tirar de uso uma versão, feature ou peça sem quebrar o consumidor.
+- **Procedência do código portado (proposta, aguarda o dono; kerr 08/11)**: a R1 porta lógica e trechos de outros
+  projetos e bibliotecas, e a falha da origem vem junto, invisível ao `npm audit`/Dependabot (casam versão de pacote,
+  não trecho copiado). Manifesto por repo (origem: repo, commit, arquivo → destino) + checagem periódica dos avisos e
+  correções da origem para reaplicar. Fonte: SELD ADR-0002 §7.4.
 
 ## Bugs reportados por consumidores
 
