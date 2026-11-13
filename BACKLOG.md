@@ -56,6 +56,24 @@ A doutrina `release` (`.ai/governance/release.md`) é a primeira. Faltam, no mes
 
 ## Bugs reportados por consumidores
 
+### Reportados 13/11 (Tomo, adoção da dev.30)
+Detalhe com prova e arquivo:linha em `HuldLabs/tomo` `docs/ADOCAO-TARS.md` (tabela de bugs).
+- **[BUG] B1 gate local não roda no `pre-push`** — `tars-hooks.mjs:60-66` descarta item com `/` fora de
+  `pre-commit`/`local`; nenhum gate do catálogo barra push na `main`, mas o `doctor` aprova as doutrinas
+  `git/branch-name`/`git/tag-semver` com `onde="pre-push"` (PHANTOM disfarçado). O Tomo escreveu
+  `.githooks/pre-push` à mão. Fazer: aceitar gate local no `pre-push` ou gate `protected-branch` no catálogo.
+- **[BUG] B2** `git/tag-semver` aponta para `git.md:18-26` (seção Integração); o `doctor` dá OK em vez de DRIFT.
+- **[BUG] B3** `tars catalog` não lista `rules` nem fatias de `memory`.
+- **[BUG] B4** guards sem descrição em `docs/catalogo.md` (está na linha 2 de cada `.sh`).
+- **[BUG] B5** `adopt`/`check` mandam `tars sync` com lock ≠ motor; deveria sugerir `tars sync --upgrade`.
+- **[BUG] B6** `self-update` troca o binário dentro da pasta do mise; um `mise install` desfaz calado.
+- **[BUG] B7** push após cada commit (`git.md:22`) sem parâmetro para fluxo de PR diário.
+- **[BUG] B8** `doctor` lista doutrinas `segtools/*`/`org/*` como PROJETO em todo consumidor.
+- **[BUG] B9** HANDOFF do Tars diz Tomo na dev.27; o lock dizia dev.25 (agora dev.30).
+- **[GAP] B10** sem gate de testes afetados nem template de CI que chame os gates.
+- **[BUG] B11** `doctor` reprova a tag `v0.0.1-dev.6-rc.5` por não ter seção no CHANGELOG, mas o ADR-0004 do
+  consumidor recusa seção por candidato (o próprio Tars faz rc por tag). Fazer: tag `-rc.N` não exige seção.
+
 ### Reportados 08/11 (kerr)
 - **[GUARD] comando longo em primeiro plano** — repo: `kerr`; data: 08/11/2026; reprodução: a regra
   "comando >~10 s vai para segundo plano" (CLAUDE.md, memória do agente) foi descumprida 6 vezes numa
