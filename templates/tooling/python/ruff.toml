@@ -22,3 +22,8 @@ convention = "google"
 
 [lint.mccabe]
 max-complexity = 10
+
+# Formatter: `ruff format` (owner 2026-11-20; 6 repos used it, none used Black). Same binary and version as the lint.
+[format]
+quote-style = "double"
+docstring-code-format = true

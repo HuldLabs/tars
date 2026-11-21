@@ -72,7 +72,8 @@ que usa. Stack sem pasta ainda não tem preset (Rust, shell, SQL: lacuna da §6)
 
 | Arquivo | O que cobra | Base medida |
 | --- | --- | --- |
-| `python/ruff.toml` | `E F I B SIM UP C90 N D ANN S110 S112 BLE001`, Google, mccabe 10, `line-length` 120 | maromba (o único que roda `D`, `ANN` e `C90`); farmega |
+| `python/ruff.toml` | `E F I B SIM UP C90 N D ANN S110 S112 BLE001`, Google, mccabe 10, `line-length` 120; `ruff format` | maromba (o único que roda `D`, `ANN` e `C90`); farmega |
+| `python/mypy.ini` | mypy `strict` + `warn_unreachable`; plugin do Pydantic quando houver | fabber, nexus, farmega.v2 (mypy strict) |
 | `common/cspell.config.yaml` | en + pt-BR + es; dicionários oficiais fixados; dicionários próprios curados | tokenhood, farmega, maromba |
 | `typescript/tsconfig.base.json` | a união das flags estritas de farmega/apps/web e kerr-crawler | farmega, kerr-crawler |
 | `common/.editorconfig` | LF, UTF-8, indentação por tipo | farmega |
@@ -97,7 +98,10 @@ que usa. Stack sem pasta ainda não tem preset (Rust, shell, SQL: lacuna da §6)
 - **`line-length` = 120** (20/11/2026), padrão do Tars para todo consumidor. Antes havia 79 (doc do farmega, sem
   gate), 100 (6 repos) e 120 (maromba).
 
+- **Stack Python (20/11/2026):** formatter `ruff format` (6 repos usavam, nenhum usava Black) e checker mypy
+  `--strict`. O ty é mais rápido mas segue em Beta (0.0.107); no maromba o mypy strict achou 11 erros (2 bugs
+  reais), e o ty padrão achou 1. Reavaliar o ty quando ele sair do Beta.
+
 ## Decisões abertas (do dono)
 
-- **Formatter:** `ruff format` (kerr-crawler, thood) ou Black (segtools).
-- **Checker de tipos:** ty (farmega, kerr-crawler) ou mypy strict (farmega.v2, nexus, fabber).
+- Preset de Rust, shell e SQL (lacuna da §6): a escolher quando um consumidor dessas stacks pedir.
