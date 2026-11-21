@@ -21,6 +21,13 @@ levantar hipótese, testar a hipótese e só então corrigir ou pedir algo a alg
   decisão, verifique o que você mesmo pode verificar (só leitura, sem efeito colateral).
 - **Falha silenciosa é falha:** saída vazia, `cat` que não leu ou comando que "não fez
   nada" vira uma investigação, não uma suposição.
+- **Pesquisar a origem antes de afirmar bug ou propor mudança:** antes de dizer que uma peça
+  (Tars, Endurance, Tomo, qualquer dependência) tem um bug, uma lacuna, ou de propor correção,
+  ajuste ou melhoria, leia a documentação e a implementação do repo de origem: todas as
+  branches, issues e PRs (abertas e fechadas), CHANGELOG, BACKLOG, ADRs, e como os outros
+  consumidores já resolvem. Pode já existir, em outro lugar ou com outro nome. Afirmação sem
+  essa busca é chute (dono, 20/11/2026: U7 do maromba, olhado só na `main`; homelab, farmega e
+  segtools já tinham três soluções).
 - **Regressão (funcionava, parou): a primeira pergunta é "o que mudou?".** Ache o
   caminho que funcionava, documentado no repo (docs, devcontainer, Taskfile, ADR,
   docstrings e comentários do código, scripts, CHANGELOG, histórico do git, transcripts
