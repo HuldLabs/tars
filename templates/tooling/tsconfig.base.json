@@ -1,0 +1,16 @@
+{
+  "$comment": "Tars TypeScript preset (engineering-standards §5): union of farmega/apps/web and kerr-crawler/apps/kerr-web strict flags. Extend it; never relax a flag without a reason in the consumer ADR.",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noUncheckedSideEffectImports": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  }
+}

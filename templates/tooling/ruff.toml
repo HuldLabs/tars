@@ -1,0 +1,23 @@
+# Tars ruff preset (engineering-standards §5). Copy to the repo root (or into [tool.ruff] of pyproject.toml) and
+# only ADD rules; every per-file exception carries its reason as a comment. Pin ruff with == in the dev group.
+line-length = 100
+extend-exclude = [".cache", "data", ".ai/base"]
+
+[lint]
+# E/F pycodestyle+pyflakes, I isort, B bugbear, SIM simplify, UP pyupgrade, C90 complexity, N pep8-naming,
+# D pydocstyle (Google), ANN annotations, S110/S112/BLE001 silent or broad except (fail-loud).
+select = ["E", "F", "I", "B", "SIM", "UP", "C90", "N", "D", "ANN", "S110", "S112", "BLE001"]
+# D105/D107 magic and __init__ docstrings are noise; D203/D213 conflict with the Google convention.
+ignore = ["D105", "D107", "D203", "D213"]
+
+[lint.per-file-ignores]
+# tests document themselves by name; annotations there add nothing
+"tests/**" = ["D100", "D103", "ANN"]
+# generated migrations
+"migrations/**" = ["D", "ANN"]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.mccabe]
+max-complexity = 10
