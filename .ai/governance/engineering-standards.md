@@ -69,7 +69,7 @@ vem com o motivo comentado.
 
 | Arquivo | O que cobra | Base medida |
 | --- | --- | --- |
-| `ruff.toml` | `E F I B SIM UP C90 N D ANN S110 S112 BLE001`, Google, mccabe 10 | maromba (o único que roda `D`, `ANN` e `C90`); farmega |
+| `ruff.toml` | `E F I B SIM UP C90 N D ANN S110 S112 BLE001`, Google, mccabe 10, `line-length` 120 | maromba (o único que roda `D`, `ANN` e `C90`); farmega |
 | `cspell.config.yaml` | en + pt-BR + es; dicionários oficiais fixados; dicionários próprios curados | tokenhood, farmega, maromba |
 | `tsconfig.base.json` | a união das flags estritas de farmega/apps/web e kerr-crawler | farmega, kerr-crawler |
 | `.editorconfig` | LF, UTF-8, indentação por tipo | farmega |
@@ -89,9 +89,12 @@ vem com o motivo comentado.
 | Pin exato de versão | gate local do consumidor (maromba `tools/gates.sh`) | a portar |
 | Camadas | import-linter (Python), dependency-cruiser (TS) | por projeto |
 
+## Decisões do dono
+
+- **`line-length` = 120** (20/11/2026), padrão do Tars para todo consumidor. Antes havia 79 (doc do farmega, sem
+  gate), 100 (6 repos) e 120 (maromba).
+
 ## Decisões abertas (do dono)
 
-- **`line-length`:** 100 é o mais comum (6 repos medidos). O maromba usa 120, e a doc do farmega diz 79 sem gate
-  que a sustente. O preset traz 100.
 - **Formatter:** `ruff format` (kerr-crawler, thood) ou Black (segtools).
 - **Checker de tipos:** ty (farmega, kerr-crawler) ou mypy strict (farmega.v2, nexus, fabber).

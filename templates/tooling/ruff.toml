@@ -1,6 +1,7 @@
 # Tars ruff preset (engineering-standards §5). Copy to the repo root (or into [tool.ruff] of pyproject.toml) and
 # only ADD rules; every per-file exception carries its reason as a comment. Pin ruff with == in the dev group.
-line-length = 100
+# 120: owner decision 2026-11-20 (ecosystem had 79, 100 and 120; one value for every consumer).
+line-length = 120
 extend-exclude = [".cache", "data", ".ai/base"]
 
 [lint]
