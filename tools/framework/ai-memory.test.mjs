@@ -173,6 +173,9 @@ describe("SEG-862 — ledger de incidentes", () => {
   });
   it("aceita `classe` e `destino` (campos da recorrencia)", () =>
     expect(validateLedgerEntry({ ...inc, classe: "gate/commit-msg", destino: "TARS-99" })).toEqual([]));
+  // ITIL known error: o contorno vale ate o `destino` fechar a classe (nutrelu, 21/11).
+  it("aceita `contorno` (o que fazer enquanto a classe nao fecha)", () =>
+    expect(validateLedgerEntry({ ...inc, classe: "fonte/captcha-200", contorno: "baixar no navegador do dono" })).toEqual([]));
   it("recusa segredo", () => expect(validateLedgerEntry({ ...inc, o_que: "AKIA" + "A".repeat(16) })).not.toEqual([]));
   it("ensureLedger cria o arquivo vazio", () => {
     const f = path.join(path.dirname(fixture("x", "")), "novo-ledger.jsonl");
