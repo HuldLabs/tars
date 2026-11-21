@@ -90,12 +90,14 @@ como atende cada uma**:
 ## Idioma: identificador em inglês, texto em português
 
 Regra do dono, sem exceção de projeto (curadoria 14/10; `seg-agentmem-1` #27,
-`seg-agentmem-3` #3). A fronteira é **o que é símbolo** × **o que é lido por gente**:
+`seg-agentmem-3` #3; revista em 20/11: comentário, commit e PR passam ao inglês; 21/11: PR explícito). A fronteira é **o que é símbolo** × **o que é lido por gente**:
 
 | Superfície | Idioma |
 |---|---|
-| Arquivo, pasta, módulo, plugin, tabela, coluna, tipo, função, variável, branch | **inglês** |
-| Texto de tela, docs, comentário de código, mensagem de commit, issue e comentário de issue, canal, **resposta ao dono** | **português** |
+| Arquivo, pasta, módulo, plugin, tabela, coluna, tipo, função, variável, branch, rota de API | **inglês** |
+| Docstring, comentário de código, texto técnico de log e erro | **inglês** |
+| Mensagem de commit; título e corpo de PR (o merge leva o PR para o histórico do git) | **inglês** |
+| Texto de tela (via i18n), rota ou slug público, docs (ADR, BACKLOG, HANDOFF, pesquisa), issue e comentário de issue, canal, **resposta ao dono** | **português** |
 
 - **Por que o identificador é em inglês.** Ele é lido por ferramentas e por convenção de
   linguagem (import, rota, coluna de banco, `snake_case` de SQL): misturar idioma no símbolo
