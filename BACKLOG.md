@@ -28,6 +28,8 @@
 | ADOPT-GHCR | **Secret GHCR por repo no `tars adopt`** | nao-refinado | herdado do coord anterior (14/10) |
 | IMG-TRIXIE | **Imagem em trixie** | nao-refinado | herdado do coord anterior (14/10) |
 | SUITE-LOCAL | **3 falhas locais de ambiente na suíte** (verdes no CI) | nao-refinado | ai-layer-check (rulesync e `.ai/rules/ambiente.md` sem `root:true`); embutido gerado desatualizado; "sem motor" com `~/.local/bin` no PATH |
+| LEDGER-EN | **Schema do incident-ledger em inglês** | nao-refinado | as chaves (`classe`, `destino`, `contorno`, `fonte`, `ambiente`…) estão em português, contra a regra do dono de identificador em inglês (20/11); migrar com leitura das duas formas por um ciclo. Mesmo caso: as chaves do bloco `Lesson:` exigido pelo gate de commit (`erro`, `porque`, `causa raiz`, `origem`, `hipoteses`, `correcao`, `propagacao`) e o texto dele, que vai para o histórico e por isso é inglês. Pedido do nutrelu (21/11), que adicionou `contorno` no padrão atual |
+| DOC-GATES | **Gates da doutrina de documentação** | nao-refinado | (a) ADR `aceito` sem seção `## Confirmação` reprova; (b) código de produto que importa `docs/engineering/spikes/` reprova; (c) `tars doctor` aceita `docs/engineering/adr/` além de `docs/adr/`. Origem: `onde-mora-a-documentacao.md` (nutrelu, 21/11) |
 
 ## Metodologias do ecossistema (pedido do dono, 14/10)
 

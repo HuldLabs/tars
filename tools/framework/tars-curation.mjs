@@ -5,7 +5,7 @@
 //   1. le o estado em `.ai/curation.json` (o ponteiro: ultimo commit curado por repo);
 //   2. para cada repo VIZINHO no disco, le so' o DELTA `git log/diff <ponteiro>..HEAD` dos
 //      caminhos de conhecimento (`.ai/memory/**`, `HANDOFF*`, `*-lessons.md`,
-//      `docs/estudos/**`, `estudos/**`, `docs/adr{,_s}/**`, `BACKLOG.md`);
+//      `docs/estudos/**`, `estudos/**`, `docs/adr{,_s}/**`, `docs/engineering/**`, `BACKLOG.md`);
 //   3. imprime o que ANDOU (commits + arquivos) e o que NAO andou (silencio = ja' curado);
 //   4. com `--advance`, grava o HEAD de cada repo andado no ponteiro — mas SO' quem foi
 //      declaradamente lido por inteiro (`--reviewed`). Leitura parcial (amostra) nao avanca:
@@ -47,6 +47,7 @@ export const KNOWLEDGE_PATHS = [
   'estudos',
   'docs/adr',
   'docs/adrs',
+  'docs/engineering',
   'BACKLOG.md',
 ]
 

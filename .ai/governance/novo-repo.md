@@ -56,8 +56,8 @@ o que o consumidor faz**. `0.0.1` diz "ainda não é produto"; `dev.N` conta ent
 
 ### 6 · ADRs
 
-Toda decisão de desenho vai para `docs/adr/NNNN-<slug>.md`, no formato dos ADRs do
-`huldlabs` (`adr/`), **uma alternativa por seção, rejeitada com motivo verificado em fonte**
+Toda decisão de desenho vai para `docs/engineering/adr/NNNN-<slug>.md` (modelo `templates/ADR.tpl.md`; mapa das
+outras pastas em `onde-mora-a-documentacao.md`; repo antigo com `docs/adr/` migra quando reorganizar), **uma alternativa por seção, rejeitada com motivo verificado em fonte**
 (ADR-009 do fabber). O ADR é a fonte; o BACKLOG só resume e aponta.
 
 ### 7 · Registrar no README do hub
@@ -98,7 +98,7 @@ servidor já faz. Origem: `.ai/skills/iam` §4 (curadoria 14/10, `47623f1`).
 
 O `tars doctor` cobra esta doutrina por um repo que a executou: o README tem a seção da
 origem do nome, o `BACKLOG.md` tem as quatro seções, o `.ai/tars.toml` existe, o
-`CHANGELOG.md` está em `0.0.1-dev.1` e há pelo menos um `docs/adr/*.md`. Onde a prova vive no
+`CHANGELOG.md` está em `0.0.1-dev.1` e há pelo menos um `docs/engineering/adr/*.md` (ou `docs/adr/*.md`, legado). Onde a prova vive no
 CONSUMIDOR (o repo que nasceu), o `[[doctrine]]` do `.ai/tars.toml` dele declara a fonte
 (`README.md`, `BACKLOG.md`) e a prova roda sobre a raiz daquele projeto.
 

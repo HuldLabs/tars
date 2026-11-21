@@ -21,7 +21,7 @@ export const LEDGER_FILE = path.join(REPO, ".ai", "memory", "incident-ledger.jso
 export const LEDGER_KEYS = ["id", "data", "titulo", "o_que", "causa", "correcao", "recorrencia", "fonte", "tags"];
 // TARS-TAGS-1 (fatia F1): `classe`/`destino` ja' existiam; entram `prompt_rule` (o que
 // vira linha no template do worker), `ambiente` (onde a licao vale) e `shell` (a faceta).
-export const OPTIONAL_LEDGER_KEYS = ["source_id", "repo", "classe", "destino", "prompt_rule", "ambiente", "shell"];
+export const OPTIONAL_LEDGER_KEYS = ["source_id", "repo", "classe", "destino", "contorno", "prompt_rule", "ambiente", "shell"];
 // O doc dos campos e a outra metade do contrato: a lista de la tem de ser a MESMA de
 // SCHEMA_KEYS. Antes da SEG-5 o doc listava `expires_at`/`supersedes_entry_id`/
 // `promoted_from`, que este gate recusa — uma entrada documentada reprovava.

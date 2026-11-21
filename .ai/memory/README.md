@@ -51,6 +51,7 @@ Campos **opcionais** do ledger (`OPTIONAL_LEDGER_KEYS`), entram só quando os da
 | --- | --- | --- |
 | `classe` | `tars doctor`: agrupa por classe | a classe da falha (ex.: `gate/commit-msg`), não o episódio — é o eixo da recorrência |
 | `destino` | `tars doctor`: dispensa a classe que recorreu | id do item de backlog que fecha a classe |
+| `contorno` | quem bate na classe antes da correção | o que fazer enquanto o `destino` não fecha a classe (o *known error* do ITIL): sintoma conhecido, saída conhecida |
 | `source_id`, `repo` | curador (memória federada) | procedência, como na memória |
 
 **Regra dura (recorrência → backlog, X = 2).** Toda classe com **≥ 2 ocorrências somadas** sem `destino` é
