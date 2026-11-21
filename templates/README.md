@@ -8,6 +8,16 @@ são o esqueleto a preencher. Copie, troque o que está entre `<…>` e apague o
 |---|---|---|
 | `README.tpl.md` | o README do repo novo (papel + origem do nome + ligação) | `HuldLabs/morse` |
 | `BACKLOG.tpl.md` | o `BACKLOG.md` do commit inicial (decisões, fila, armadilhas, em aberto) | `HuldLabs/morse` `e1acf06` |
+| `ADR.tpl.md` | decisão (MADR 4 em pt-BR, com **Confirmação** obrigatória em `aceito`) | nutrelu ADR 0010 |
+| `SPIKE.tpl.md` | relatório de spike/PoC/protótipo, no `README.md` da pasta da spike | nutrelu `spikes/s1-motor-duravel` |
+| `SPIKES-INDEX.tpl.md` | índice das spikes | polywan, portifact |
+| `BENCH.tpl.md` | bench repetível (ambiente, warmup, mediana, desvio, análise ativa) | Heiser; Gregg |
+| `RESEARCH.tpl.md` | nota de pesquisa datada, com fonte primária por afirmação | nutrelu `research/` |
+| `RFC.tpl.md` | *Request for Change* (ITIL): mudança em produção com reversão testada | GMUD, GIM/FAM |
+| `POSTMORTEM.tpl.md` | anexo de incidente de produção, nomeado pelo id do ledger | Google SRE |
+| `PRODUCT-README.tpl.md` | mapa de `docs/product/` (regras `BR-*`, fichas de funcionalidade) | segtools, kerr |
+
+Onde cada documento mora: `.ai/governance/onde-mora-a-documentacao.md`.
 
 **Regra do modelo:** toda decisão no BACKLOG leva **fonte** (ADR, conversa com data,
 pesquisa); todo item da fila leva **aceite falsificável**. Modelo sem `<…>` preenchido é
