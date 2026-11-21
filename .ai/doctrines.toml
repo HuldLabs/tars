@@ -66,6 +66,14 @@ prova = "d=$(mktemp -d) && git -C \"$d\" init -q && printf 'try { f() } catch {}
 onde = "pre-commit"
 
 [[doctrine]]
+id = "code/code-as-doc"
+titulo = "Código como documentação: docstring de módulo e de símbolo público, nome descritivo, cabeçalho de TOML/shell"
+fonte = ".ai/governance/engineering-standards.md:1-12"
+gate = "../../.ai/gates/source-doc"
+prova = "d=$(mktemp -d) && git -C \"$d\" init -q && printf 'def a(b):\\n    return b\\n' > \"$d/x.py\" && git -C \"$d\" add x.py && TARS_PROJECT=\"$d\" node .ai/gates/source-doc/gate.mjs"
+onde = "pre-commit"
+
+[[doctrine]]
 id = "ecossistema/sem-runtime-de-quem-nao-usa"
 titulo = "O `.ai/` copiado nao exige runtime que o consumidor nao usa (transversal = binario unico)"
 fonte = ".ai/gates/no-foreign-runtime/GATE.md:1-20"
