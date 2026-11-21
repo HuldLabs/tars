@@ -16,6 +16,7 @@ são o esqueleto a preencher. Copie, troque o que está entre `<…>` e apague o
 | `RFC.tpl.md` | *Request for Change* (ITIL): mudança em produção com reversão testada | GMUD, GIM/FAM |
 | `POSTMORTEM.tpl.md` | anexo de incidente de produção, nomeado pelo id do ledger | Google SRE |
 | `PRODUCT-README.tpl.md` | mapa de `docs/product/` (regras `BR-*`, fichas de funcionalidade) | segtools, kerr |
+| `tooling/` | presets de ferramenta **por stack** (`common/`, `python/`, `typescript/`): o piso; o consumidor só acrescenta regra | `.ai/governance/engineering-standards.md` §5 |
 
 Onde cada documento mora: `.ai/governance/onde-mora-a-documentacao.md`.
 

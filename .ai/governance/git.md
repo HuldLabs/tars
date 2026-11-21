@@ -13,6 +13,17 @@ Vale por padrão em todo projeto que consome o Tars.
   não é uma entrega, é o trilho onde as entregas se somam.
 - Branch de **entrega de issue** leva a key (`feat/seg-123-...`).
 - Nunca commitar direto na `main`.
+- Tag `vX.Y.Z[-pre]` (semver; `0.0.1-dev.N` e `-rc.M` na extração, `.ai/governance/release.md`).
+
+## Commit atômico
+
+- **Um assunto por commit:** uma mudança que se descreve num sujeito só, sem "e". Refatoração, regra nova,
+  tradução e config de ferramenta são commits separados, mesmo quando nascem na mesma sessão.
+- **Pathspec explícito:** `git add -- <caminhos>`. Nunca `git add -A`, `git add .` nem `git add -u` (o gate
+  `no-add-all` barra o primeiro; os outros dois são a mesma classe: entra o que ninguém revisou).
+- **Commit a cada passo verde:** testes e gates passam a cada commit, e o push vem logo depois (§Integração).
+- Caso de 20/11/2026 (consumidor maromba): um `refactor` juntou ruff, docstrings, tradução de comentários,
+  cspell e BACKLOG, com `add -u`. Isso é impossível de reverter por partes e esconde de quem revisa o que mudou.
 
 ## Integração
 
