@@ -42,6 +42,19 @@ describe("gate commit-msg", () => {
     expect(r.stderr).toMatch(/commit|formato|emoji|tipo/i);
   });
 
+  it("aceita fix com o escape No-Incident documentado (bug U13, nutrelu 21/11)", () => {
+    const r = valida(
+      "🐛 fix(hub): corrige o texto do aviso\n\nNo-Incident: revisao de texto, sem mudanca de comportamento\n" +
+        "No-Test: so texto, nada a testar aqui\n",
+    );
+    expect(r.status).toBe(0);
+  });
+
+  it("recusa fix com No-Incident curto demais", () => {
+    const r = valida("🐛 fix(hub): corrige o texto\n\nNo-Incident: texto\nNo-Test: so texto, nada a testar aqui\n");
+    expect(r.status).not.toBe(0);
+  });
+
   it("recusa feat SEM Lesson/No-Lesson (INV-LESSON-1)", () => {
     const r = valida("✨ feat(hub): mexe no motor\n");
     expect(r.status).not.toBe(0);

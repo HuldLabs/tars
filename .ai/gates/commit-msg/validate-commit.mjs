@@ -151,6 +151,9 @@ function requireTrailer(type, tr, blocos, kind) {
   };
 
   if (kind === 'incident') {
+    // `No-Incident: <motivo>` e' o escape documentado no GATE.md (fix sem incidente, ex.: texto).
+    // Sem esta saida a mensagem oferecia o escape e o recusava sempre (bug U13, nutrelu 21/11).
+    if (temNo && !Object.keys(b).length) return;
     // `fix` de verdade: o Incident tem de vir COM os 4 campos (1 linha nao basta).
     if (!temBloco) {
       console.error(`\ncommit-msg: '${type}' exige o Incident em 4 campos (INV-LESSON-1).`);
