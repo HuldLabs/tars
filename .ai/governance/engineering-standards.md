@@ -41,14 +41,14 @@ documento não os repete (SSOT). Somam-se, porque já valem em vários consumido
 
 | Linguagem | Especificação | Convenção | Enforcement (preset) |
 | --- | --- | --- | --- |
-| Python | PEP 20, 8, 257, 484, 526, 544, 557, 621, 723 | `code-as-doc/references/python.md`; só `uv`; pin `==` | `templates/tooling/ruff.toml` |
-| TypeScript | ECMA-262, TSDoc | strict + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` + `noUnused*` | `templates/tooling/tsconfig.base.json` |
+| Python | PEP 20, 8, 257, 484, 526, 544, 557, 621, 723 | `code-as-doc/references/python.md`; só `uv`; pin `==` | `templates/tooling/python/` |
+| TypeScript | ECMA-262, TSDoc | strict + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` + `noUnused*` | `templates/tooling/typescript/` |
 | Rust | API Guidelines, rustdoc | `//!`/`///`, `# Errors`; `thiserror` na lib | clippy `-D warnings` (lacuna) |
 | Shell | POSIX, bash | shebang + bloco `#`; `set -euo pipefail`; aspas | shellcheck (lacuna) |
 | TOML/YAML | TOML 1.0.0, YAML 1.2.2 | cabeçalho `#` dizendo o que controla | `source-doc` (cabeçalho) |
 | SQL | Postgres | `snake_case`, schema como fronteira, `COMMENT ON` no domínio | revisão |
 | Markdown | CommonMark | texto em pt-BR acentuado | cspell |
-| Todo arquivo | EditorConfig | LF, UTF-8, newline final | `templates/tooling/.editorconfig` |
+| Todo arquivo | EditorConfig | LF, UTF-8, newline final | `templates/tooling/common/` |
 
 **Documentação no arquivo:** veja `code-as-doc/references/language-conventions.md`, com o gate `source-doc`.
 
@@ -67,12 +67,15 @@ Até esta versão o Tars não distribuía nenhuma config de ferramenta, e o ecos
 `line-length` 79, 100 e 120. O preset é o **piso**: o consumidor copia e só **acrescenta** regra. Cada exceção
 vem com o motivo comentado.
 
+O Tars atende várias stacks: o preset é **por stack**, e o consumidor copia `common/` mais a pasta de cada linguagem
+que usa. Stack sem pasta ainda não tem preset (Rust, shell, SQL: lacuna da §6).
+
 | Arquivo | O que cobra | Base medida |
 | --- | --- | --- |
-| `ruff.toml` | `E F I B SIM UP C90 N D ANN S110 S112 BLE001`, Google, mccabe 10, `line-length` 120 | maromba (o único que roda `D`, `ANN` e `C90`); farmega |
-| `cspell.config.yaml` | en + pt-BR + es; dicionários oficiais fixados; dicionários próprios curados | tokenhood, farmega, maromba |
-| `tsconfig.base.json` | a união das flags estritas de farmega/apps/web e kerr-crawler | farmega, kerr-crawler |
-| `.editorconfig` | LF, UTF-8, indentação por tipo | farmega |
+| `python/ruff.toml` | `E F I B SIM UP C90 N D ANN S110 S112 BLE001`, Google, mccabe 10, `line-length` 120 | maromba (o único que roda `D`, `ANN` e `C90`); farmega |
+| `common/cspell.config.yaml` | en + pt-BR + es; dicionários oficiais fixados; dicionários próprios curados | tokenhood, farmega, maromba |
+| `typescript/tsconfig.base.json` | a união das flags estritas de farmega/apps/web e kerr-crawler | farmega, kerr-crawler |
+| `common/.editorconfig` | LF, UTF-8, indentação por tipo | farmega |
 
 **Dicionário próprio:** fica em `.cspell/project-words.txt` (projeto e ferramentas) e em
 `.cspell/<domínio>-terms.txt`. A curadoria segue a skill `cspell-curator`: corrigir o texto primeiro, rodar

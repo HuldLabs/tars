@@ -1,7 +1,7 @@
 # Python: PEPs, tipos, erros e testes
 
 Portado de `agent-skills/python-engineering-standards` (SKILL e `references/enterprise-python.md`) e do
-`farmega/docs/governance/python-standards.md`. O preset do ruff em `templates/tooling/` faz o lint cobrar isto.
+`farmega/docs/governance/python-standards.md`. O preset do ruff em `templates/tooling/python/` faz o lint cobrar isto.
 
 ## PEPs de base
 
