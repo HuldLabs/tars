@@ -8,6 +8,7 @@ são o esqueleto a preencher. Copie, troque o que está entre `<…>` e apague o
 |---|---|---|
 | `README.tpl.md` | o README do repo novo (papel + origem do nome + ligação) | `HuldLabs/morse` |
 | `BACKLOG.tpl.md` | o `BACKLOG.md` do commit inicial (decisões, fila, armadilhas, em aberto) | `HuldLabs/morse` `e1acf06` |
+| `tooling/` | presets de ferramenta **por stack** (`common/`, `python/`, `typescript/`): o piso; o consumidor só acrescenta regra | `.ai/governance/engineering-standards.md` §5 |
 
 **Regra do modelo:** toda decisão no BACKLOG leva **fonte** (ADR, conversa com data,
 pesquisa); todo item da fila leva **aceite falsificável**. Modelo sem `<…>` preenchido é
